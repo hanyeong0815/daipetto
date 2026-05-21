@@ -1,0 +1,96 @@
+version: "3.9"
+
+services:
+  frontend:
+    container_name: daipetto-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_API_URL: http://localhost:8080
+    depends_on:
+      - spring-api
+    networks:
+      - daipetto-network
+
+  spring-api:
+    container_name: daipetto-spring-api
+    build:
+      context: ./spring-api
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./spring-api:/app
+      - gradle-cache:/home/gradle/.gradle
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: daipetto
+      DB_USERNAME: daipetto_user
+      DB_PASSWORD: daipetto_password
+
+      JWT_SECRET: local-dev-only-secret
+
+      DJANGO_API_URL: http://django-api:8000
+      INTERNAL_API_KEY: internal-api-secret
+    depends_on:
+      - postgres
+      - django-api
+    networks:
+      - daipetto-network
+
+  django-api:
+    container_name: daipetto-django-api
+    build:
+      context: ./django-api
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./django-api:/app
+    environment:
+      DJANGO_DEBUG: "True"
+
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: daipetto
+      DB_USERNAME: daipetto_user
+      DB_PASSWORD: daipetto_password
+
+      INTERNAL_API_KEY: internal-api-secret
+    depends_on:
+      - postgres
+    networks:
+      - daipetto-network
+
+  postgres:
+    container_name: daipetto-postgres
+    image: postgres:16.9
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: daipetto
+      POSTGRES_USER: daipetto_user
+      POSTGRES_PASSWORD: daipetto_password
+      TZ: Asia/Tokyo
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - daipetto-network
+
+networks:
+  daipetto-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  gradle-cache:
