@@ -20,6 +20,11 @@ spring:
     init:
       mode: never
 
+jwt:
+  secret: local-dev-only-secret-key-for-jwt-authentication-must-be-long-enough-please-change
+  access-token-expiration-minutes: 30
+  refresh-token-expiration-days: 14
+
 logging:
   level:
     org.hibernate.SQL: debug

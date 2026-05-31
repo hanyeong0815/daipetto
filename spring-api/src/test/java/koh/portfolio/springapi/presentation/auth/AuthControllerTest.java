@@ -1,11 +1,11 @@
-package koh.portfolio.springapi.presentation.user;
+package koh.portfolio.springapi.presentation.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import koh.portfolio.springapi.application.auth.usecase.GetMyProfileUseCase;
-import koh.portfolio.springapi.application.user.dto.RegisterUserDto.RegisterUserRequest;
-import koh.portfolio.springapi.application.user.dto.RegisterUserDto.RegisterUserResponse;
-import koh.portfolio.springapi.application.user.usecase.RegisterUserUseCase;
+import koh.portfolio.springapi.application.auth.dto.LoginDto.LoginRequest;
+import koh.portfolio.springapi.application.auth.dto.LoginDto.LoginResponse;
+import koh.portfolio.springapi.application.auth.usecase.LoginUseCase;
 import koh.portfolio.springapi.common.exception.GlobalExceptionHandler;
+import koh.portfolio.springapi.domain.user.model.Role;
 import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(
-        controllers = UserController.class,
+        controllers = AuthController.class,
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE,
                 classes = JwtAuthenticationFilter.class
@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 )
 @AutoConfigureMockMvc(addFilters = false)
 @Import(GlobalExceptionHandler.class)
-class UserControllerTest {
+class AuthControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -42,41 +42,44 @@ class UserControllerTest {
     private ObjectMapper objectMapper;
 
     @MockBean
-    private RegisterUserUseCase registerUserUseCase;
-
-    @MockBean
-    private GetMyProfileUseCase getMyProfileUseCase;
+    private LoginUseCase loginUseCase;
 
     @Test
-    @DisplayName("POST /api/v1/users - 会員登録成功")
-    void register_success() throws Exception {
-        RegisterUserRequest request = new RegisterUserRequest(
+    @DisplayName("POST /api/v1/auth/login - ログイン成功")
+    void login_success() throws Exception {
+        LoginRequest request = new LoginRequest(
                 "test@example.com",
-                "password123",
-                "hanyeong"
+                "password123"
         );
 
-        when(registerUserUseCase.execute(any(RegisterUserRequest.class)))
-                .thenReturn(new RegisterUserResponse(1L));
+        LoginResponse response = new LoginResponse(
+                "access-token",
+                "refresh-token",
+                Role.ROLE_USER
+        );
 
-        mockMvc.perform(post("/api/v1/users")
+        when(loginUseCase.execute(any(LoginRequest.class)))
+                .thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.userId").value(1));
+                .andExpect(jsonPath("$.data.accessToken").value("access-token"))
+                .andExpect(jsonPath("$.data.refreshToken").value("refresh-token"))
+                .andExpect(jsonPath("$.data.role").value("ROLE_USER"));
     }
 
     @Test
-    @DisplayName("POST /api/v1/users - Validation失敗")
-    void register_validation_fail() throws Exception {
-        RegisterUserRequest request = new RegisterUserRequest(
+    @DisplayName("POST /api/v1/auth/login - Validation失敗")
+    void login_validation_fail() throws Exception {
+        LoginRequest request = new LoginRequest(
                 "",
-                "123",
                 ""
         );
 
-        mockMvc.perform(post("/api/v1/users")
+        mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
