@@ -1,0 +1,30 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/daipetto?currentSchema=public
+    username: daipetto_user
+    password: local-dev-only-password
+
+  flyway:
+    enabled: true
+    schemas: public
+    baseline-on-migrate: true
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+
+  sql:
+    init:
+      mode: never
+
+jwt:
+  secret: local-dev-only-secret-key-for-jwt-authentication-must-be-long-enough-please-change
+  access-token-expiration-minutes: 30
+  refresh-token-expiration-days: 14
+
+logging:
+  level:
+    org.hibernate.SQL: debug
