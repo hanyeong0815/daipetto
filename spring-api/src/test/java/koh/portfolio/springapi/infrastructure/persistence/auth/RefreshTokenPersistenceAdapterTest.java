@@ -99,4 +99,42 @@ class RefreshTokenPersistenceAdapterTest {
         assertThat(savedRefreshToken.getToken()).isEqualTo("refresh-token");
         assertThat(savedRefreshToken.isRevoked()).isFalse();
     }
+
+    @Test
+    @DisplayName("指定したRefresh Tokenのみ失効状態に更新する")
+    void revoke_by_token() {
+        // given
+        Long userId = 1L;
+        LocalDateTime now = LocalDateTime.now();
+
+        refreshTokenJpaRepository.save(RefreshTokenEntity.builder()
+                .userId(userId)
+                .token("target-token")
+                .expiresAt(now.plusDays(14))
+                .revoked(false)
+                .createdAt(now)
+                .build());
+
+        refreshTokenJpaRepository.save(RefreshTokenEntity.builder()
+                .userId(userId)
+                .token("other-token")
+                .expiresAt(now.plusDays(14))
+                .revoked(false)
+                .createdAt(now)
+                .build());
+
+        // when
+        refreshTokenRepository.revokeByToken("target-token");
+
+        // then
+        assertThat(refreshTokenJpaRepository.findByToken("target-token"))
+                .get()
+                .extracting(RefreshTokenEntity::isRevoked)
+                .isEqualTo(true);
+
+        assertThat(refreshTokenJpaRepository.findByToken("other-token"))
+                .get()
+                .extracting(RefreshTokenEntity::isRevoked)
+                .isEqualTo(false);
+    }
 }

@@ -44,7 +44,7 @@ public class JwtProvider {
 
     public String createRefreshToken(Long userId) {
         Date now = new Date();
-        Date expiration = new Date(now.getTime() + Duration.ofMinutes(refreshTokenExpirationDays).toMillis());
+        Date expiration = new Date(now.getTime() + Duration.ofDays(refreshTokenExpirationDays).toMillis());
 
         return Jwts.builder()
                 .subject(String.valueOf(userId))
@@ -55,7 +55,7 @@ public class JwtProvider {
     }
 
     public LocalDateTime getRefreshTokenExpiresAt() {
-        return LocalDateTime.now().plusMinutes(refreshTokenExpirationDays);
+        return LocalDateTime.now().plusDays(refreshTokenExpirationDays);
     }
 
     public Long getUserId(String token) {

@@ -3,7 +3,10 @@ package koh.portfolio.springapi.presentation.auth;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import koh.portfolio.springapi.application.auth.dto.LoginDto.LoginRequest;
 import koh.portfolio.springapi.application.auth.dto.LoginDto.LoginResponse;
+import koh.portfolio.springapi.application.auth.dto.RefreshTokenDto.RefreshTokenRequest;
+import koh.portfolio.springapi.application.auth.dto.RefreshTokenDto.RefreshTokenResponse;
 import koh.portfolio.springapi.application.auth.usecase.LoginUseCase;
+import koh.portfolio.springapi.application.auth.usecase.RefreshTokenUseCase;
 import koh.portfolio.springapi.common.exception.GlobalExceptionHandler;
 import koh.portfolio.springapi.domain.user.model.Role;
 import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
@@ -44,6 +47,9 @@ class AuthControllerTest {
     @MockBean
     private LoginUseCase loginUseCase;
 
+    @MockBean
+    private RefreshTokenUseCase refreshTokenUseCase;
+
     @Test
     @DisplayName("POST /api/v1/auth/login - ログイン成功")
     void login_success() throws Exception {
@@ -80,6 +86,43 @@ class AuthControllerTest {
         );
 
         mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("VALIDATION-001"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/refresh - Token再発行成功")
+    void refresh_token_success() throws Exception {
+        RefreshTokenRequest request = new RefreshTokenRequest(
+                "current-refresh-token"
+        );
+
+        RefreshTokenResponse response = RefreshTokenResponse.builder()
+                .accessToken("new-access-token")
+                .refreshToken("new-refresh-token")
+                .build();
+
+        when(refreshTokenUseCase.execute(any(RefreshTokenRequest.class)))
+                .thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.accessToken").value("new-access-token"))
+                .andExpect(jsonPath("$.data.refreshToken").value("new-refresh-token"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/refresh - Validation失敗")
+    void refresh_token_validation_fail() throws Exception {
+        RefreshTokenRequest request = new RefreshTokenRequest("");
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
