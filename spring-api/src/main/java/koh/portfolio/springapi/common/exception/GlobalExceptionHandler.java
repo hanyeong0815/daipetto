@@ -1,8 +1,10 @@
 package koh.portfolio.springapi.common.exception;
 
 import koh.portfolio.springapi.common.response.ApiResponse;
+import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -42,6 +44,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .badRequest()
                 .body(ApiResponse.error("VALIDATION-001", message));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDeniedException(
+            AccessDeniedException exception
+    ) {
+        AuthErrorCode errorCode = AuthErrorCode.ACCESS_DENIED;
+
+        return ResponseEntity
+                .status(errorCode.defaultHttpStatus())
+                .body(ApiResponse.error(
+                        errorCode.code(),
+                        errorCode.defaultMessage()
+                ));
     }
 
     @ExceptionHandler(Exception.class)

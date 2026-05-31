@@ -10,7 +10,8 @@ public enum AuthErrorCode implements ErrorCode {
     SUSPENDED_ACCOUNT("AUTH-002", "利用停止中のアカウントです。", HttpStatus.FORBIDDEN),
     INVALID_REFRESH_TOKEN("AUTH-003", "無効なRefresh Tokenです。", HttpStatus.UNAUTHORIZED),
     EXPIRED_REFRESH_TOKEN("AUTH-004", "期限切れのRefresh Tokenです。", HttpStatus.UNAUTHORIZED),
-    UNSUPPORTED_JWT_TOKEN("AUTH-005", "対応してないトークン形式です。", HttpStatus.FORBIDDEN),
+    ACCESS_DENIED("AUTH-005", "アクセス権限がありません。", HttpStatus.FORBIDDEN),
+    UNSUPPORTED_JWT_TOKEN("AUTH-006", "サポートされていないTokenです。", HttpStatus.UNAUTHORIZED),
     DEFAULT("AUTH-999", "認証関連エラーです。", HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final String code;

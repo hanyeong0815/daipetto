@@ -2,13 +2,10 @@ package koh.portfolio.springapi.application.auth.service;
 
 import koh.portfolio.springapi.application.auth.dto.LoginDto.LoginRequest;
 import koh.portfolio.springapi.application.auth.dto.LoginDto.LoginResponse;
-import koh.portfolio.springapi.application.auth.usecase.GetMyProfileUseCase;
 import koh.portfolio.springapi.application.auth.usecase.LoginUseCase;
-import koh.portfolio.springapi.application.user.dto.GetMyProfileDto.GetMyProfileResponse;
 import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
 import koh.portfolio.springapi.domain.auth.model.RefreshToken;
 import koh.portfolio.springapi.domain.auth.port.RefreshTokenRepository;
-import koh.portfolio.springapi.domain.user.exception.UserErrorCode;
 import koh.portfolio.springapi.domain.user.model.User;
 import koh.portfolio.springapi.domain.user.port.UserRepository;
 import koh.portfolio.springapi.infrastructure.security.jwt.JwtProvider;
@@ -21,7 +18,7 @@ import static koh.portfolio.springapi.common.exception.Preconditions.validate;
 
 @Service
 @RequiredArgsConstructor
-public class LoginService implements LoginUseCase, GetMyProfileUseCase {
+public class LoginService implements LoginUseCase {
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
@@ -65,20 +62,6 @@ public class LoginService implements LoginUseCase, GetMyProfileUseCase {
                 .accessToken(accessToken)
                 .refreshToken(refreshTokenValue)
                 .role(user.getRole())
-                .build();
-    }
-
-    @Override
-    public GetMyProfileResponse execute(Long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(UserErrorCode.NO_SUCH_USER::defaultException);
-
-        return GetMyProfileResponse.builder()
-                .id(user.getId())
-                .email(user.getEmail())
-                .nickname(user.getNickname())
-                .role(user.getRole())
-                .status(user.getStatus())
                 .build();
     }
 }

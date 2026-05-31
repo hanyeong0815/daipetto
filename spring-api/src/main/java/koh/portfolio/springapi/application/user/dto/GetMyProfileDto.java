@@ -6,8 +6,8 @@ import lombok.Builder;
 
 public record GetMyProfileDto() {
     @Builder
-    public record GetMyProfileResponse(
-            Long id,
+    public record MyProfileResponse(
+            Long userId,
             String email,
             String nickname,
             Role role,

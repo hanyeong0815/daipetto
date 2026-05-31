@@ -1,6 +1,8 @@
 package koh.portfolio.springapi.infrastructure.security;
 
 import koh.portfolio.springapi.infrastructure.security.cors.CorsConfig;
+import koh.portfolio.springapi.infrastructure.security.handler.JwtAccessDeniedHandler;
+import koh.portfolio.springapi.infrastructure.security.handler.JwtAuthenticationEntryPoint;
 import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -18,6 +20,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @RequiredArgsConstructor
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+    private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
     private final CorsConfig corsConfig;
 
     @Bean
@@ -33,6 +37,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated()
+                )
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+                        .accessDeniedHandler(jwtAccessDeniedHandler)
                 )
                 .addFilterBefore(
                         jwtAuthenticationFilter,

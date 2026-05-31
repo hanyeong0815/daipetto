@@ -2,11 +2,12 @@ package koh.portfolio.springapi.presentation.user;
 
 import jakarta.validation.Valid;
 import koh.portfolio.springapi.application.auth.usecase.GetMyProfileUseCase;
-import koh.portfolio.springapi.application.user.dto.GetMyProfileDto.GetMyProfileResponse;
+import koh.portfolio.springapi.application.user.dto.GetMyProfileDto.MyProfileResponse;
 import koh.portfolio.springapi.application.user.dto.RegisterUserDto.RegisterUserRequest;
 import koh.portfolio.springapi.application.user.dto.RegisterUserDto.RegisterUserResponse;
 import koh.portfolio.springapi.application.user.usecase.RegisterUserUseCase;
 import koh.portfolio.springapi.common.response.ApiResponse;
+import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -36,9 +37,12 @@ public class UserController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<ApiResponse<GetMyProfileResponse>> me(Authentication authentication) {
-        Long userId = (Long) authentication.getPrincipal();
-        GetMyProfileResponse response = getMyProfileUseCase.execute(userId);
+    public ResponseEntity<ApiResponse<MyProfileResponse>> me(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof Long userId)) {
+            throw AuthErrorCode.AUTH_FAILED.defaultException();
+        }
+
+        MyProfileResponse response = getMyProfileUseCase.execute(userId);
 
         return ResponseEntity.ok(ApiResponse.success(response));
     }
