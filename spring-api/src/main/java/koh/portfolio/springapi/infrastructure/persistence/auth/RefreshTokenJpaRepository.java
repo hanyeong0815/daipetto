@@ -21,5 +21,5 @@ public interface RefreshTokenJpaRepository extends JpaRepository<RefreshTokenEnt
     @Query(
             "update RefreshTokenEntity set revoked = true where token = ?1 and revoked = false"
     )
-    int revokeByToken(String token);
+    void revokeByToken(String token);
 }

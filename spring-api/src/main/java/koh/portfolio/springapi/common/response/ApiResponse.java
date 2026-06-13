@@ -19,16 +19,17 @@ public class ApiResponse<T> {
 
     public static <T> ApiResponse<T> success(T data) {
         return new ApiResponse<>(true, data, null, null);
+    }
 
+    public static <T> ApiResponse<T> success(T data, String message) {
+        return new ApiResponse<>(true, data, null, message);
     }
 
     public static ApiResponse<Void> success() {
         return new ApiResponse<>(true, null, null, null);
-
     }
 
     public static ApiResponse<Void> error(String code, String message) {
         return new ApiResponse<>(false, null, code, message);
-
     }
 }
