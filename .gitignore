@@ -27,3 +27,6 @@ replay_pid*
 .env
 .env.*
 !.env.example
+
+# Claude Code handoff (개인 커리어 맥락 포함, 공개 불가)
+claude_code_handoff_daipetto.md
