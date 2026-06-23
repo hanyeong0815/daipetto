@@ -529,6 +529,7 @@ flowchart TB
 ```json
 {
   "success": false,
+  "data": null,
   "code": "AUTH-001",
   "message": "認証に失敗しました。"
 }
