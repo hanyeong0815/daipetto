@@ -87,10 +87,12 @@ Authorization: Bearer {access_token}
 
 # **3-2. Token構成**
 
-| **Token** | **用途** | **保存場所** |
-| --- | --- | --- |
-| Access Token | API認証 | Frontend Memory |
-| Refresh Token | Token再発行 | HttpOnly Cookie |
+| **Token** | **用途** | **保存場所** | **送受信方式** |
+| --- | --- | --- | --- |
+| Access Token | API認証 | Frontend Memory | Authorization Header (Bearer) |
+| Refresh Token | Token再発行 | Frontend State | Request Body / Response Body |
+
+> **注記（MVP方針）:** Refresh TokenはMVP段階ではRequest Body方式で実装する。セキュリティ強化フェーズでHttpOnly Cookie方式への移行を検討する。
 
 ---
 
@@ -248,11 +250,13 @@ BCryptPasswordEncoder
 
 # **6-2. Cookie設定**
 
-| **項目** | **値** |
-| --- | --- |
-| HttpOnly | true |
-| Secure | true |
-| SameSite | Strict |
+> **注記（MVP方針）:** MVP段階ではRefresh TokenをRequest Body方式で実装するため、Cookie設定は本番移行時に適用する。
+
+| **項目** | **値** | **適用フェーズ** |
+| --- | --- | --- |
+| HttpOnly | true | 本番移行時 |
+| Secure | true | 本番移行時 |
+| SameSite | Strict | 本番移行時 |
 
 ---
 
@@ -285,14 +289,14 @@ JWT認証を利用するため、Spring Security標準CSRFは無効化する。
 
 ---
 
-# **8-2. Cookie利用対策**
+# **8-2. Refresh Token送受信方式**
 
-Refresh Tokenは以下設定を適用する。
+MVP段階ではRefresh TokenをRequest Body / Response Bodyで送受信する。
 
-| **設定** | **内容** |
-| --- | --- |
-| HttpOnly | JavaScriptアクセス禁止 |
-| SameSite=Strict | CSRF低減 |
+| **フェーズ** | **方式** | **CSRF対策** |
+| --- | --- | --- |
+| MVP | Request Body / Response Body | JWT Stateless認証によりCSRFリスク限定的 |
+| 本番移行時 | HttpOnly Cookie (SameSite=Strict) | Cookie設定によりCSRF低減・XSSリスク排除 |
 
 ---
 
