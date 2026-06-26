@@ -1,5 +1,6 @@
-import { useState, FormEvent } from 'react'
+import React, { useState, FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { FaDog, FaCat, FaPaw } from 'react-icons/fa6'
 import { petApi } from '../api/pet'
 import { usePetStore } from '../stores/petStore'
 import type { PetSpecies, PetGender } from '../types'
@@ -73,10 +74,10 @@ export default function PetRegisterPage() {
         <label className="font-label-md text-label-md text-on-surface-variant">ペットの種類</label>
         <div className="grid grid-cols-3 gap-sm">
           {([
-            { value: 'DOG', label: '犬', icon: 'cruelty_free' },
-            { value: 'CAT', label: '猫', icon: 'pets' },
-            { value: 'OTHER', label: 'その他', icon: 'emoji_nature' },
-          ] as { value: PetSpecies; label: string; icon: string }[]).map(({ value, label, icon }) => (
+            { value: 'DOG', label: '犬', Icon: FaDog },
+            { value: 'CAT', label: '猫', Icon: FaCat },
+            { value: 'OTHER', label: 'その他', Icon: FaPaw },
+          ] as { value: PetSpecies; label: string; Icon: React.ComponentType<{ size?: number }> }[]).map(({ value, label, Icon }) => (
             <button
               key={value}
               type="button"
@@ -87,7 +88,7 @@ export default function PetRegisterPage() {
                   : 'border-neutral-gray-100 bg-surface-container-lowest text-neutral-gray-600'
               }`}
             >
-              <span className={`material-symbols-outlined text-[28px] ${species === value ? 'icon-fill' : ''}`}>{icon}</span>
+              <Icon size={28} />
               <span className="font-button-text text-button-text">{label}</span>
             </button>
           ))}

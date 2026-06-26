@@ -50,6 +50,23 @@
 
 ## 🚧 未実装 — Spring API
 
+### Pet テーブル不足カラム追加
+> フロントは送信済みだが DB・Entity に存在しないため現在は無視されている
+
+- [ ] `V4__alter_pets_add_columns.sql` — `breed`, `neutered`, `microchip_number` カラム追加
+  ```sql
+  ALTER TABLE pets
+    ADD COLUMN breed            VARCHAR(100) NULL,
+    ADD COLUMN neutered         BOOLEAN      NOT NULL DEFAULT FALSE,
+    ADD COLUMN microchip_number VARCHAR(15)  NULL;
+  ```
+- [ ] `PetEntity` に `breed` / `neutered` / `microchipNumber` フィールド追加
+- [ ] `Pet` ドメインモデルに同フィールド追加
+- [ ] `PetMapper` の変換ロジック更新
+- [ ] 既存テストが通ることを確認（`PetServiceTest`）
+
+> Hospital API 追加後は V5 以降にずれるため、マイグレーションファイル番号に注意
+
 ### Hospital API
 - [ ] `Hospital` ドメイン・エンティティ・テーブル作成 (`V4__create_hospitals.sql`)
 - [ ] `POST /api/v1/hospitals` — 病院登録（HOSPITAL_ADMIN）
