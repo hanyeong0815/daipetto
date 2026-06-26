@@ -17,6 +17,7 @@ export default function PetRegisterPage() {
   const [microchip, setMicrochip] = useState('')
   const [neutered, setNeutered] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isSuccess, setIsSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: FormEvent) => {
@@ -38,10 +39,14 @@ export default function PetRegisterPage() {
         setError(res.message ?? 'ペットの登録に失敗しました。')
         return
       }
+      setIsSuccess(true)
       await fetchPets()
-      navigate('/pets')
-    } catch {
-      setError('ペットの登録に失敗しました。もう一度お試しください。')
+      setTimeout(() => navigate('/pets'), 2000)
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        ?? 'ペットの登録に失敗しました。もう一度お試しください。'
+      setError(message)
     } finally {
       setIsLoading(false)
     }
@@ -206,15 +211,24 @@ export default function PetRegisterPage() {
 
       <button
         type="submit"
-        disabled={isLoading}
-        className="w-full h-[52px] bg-pet-green-vibrant hover:bg-primary disabled:opacity-60 text-white font-button-text text-button-text rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-[0px_4px_12px_rgba(46,204,113,0.2)] mt-sm"
+        disabled={isLoading || isSuccess}
+        className={`w-full h-[52px] text-white font-button-text text-button-text rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] mt-sm shadow-[0px_4px_12px_rgba(46,204,113,0.2)] ${
+          isSuccess
+            ? 'bg-primary'
+            : 'bg-pet-green-vibrant hover:bg-primary disabled:opacity-60'
+        }`}
       >
         {isLoading ? (
           <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
+        ) : isSuccess ? (
+          <>
+            <span className="material-symbols-outlined text-[20px]">check_circle</span>
+            登録完了
+          </>
         ) : (
           <>
-            <span className="material-symbols-outlined">check</span>
-            登録完了
+            <span className="material-symbols-outlined text-[20px]">pets</span>
+            登録する
           </>
         )}
       </button>
