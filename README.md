@@ -136,6 +136,50 @@ DELETE /api/v1/pets/:id          # ペット削除
 
 ---
 
+## モバイルアプリ（Capacitor）
+
+React ビルドを Android / iOS の WebView に載せる構成です。  
+ネイティブ SDK のインストール（Android Studio / Xcode）が別途必要です。
+
+### 開発ワークフロー
+
+```bash
+cd frontend
+
+# Android（Android Studio が必要）
+npm run cap:android
+# → ビルド → cap sync → Android Studio が開く → Run
+
+# iOS（Xcode が必要 / Mac のみ）
+npm run cap:ios
+# → ビルド → cap sync → Xcode が開く → Run
+```
+
+### コード変更後の反映
+
+```bash
+npm run cap:sync   # ビルド + 全プラットフォームへ同期
+```
+
+### Android エミュレーターからローカル API を叩く場合
+
+Android エミュレーターの `localhost` はホストマシンではなくエミュレーター自身を指します。  
+`.env.local` の `VITE_API_BASE_URL` を `http://10.0.2.2:8080` に切り替えてください。
+
+### 開発時のライブリロード
+
+`capacitor.config.ts` の `server.url` を Vite dev server のアドレスに設定すると、  
+ネイティブアプリ上でもブラウザと同様にホットリロードが効きます。
+
+```
+# Android エミュレーター → ホストマシンの Vite dev server
+url: 'http://10.0.2.2:5173'
+```
+
+**本番ビルド時は `server` ブロックを削除**してから `npm run cap:android` / `npm run cap:ios` を実行してください。
+
+---
+
 ## 実装状況
 
 詳細は [TODO.md](./TODO.md) を参照。
