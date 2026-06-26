@@ -145,7 +145,7 @@ class AuthControllerTest {
 
         LogoutResponse response = new LogoutResponse(true);
 
-        when(logoutUseCase.logout(userId))
+        when(logoutUseCase.execute(userId))
                 .thenReturn(response);
 
         UsernamePasswordAuthenticationToken authentication =

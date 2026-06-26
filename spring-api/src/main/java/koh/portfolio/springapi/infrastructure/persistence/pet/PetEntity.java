@@ -1,30 +1,32 @@
-package koh.portfolio.springapi.infrastructure.persistence.user;
+package koh.portfolio.springapi.infrastructure.persistence.pet;
 
 import jakarta.persistence.*;
-import koh.portfolio.springapi.domain.user.model.Role;
-import koh.portfolio.springapi.domain.user.model.UserStatus;
+import koh.portfolio.springapi.domain.pet.model.PetGender;
+import koh.portfolio.springapi.domain.pet.model.PetType;
 import lombok.*;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Getter
 @Entity
-@Table(name = "users")
+@Table(name = "pets")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder
-public class UserEntity {
-
+public class PetEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    private String email;
-    private String password;
-    private String nickname;
+    private Long userId;
+    private String name;
     @Enumerated(EnumType.STRING)
-    private Role role;
+    private PetType petType;
+    private LocalDate birthDate;
     @Enumerated(EnumType.STRING)
-    private UserStatus status;
+    private PetGender gender;
+    private BigDecimal weight;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime deletedAt;

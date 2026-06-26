@@ -14,7 +14,7 @@ public class LogoutService implements LogoutUseCase {
 
     @Override
     @Transactional
-    public LogoutResponse logout(Long userId) {
+    public LogoutResponse execute(Long userId) {
         refreshTokenRepository.revokeAllByUserId(userId);
 
         return LogoutResponse.builder()

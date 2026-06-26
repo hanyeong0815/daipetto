@@ -85,9 +85,32 @@ Controller → UseCase Interface → UseCase Service → Domain Model
 
 最新の進捗は `claude_code_handoff_daipetto.md` の Section 22 を参照。
 
-完了済み: 会員登録・ログイン・JWT・Refresh Token・ログアウト・/users/me
+### 完了済み
 
-次の作業候補: Pet API → Reservation API
+| 機能 | 主なファイル |
+|---|---|
+| 会員登録 | `RegisterUseCase` / `RegisterService` |
+| ログイン | `LoginUseCase` / `LoginService` |
+| JWT 発行・検証 | `JwtProvider` / `JwtAuthenticationFilter` |
+| Refresh Token 再発行 | `RefreshTokenUseCase` / `RefreshTokenService` |
+| ログアウト | `LogoutUseCase` / `LogoutService` |
+| `/users/me` | `GetMyProfileUseCase` / `GetMyProfileService` |
+| **Pet 登録（POST /api/v1/pets）** | `PetController` / `CreatePetUseCase` / `PetService` / `PetEntity` / `PetMapper` / `V3__create_pets.sql` |
+
+### Pet API 実装メモ
+
+- パッケージ名に typo あり: `application/pet/suervice/` （`service` の誤り）
+  - 修正する場合は `PetServiceTest` の import も合わせて変更すること
+- `userId` は DTO に入れず、`Authentication.getPrincipal()` から `Long` で取得する
+- `weight` は `BigDecimal`（DB: `DECIMAL(5,2)`）
+- テスト: create のみ有効化済み。他は `//` コメントアウト中
+
+### 次の作業候補
+
+```text
+1. Pet API 残り CRUD（getList / getDetail / update / delete）
+2. Reservation API
+```
 
 ---
 

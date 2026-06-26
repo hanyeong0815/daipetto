@@ -46,7 +46,7 @@ public class AuthController {
     public ResponseEntity<ApiResponse<LogoutResponse>> logout(Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
 
-        LogoutResponse isLogout = logoutUseCase.logout(userId);
+        LogoutResponse isLogout = logoutUseCase.execute(userId);
 
         return ResponseEntity.ok(ApiResponse.success(
                 isLogout,
