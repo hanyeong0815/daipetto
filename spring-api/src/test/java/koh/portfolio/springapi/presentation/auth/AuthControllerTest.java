@@ -3,9 +3,11 @@ package koh.portfolio.springapi.presentation.auth;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import koh.portfolio.springapi.application.auth.dto.LoginDto.LoginRequest;
 import koh.portfolio.springapi.application.auth.dto.LoginDto.LoginResponse;
+import koh.portfolio.springapi.application.auth.dto.LogoutDto.LogoutResponse;
 import koh.portfolio.springapi.application.auth.dto.RefreshTokenDto.RefreshTokenRequest;
 import koh.portfolio.springapi.application.auth.dto.RefreshTokenDto.RefreshTokenResponse;
 import koh.portfolio.springapi.application.auth.usecase.LoginUseCase;
+import koh.portfolio.springapi.application.auth.usecase.LogoutUseCase;
 import koh.portfolio.springapi.application.auth.usecase.RefreshTokenUseCase;
 import koh.portfolio.springapi.common.exception.GlobalExceptionHandler;
 import koh.portfolio.springapi.domain.user.model.Role;
@@ -20,7 +22,10 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -49,6 +54,9 @@ class AuthControllerTest {
 
     @MockBean
     private RefreshTokenUseCase refreshTokenUseCase;
+
+    @MockBean
+    private LogoutUseCase logoutUseCase;
 
     @Test
     @DisplayName("POST /api/v1/auth/login - ログイン成功")
@@ -128,5 +136,26 @@ class AuthControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("VALIDATION-001"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/logout - 成功")
+    void logout_success() throws Exception {
+        Long userId = 1L;
+
+        LogoutResponse response = new LogoutResponse(true);
+
+        when(logoutUseCase.execute(userId))
+                .thenReturn(response);
+
+        UsernamePasswordAuthenticationToken authentication =
+                new UsernamePasswordAuthenticationToken(userId, null, List.of());
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .principal(authentication))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.isLogout").value(true))
+                .andExpect(jsonPath("$.message").value("ログアウトしました。"));
     }
 }
