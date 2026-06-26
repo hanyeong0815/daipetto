@@ -1,10 +1,11 @@
 package koh.portfolio.springapi.presentation.pet;
 
 import jakarta.validation.Valid;
-import koh.portfolio.springapi.application.pet.dto.PetDto;
+import koh.portfolio.springapi.application.pet.dto.PetDto.CreatePetRequest;
 import koh.portfolio.springapi.application.pet.dto.PetDto.CreatePetResponse;
 import koh.portfolio.springapi.application.pet.dto.PetDto.PetDetailResponse;
 import koh.portfolio.springapi.application.pet.dto.PetDto.PetSummary;
+import koh.portfolio.springapi.application.pet.dto.PetDto.UpdatePetRequest;
 import koh.portfolio.springapi.application.pet.usecase.CreatePetUseCase;
 import koh.portfolio.springapi.application.pet.usecase.DeletePetUseCase;
 import koh.portfolio.springapi.application.pet.usecase.GetPetDetailUseCase;
@@ -33,7 +34,7 @@ public class PetController {
     @PostMapping
     public ResponseEntity<ApiResponse<CreatePetResponse>> createPet(
             Authentication authentication,
-            @Valid @RequestBody PetDto.CreatePetRequest request
+            @Valid @RequestBody CreatePetRequest request
     ) {
         Long userId = extractUserId(authentication);
         return ResponseEntity
@@ -60,7 +61,7 @@ public class PetController {
     public ResponseEntity<ApiResponse<Void>> updatePet(
             Authentication authentication,
             @PathVariable Long petId,
-            @Valid @RequestBody PetDto.UpdatePetRequest request
+            @Valid @RequestBody UpdatePetRequest request
     ) {
         Long userId = extractUserId(authentication);
         updatePetUseCase.execute(userId, petId, request);
