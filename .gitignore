@@ -1,32 +1,57 @@
-# Compiled class file
+# ===== Spring / Java =====
 *.class
-
-# Log file
-*.log
-
-# BlueJ files
 *.ctxt
-
-# Mobile Tools for Java (J2ME)
 .mtj.tmp/
-
-# Package Files #
 *.jar
 *.war
 *.nar
 *.ear
+hs_err_pid*
+replay_pid*
+
+# ===== Frontend / Node.js =====
+node_modules/
+dist/
+.vite/
+*.local
+
+# ===== Django / Python =====
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+staticfiles/
+mediafiles/
+db.sqlite3
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ===== Logs =====
+*.log
+logs/
+
+# ===== Archives =====
 *.zip
 *.tar.gz
 *.rar
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
-hs_err_pid*
-replay_pid*
+# ===== OS =====
+.DS_Store
+Thumbs.db
 
-# .env file
+# ===== Editor =====
+*.swp
+*.swo
+
+# ===== Environment =====
 .env
 .env.*
 !.env.example
 
-# Claude Code handoff (개인 커리어 맥락 포함, 공개 불가)
+# ===== Claude Code =====
 claude_code_handoff_daipetto.md
