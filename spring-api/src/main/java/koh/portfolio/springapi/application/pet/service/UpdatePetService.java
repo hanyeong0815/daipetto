@@ -2,6 +2,7 @@ package koh.portfolio.springapi.application.pet.service;
 
 import koh.portfolio.springapi.application.pet.dto.PetDto.UpdatePetRequest;
 import koh.portfolio.springapi.application.pet.usecase.UpdatePetUseCase;
+import koh.portfolio.springapi.common.exception.Preconditions;
 import koh.portfolio.springapi.domain.pet.exception.PetErrorCode;
 import koh.portfolio.springapi.domain.pet.model.Pet;
 import koh.portfolio.springapi.domain.pet.port.PetRepository;
@@ -20,9 +21,7 @@ public class UpdatePetService implements UpdatePetUseCase {
         Pet pet = petRepository.findById(petId)
                 .orElseThrow(PetErrorCode.PET_NOT_FOUND::defaultException);
 
-        if (!pet.getUserId().equals(userId)) {
-            throw PetErrorCode.NOT_PET_OWNER.defaultException();
-        }
+        Preconditions.validate(pet.getUserId().equals(userId), PetErrorCode.NOT_PET_OWNER);
 
         Pet updatedPet = pet.update(
                 request.name(),
