@@ -1,4 +1,4 @@
-package koh.portfolio.springapi.application.pet.suervice;
+package koh.portfolio.springapi.application.pet.service;
 
 import koh.portfolio.springapi.application.pet.dto.PetDto.PetDetailResponse;
 import koh.portfolio.springapi.application.pet.usecase.GetPetDetailUseCase;

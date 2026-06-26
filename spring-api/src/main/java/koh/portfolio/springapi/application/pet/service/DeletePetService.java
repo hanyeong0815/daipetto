@@ -1,7 +1,6 @@
-package koh.portfolio.springapi.application.pet.suervice;
+package koh.portfolio.springapi.application.pet.service;
 
-import koh.portfolio.springapi.application.pet.dto.PetDto.UpdatePetRequest;
-import koh.portfolio.springapi.application.pet.usecase.UpdatePetUseCase;
+import koh.portfolio.springapi.application.pet.usecase.DeletePetUseCase;
 import koh.portfolio.springapi.domain.pet.exception.PetErrorCode;
 import koh.portfolio.springapi.domain.pet.model.Pet;
 import koh.portfolio.springapi.domain.pet.port.PetRepository;
@@ -9,14 +8,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Service
 @RequiredArgsConstructor
-public class UpdatePetService implements UpdatePetUseCase {
+public class DeletePetService implements DeletePetUseCase {
     private final PetRepository petRepository;
 
     @Override
     @Transactional
-    public void execute(Long userId, Long petId, UpdatePetRequest request) {
+    public void execute(Long userId, Long petId) {
         Pet pet = petRepository.findById(petId)
                 .orElseThrow(PetErrorCode.PET_NOT_FOUND::defaultException);
 
@@ -24,13 +25,6 @@ public class UpdatePetService implements UpdatePetUseCase {
             throw PetErrorCode.NOT_PET_OWNER.defaultException();
         }
 
-        Pet updatedPet = pet.update(
-                request.name(),
-                request.petType(),
-                request.birthDate(),
-                request.gender(),
-                request.weight()
-        );
-        petRepository.save(updatedPet);
+        petRepository.softDelete(petId, LocalDateTime.now());
     }
 }
