@@ -4,9 +4,9 @@ import BottomNav from './BottomNav'
 
 export default function MainLayout() {
   return (
-    <div className="bg-neutral-gray-50 min-h-screen">
+    <div className="h-dvh flex flex-col overflow-hidden bg-neutral-gray-50">
       <TopAppBar variant="main" />
-      <main className="pt-[64px] pb-[96px] md:pb-8 max-w-[1200px] mx-auto w-full">
+      <main className="flex-1 overflow-y-auto max-w-[1200px] mx-auto w-full">
         <Outlet />
       </main>
       <BottomNav />
