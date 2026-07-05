@@ -1,7 +1,9 @@
 spring:
+  config:
+    import: "optional:file:.env[.properties]"
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:daipetto}?currentSchema=public
-    username: ${DB_USERNAME:daipetto_user}
+    username: ${DB_USERNAME:your_db_user}
     password: ${DB_PASSWORD}
 
   flyway:

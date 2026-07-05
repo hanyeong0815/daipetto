@@ -21,9 +21,9 @@ export default function DetailLayout() {
   const { pathname } = useLocation()
 
   return (
-    <div className="bg-neutral-gray-50 min-h-screen">
+    <div className="h-dvh flex flex-col overflow-hidden bg-neutral-gray-50">
       <TopAppBar variant="detail" title={getTitle(pathname)} />
-      <main className="pt-[64px] max-w-[800px] mx-auto w-full">
+      <main className="flex-1 overflow-y-auto max-w-[800px] mx-auto w-full">
         <Outlet />
       </main>
     </div>

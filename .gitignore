@@ -64,6 +64,7 @@ Thumbs.db
 # ===== Environment =====
 .env
 .env.*
+.env-*
 !.env.example
 
 # ===== Claude Code =====

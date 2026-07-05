@@ -18,22 +18,24 @@ export default function TopAppBar({ variant = 'main', title }: TopAppBarProps) {
 
   if (variant === 'detail') {
     return (
-      <header className="flex items-center px-container-margin h-[64px] bg-surface-container-lowest border-b border-neutral-gray-100 sticky top-0 z-40">
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 -ml-2 text-on-surface-variant hover:bg-surface-container-low rounded-full transition-colors active:scale-[0.98]"
-        >
-          <span className="material-symbols-outlined">arrow_back</span>
-        </button>
-        <h1 className="font-headline-md text-headline-md ml-4 text-neutral-gray-900">
-          {title}
-        </h1>
+      <header className="bg-surface-container-lowest border-b border-neutral-gray-100 z-40 pt-safe shrink-0">
+        <div className="flex items-center px-container-margin h-[64px]">
+          <button
+            onClick={() => navigate(-1)}
+            className="p-2 -ml-2 text-on-surface-variant hover:bg-surface-container-low rounded-full transition-colors active:scale-[0.98]"
+          >
+            <span className="material-symbols-outlined">arrow_back</span>
+          </button>
+          <h1 className="font-headline-md text-headline-md ml-4 text-neutral-gray-900">
+            {title}
+          </h1>
+        </div>
       </header>
     )
   }
 
   return (
-    <header className="fixed top-0 w-full z-50 bg-surface border-b border-neutral-gray-100">
+    <header className="w-full z-50 bg-surface border-b border-neutral-gray-100 pt-safe shrink-0">
       <div className="flex justify-between items-center px-container-margin h-[64px] max-w-[1200px] mx-auto">
         <div className="flex items-center gap-sm">
           <span className="material-symbols-outlined text-primary icon-fill text-[28px]">pets</span>
