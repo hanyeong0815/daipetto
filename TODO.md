@@ -67,13 +67,22 @@
 
 > Hospital API 追加後は V5 以降にずれるため、マイグレーションファイル番号に注意
 
-### Hospital API
-- [ ] `Hospital` ドメイン・エンティティ・テーブル作成 (`V4__create_hospitals.sql`)
-- [ ] `POST /api/v1/hospitals` — 病院登録（HOSPITAL_ADMIN）
-- [ ] `GET /api/v1/hospitals` — 病院一覧（検索・フィルタ対応）
-- [ ] `GET /api/v1/hospitals/{id}` — 病院詳細
-- [ ] `PATCH /api/v1/hospitals/{id}` — 病院情報更新
-- [ ] Hospital 関連テスト
+### Hospital API（branch: `feat/spring/hospital`）
+- [x] `Hospital` / `HospitalSchedule` ドメイン・エンティティ・テーブル作成
+  - 実際のマイグレーション番号: `V5__create_hospitals.sql` / `V6__create_hospital_schedules.sql`（Pet列追加がV4を使用したためズレ）
+- [x] `GET /api/v1/hospitals` — 病院一覧（keyword・area検索対応、ACTIVEのみ）
+- [x] `GET /api/v1/hospitals/{id}` — 病院詳細
+- [x] `POST /api/v1/admin/hospitals` — 病院登録（`docs/07_API_Design`のRole別権限表に合わせROLE_SYSTEM_ADMIN限定。パスはdocs通り`/admin`配下）
+- [x] `GET /api/v1/hospitals/{hospitalId}/schedules` — 病院予約枠一覧
+- [x] Hospital/HospitalSchedule 関連テスト（Create/List/Detail/ScheduleList分）
+
+**あえて未実装のまま残した項目（練習用）:**
+- [ ] `PATCH /api/v1/admin/hospitals/{id}` — 病院情報更新
+  - 注記: docsは元々PUT表記だったが、Pet更新API同様PATCHに揃えることを推奨（`docs/07_API_Design` 11-2に記載済み）
+- [ ] `PATCH /api/v1/admin/hospitals/{id}/suspend` — 病院停止（`docs/07_API_Design` 11-3参照）
+- [ ] `POST /api/v1/hospitals/{hospitalId}/schedules` — 予約枠登録（HOSPITAL_ADMIN、docsに未記載のため設計から必要）
+- [ ] 予約枠のAVAILABLE/BLOCKED切り替えAPI
+- 実装時は `UpdatePetService`（部分更新+owner check）と `HospitalService`（create/search）のパターンを参考にすること
 
 ### Reservation API
 - [ ] `Reservation` ドメイン・エンティティ・テーブル作成 (`V5__create_reservations.sql`)
