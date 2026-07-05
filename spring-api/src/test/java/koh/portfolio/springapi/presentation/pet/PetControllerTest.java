@@ -84,7 +84,8 @@ class PetControllerTest {
     void create_pet_success() throws Exception {
         // given
         CreatePetRequest request = new CreatePetRequest(
-                "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5")
+                "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
+                "Scottish Fold", true, "123456789012345"
         );
 
         when(createPetUseCase.execute(eq(1L), any(CreatePetRequest.class)))
@@ -105,7 +106,7 @@ class PetControllerTest {
     void create_pet_validation_fail_when_name_blank() throws Exception {
         // given
         CreatePetRequest request = new CreatePetRequest(
-                "", PetType.CAT, null, PetGender.FEMALE, null
+                "", PetType.CAT, null, PetGender.FEMALE, null, null, false, null
         );
 
         // when & then
@@ -123,7 +124,7 @@ class PetControllerTest {
     void create_pet_validation_fail_when_pettype_null() throws Exception {
         // given
         CreatePetRequest request = new CreatePetRequest(
-                "Momo", null, null, PetGender.FEMALE, null
+                "Momo", null, null, PetGender.FEMALE, null, null, false, null
         );
 
         // when & then
@@ -143,8 +144,8 @@ class PetControllerTest {
     void get_pet_list_success() throws Exception {
         // given
         List<PetSummary> summaries = List.of(
-                new PetSummary(1L, "Momo", PetType.CAT, new BigDecimal("4.5")),
-                new PetSummary(2L, "Kuma", PetType.DOG, new BigDecimal("8.0"))
+                new PetSummary(1L, "Momo", PetType.CAT, new BigDecimal("4.5"), "Scottish Fold"),
+                new PetSummary(2L, "Kuma", PetType.DOG, new BigDecimal("8.0"), "Shiba")
         );
 
         when(getPetListUseCase.execute(1L)).thenReturn(summaries);
@@ -156,8 +157,10 @@ class PetControllerTest {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].name").value("Momo"))
                 .andExpect(jsonPath("$.data[0].petType").value("CAT"))
+                .andExpect(jsonPath("$.data[0].breed").value("Scottish Fold"))
                 .andExpect(jsonPath("$.data[1].name").value("Kuma"))
-                .andExpect(jsonPath("$.data[1].petType").value("DOG"));
+                .andExpect(jsonPath("$.data[1].petType").value("DOG"))
+                .andExpect(jsonPath("$.data[1].breed").value("Shiba"));
     }
 
     // --------------------------------------------------------------- getDetail
@@ -168,7 +171,8 @@ class PetControllerTest {
         // given
         LocalDateTime now = LocalDateTime.now();
         PetDetailResponse response = new PetDetailResponse(
-                1L, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), now
+                1L, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
+                "Scottish Fold", true, "123456789012345", now
         );
 
         when(getPetDetailUseCase.execute(1L, 1L)).thenReturn(response);
@@ -180,7 +184,10 @@ class PetControllerTest {
                 .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.name").value("Momo"))
                 .andExpect(jsonPath("$.data.petType").value("CAT"))
-                .andExpect(jsonPath("$.data.gender").value("FEMALE"));
+                .andExpect(jsonPath("$.data.gender").value("FEMALE"))
+                .andExpect(jsonPath("$.data.breed").value("Scottish Fold"))
+                .andExpect(jsonPath("$.data.neutered").value(true))
+                .andExpect(jsonPath("$.data.microchipNumber").value("123456789012345"));
     }
 
     // ----------------------------------------------------------------- update
@@ -190,7 +197,8 @@ class PetControllerTest {
     void update_pet_success() throws Exception {
         // given
         UpdatePetRequest request = new UpdatePetRequest(
-                "MomoUpdated", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("5.0")
+                "MomoUpdated", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("5.0"),
+                "Scottish Fold", true, "123456789012345"
         );
 
         // when & then

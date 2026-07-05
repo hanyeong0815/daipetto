@@ -28,7 +28,10 @@ public class UpdatePetService implements UpdatePetUseCase {
                 request.petType(),
                 request.birthDate(),
                 request.gender(),
-                request.weight()
+                request.weight(),
+                request.breed(),
+                request.neutered(),
+                request.microchipNumber()
         );
         petRepository.save(updatedPet);
     }

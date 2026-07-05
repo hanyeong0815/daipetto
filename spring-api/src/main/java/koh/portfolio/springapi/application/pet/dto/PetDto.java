@@ -2,6 +2,7 @@ package koh.portfolio.springapi.application.pet.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import koh.portfolio.springapi.domain.pet.model.PetGender;
 import koh.portfolio.springapi.domain.pet.model.PetType;
 import lombok.Builder;
@@ -16,14 +17,17 @@ public record PetDto() {
             @NotNull PetType petType,
             LocalDate birthDate,
             PetGender gender,
-            BigDecimal weight
+            BigDecimal weight,
+            String breed,
+            boolean neutered,
+            @Size(max = 15) String microchipNumber
     ) {}
 
     @Builder
     public record CreatePetResponse(Long petId) {}
 
     @Builder
-    public record PetSummary(Long id, String name, PetType petType, BigDecimal weight) {}
+    public record PetSummary(Long id, String name, PetType petType, BigDecimal weight, String breed) {}
 
     public record PetDetailResponse(
             Long id,
@@ -32,6 +36,9 @@ public record PetDto() {
             LocalDate birthDate,
             PetGender gender,
             BigDecimal weight,
+            String breed,
+            boolean neutered,
+            String microchipNumber,
             LocalDateTime createdAt
     ) {}
 
@@ -40,6 +47,9 @@ public record PetDto() {
             @NotNull PetType petType,
             LocalDate birthDate,
             @NotNull PetGender gender,
-            BigDecimal weight
+            BigDecimal weight,
+            String breed,
+            boolean neutered,
+            @Size(max = 15) String microchipNumber
     ) {}
 }

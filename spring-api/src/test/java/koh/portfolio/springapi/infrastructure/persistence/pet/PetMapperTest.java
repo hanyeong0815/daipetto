@@ -25,6 +25,7 @@ class PetMapperTest {
         Pet domain = new Pet(
                 1L, 10L, "Momo", PetType.CAT,
                 LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
+                "Scottish Fold", true, "123456789012345",
                 now, now, null
         );
 
@@ -39,6 +40,9 @@ class PetMapperTest {
         assertThat(entity.getBirthDate()).isEqualTo(LocalDate.of(2023, 1, 1));
         assertThat(entity.getGender()).isEqualTo(PetGender.FEMALE);
         assertThat(entity.getWeight()).isEqualByComparingTo(new BigDecimal("4.5"));
+        assertThat(entity.getBreed()).isEqualTo("Scottish Fold");
+        assertThat(entity.isNeutered()).isTrue();
+        assertThat(entity.getMicrochipNumber()).isEqualTo("123456789012345");
         assertThat(entity.getCreatedAt()).isEqualTo(now);
         assertThat(entity.getUpdatedAt()).isEqualTo(now);
         assertThat(entity.getDeletedAt()).isNull();
@@ -57,6 +61,9 @@ class PetMapperTest {
                 .birthDate(LocalDate.of(2023, 1, 1))
                 .gender(PetGender.FEMALE)
                 .weight(new BigDecimal("4.5"))
+                .breed("Scottish Fold")
+                .neutered(true)
+                .microchipNumber("123456789012345")
                 .createdAt(now)
                 .updatedAt(now)
                 .deletedAt(null)
@@ -73,6 +80,9 @@ class PetMapperTest {
         assertThat(domain.getBirthDate()).isEqualTo(LocalDate.of(2023, 1, 1));
         assertThat(domain.getGender()).isEqualTo(PetGender.FEMALE);
         assertThat(domain.getWeight()).isEqualByComparingTo(new BigDecimal("4.5"));
+        assertThat(domain.getBreed()).isEqualTo("Scottish Fold");
+        assertThat(domain.isNeutered()).isTrue();
+        assertThat(domain.getMicrochipNumber()).isEqualTo("123456789012345");
         assertThat(domain.getCreatedAt()).isEqualTo(now);
         assertThat(domain.getDeletedAt()).isNull();
     }
