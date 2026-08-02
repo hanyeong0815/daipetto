@@ -27,4 +27,10 @@ public record HospitalDto() {
             HospitalStatus status,
             LocalDateTime createdAt
     ) {}
+
+    public record UpdateHospitalRequest(
+            @NotBlank String name,
+            @NotBlank String address,
+            String phoneNumber
+    ) {}
 }

@@ -10,7 +10,7 @@
 | Document | System Architecture |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-05-17 |
+| Updated | 2026-08-02 |
 
 ---
 
@@ -483,6 +483,7 @@ flowchart TB
 | **Scheduler** | **実行時間** |
 | --- | --- |
 | ワクチン通知 | 毎日 09:00 |
+| 予約枠自動生成 | 例: 毎月1日 00:00（`hospital_business_hours`を元に翌月分の`hospital_schedules`を生成） |
 
 ---
 

@@ -22,4 +22,12 @@ public class Hospital {
 
         return new Hospital(null, name, address, phoneNumber, HospitalStatus.ACTIVE, now, now, null);
     }
+
+    public Hospital update(String name, String address, String phoneNumber) {
+        return new Hospital(this.id, name, address,phoneNumber, this.status, this.createdAt, LocalDateTime.now(), null);
+    }
+
+    public Hospital suspend(HospitalStatus status) {
+        return new Hospital(this.id, this.name, this.address, this.phoneNumber, status, this.createdAt, LocalDateTime.now(), null);
+    }
 }

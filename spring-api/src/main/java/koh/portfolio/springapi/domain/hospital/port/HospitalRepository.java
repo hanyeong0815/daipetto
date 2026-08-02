@@ -9,4 +9,5 @@ public interface HospitalRepository {
     Hospital save(Hospital hospital);
     Optional<Hospital> findById(Long id);
     List<Hospital> search(String keyword, String area);
+    boolean existsById(Long id);
 }

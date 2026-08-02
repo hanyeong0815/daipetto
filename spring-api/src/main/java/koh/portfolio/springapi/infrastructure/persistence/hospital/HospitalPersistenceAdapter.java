@@ -35,4 +35,9 @@ public class HospitalPersistenceAdapter implements HospitalRepository {
         return hospitalJpaRepository.search(HospitalStatus.ACTIVE, keyword, area)
                 .stream().map(hospitalMapper::toDomain).toList();
     }
+
+    @Override
+    public boolean existsById(Long id) {
+        return hospitalJpaRepository.existsById(id);
+    }
 }
