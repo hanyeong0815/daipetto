@@ -1,7 +1,22 @@
 import axios, { type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios'
+import { Capacitor } from '@capacitor/core'
 import { useAuthStore } from '../stores/authStore'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
+// 実行環境（Web / Androidエミュレーター / iOSシミュレーター）ごとにAPIのURLが異なるため、
+// Capacitorの実行時プラットフォーム判定で自動切り替えする（.env手動書き換えは不要）
+function resolveBaseUrl(): string {
+  const platform = Capacitor.getPlatform()
+
+  if (platform === 'android') {
+    return import.meta.env.VITE_API_BASE_URL_ANDROID ?? 'http://10.0.2.2:8080'
+  }
+  if (platform === 'ios') {
+    return import.meta.env.VITE_API_BASE_URL_IOS ?? 'http://localhost:8080'
+  }
+  return import.meta.env.VITE_API_BASE_URL_WEB ?? 'http://localhost:8080'
+}
+
+const BASE_URL = resolveBaseUrl()
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,
