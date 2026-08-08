@@ -1,6 +1,6 @@
 # Daipetto — 作業TODOリスト
 
-最終更新: 2026-08-02
+最終更新: 2026-08-09
 
 ---
 
@@ -90,17 +90,24 @@
   - **`HospitalScheduleService`の予約枠登録で`Preconditions.validate(!hospitalRepository.existsById(hospitalId), ...)`が条件反転していたバグ** — 存在する病院への登録が誤ってHOSPITAL-001で弾かれ、存在しない病院への登録はDB制約違反まで素通りしていた。`!`を削除して修正
   - Hospital(Update/Suspend/Create) + HospitalSchedule(Create/Block/Unblock/List) 全メソッドにService・Controllerテスト追加、`./gradlew test`で84件全green
 
-### 病院営業時間管理・予約枠自動生成バッチ（設計決定、未実装 — 2026-08-02）
-> ユーザーとの設計議論の結論。コードは未着手、docsのみ先行更新済み（`06_ERD` §9-1・§18、`07_API_Design` §8-4注記・§19、`04_System_Architecture` §14）
-
-- [ ] `hospital_business_hours` テーブル作成（曜日単位、`day_of_week`は`java.time.DayOfWeek`のname()と一致させる。日付単位ではなく曜日単位で管理する方針）
-  - カラム: hospital_id, day_of_week, open_time, close_time, break_start_time, break_end_time, slot_duration_minutes
+### 病院営業時間管理 API（branch: `feat/spring/hospital`、2026-08-09実装）
+- [x] `hospital_business_hours` テーブル作成（`V5__create_hospital_business_hours.sql`、曜日単位、`day_of_week`は`java.time.DayOfWeek`のname()と一致）
   - UNIQUE(hospital_id, day_of_week)。レコードが無い曜日 = 休診（フラグは持たない）
+  - ユーザー作成のドラフトにバグあり（Claude Codeが発見・修正）: `close_time`のNOT NULL/`break_end_time`のNULL指定が逆、UNIQUE制約の欠落、FK制約名のコピペミス、Entityフィールド名`OpenTime`/`CloseTime`の大文字始まり、`dayOfWeek`が`String`型（`DayOfWeek`enumに変更）
+- [x] `POST /api/v1/admin/hospitals/{hospitalId}/business-hours` — 営業時間登録（`docs/07_API_Design` §8-7、ROLE_HOSPITAL_ADMIN・ROLE_SYSTEM_ADMIN）
+- [x] `GET /api/v1/hospitals/{hospitalId}/business-hours` — 営業時間一覧取得（§8-8、認証のみ）
+- [x] `PATCH /api/v1/admin/hospitals/{hospitalId}/business-hours/{businessHoursId}` — 営業時間更新（§8-9。`dayOfWeek`は変更不可、変更する場合は削除して登録し直す設計）
+- [x] `DELETE /api/v1/admin/hospitals/{hospitalId}/business-hours/{businessHoursId}` — 営業時間削除（§8-10。レコード削除＝当該曜日休診）
+- [x] `HOSPITAL-003`（存在しない営業時間）・`HOSPITAL-004`（曜日重複登録）エラーコード追加
+- [x] テスト16件追加（Service 11件 + Controller 5件）、`./gradlew test`で全100件green
+
+### 予約枠自動生成バッチ（設計決定、未実装 — 2026-08-02）
+> ユーザーとの設計議論の結論。`hospital_business_hours`管理APIは実装済みだが、これを元に`hospital_schedules`を自動生成するScheduler本体は未着手
+
 - [ ] 予約枠自動生成Scheduler（`@Scheduled`、`04_System_Architecture` §14参照）
   - `hospital_business_hours`を元に、翌月分など一定期間の`hospital_schedules`を`slot_duration_minutes`単位で分割生成
   - 休憩時間帯も同じ単位で分割し`BLOCKED`として生成（行を作らず空白にする方式は採らない — 画面上「休憩中」と表示できるようにするため）
   - 既に生成済みの期間は再生成しない（手動BLOCKEDの上書き防止）
-- [ ] `hospital_business_hours` 管理API（未設計、`docs/07_API_Design` §19に将来予定として記載のみ）
 
 ### Reservation API
 - [ ] `Reservation` ドメイン・エンティティ・テーブル作成 (`V5__create_reservations.sql`)
@@ -148,18 +155,24 @@
 
 ## 🚧 未実装 — Frontend（API 連動）
 
-### 実 API 接続が必要な画面
-- [ ] 病院検索 (`HospitalSearchPage`) — Hospital API 連動
-- [ ] 病院詳細 (`HospitalDetailPage`) — Hospital API 連動
-- [ ] 予約 (`ReservationPage`) — Reservation API 連動
+### Hospital API 連動（2026-08-09 実装、Claude Code）
+- [x] 病院検索 (`HospitalSearchPage`) — Hospital API 連動。distance/rating/reviews/specialtyはバックエンドに存在しないため削除
+- [x] 病院詳細 (`HospitalDetailPage`) — Hospital + HospitalBusinessHours API 連動。doctors/reviewsはバックエンドに存在しないため削除、診療時間は曜日別に表示
+- [x] 管理者画面 (`AdminHospitalPage`) — Hospital（Create/Update/Suspend）+ HospitalSchedule（Create/Block/Unblock）+ HospitalBusinessHours（Create/Update/Delete）全連動
+  - `hospital_admins`未実装のため「自分の病院」を判定できず、一覧から選択する方式で暫定対応
+- [x] `hospitalStore.ts` — 病院一覧・詳細・予約枠・営業時間（読み取り用）
+- [x] `api/hospital.ts` — 全Hospital関連API（公開4 + 管理者6）のラッパー
+- [x] プラットフォーム別APIベースURL — `Capacitor.getPlatform()`で実行時に自動判定（Web/Android/iOS）、`.env`の手動書き換えが不要に
+
+### 実 API 接続が必要な画面（残り）
+- [ ] 予約 (`ReservationPage`) — Reservation API 連動（バックエンド未実装のため連動不可）
 - [ ] 予約履歴 (`ReservationHistoryPage`) — Reservation API 連動
 - [ ] 健康記録 (`HealthRecordPage`) — HealthRecord API 連動
 - [ ] 通知 (`NotificationsPage`) — Notification API 連動
-- [ ] 管理者画面 (`AdminReservationPage` / `AdminHospitalPage` / `AdminUserPage`) — 各 API 連動
+- [ ] 管理者画面 (`AdminReservationPage` / `AdminUserPage`) — 各API連動（バックエンド未実装のため連動不可）
 
 ### 状態管理追加
 - [ ] `reservationStore.ts` — 予約一覧・詳細
-- [ ] `hospitalStore.ts` — 病院一覧・詳細
 - [ ] `notificationStore.ts` — 通知・未読数
 
 ### 認証フロー

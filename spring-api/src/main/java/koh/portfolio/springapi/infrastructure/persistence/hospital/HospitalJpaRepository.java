@@ -15,8 +15,8 @@ public interface HospitalJpaRepository extends JpaRepository<HospitalEntity, Lon
             SELECT h FROM HospitalEntity h
             WHERE h.deletedAt IS NULL
             AND h.status = :status
-            AND (:keyword IS NULL OR LOWER(h.name) LIKE LOWER(CONCAT('%', :keyword, '%')))
-            AND (:area IS NULL OR LOWER(h.address) LIKE LOWER(CONCAT('%', :area, '%')))
+            AND (:keyword IS NULL OR LOWER(h.name) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%')))
+            AND (:area IS NULL OR LOWER(h.address) LIKE LOWER(CONCAT('%', CAST(:area AS string), '%')))
             """)
     List<HospitalEntity> search(
             @Param("status") HospitalStatus status,

@@ -3,16 +3,17 @@ CREATE TABLE hospital_business_hours (
     hospital_id             BIGINT      NOT NULL,
     day_of_week             VARCHAR(10) NOT NULL,
     open_time               time        NOT NULL,
-    close_time              time        NULL,
+    close_time              time        NOT NULL,
     break_start_time        time        NULL,
-    break_end_time          time        NOT NULL,
+    break_end_time          time        NULL,
     slot_duration_minutes   INT         NOT NULL DEFAULT 30,
     created_at              TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at              TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT fk_hospital_schedules_hospital
+    CONSTRAINT fk_hospital_business_hours_hospital
     FOREIGN KEY (hospital_id)
-        REFERENCES hospitals (id)
-);
+        REFERENCES hospitals (id),
 
-CREATE INDEX idx_hospital_business_hours_hospital_id_day_of_week ON hospital_business_hours(hospital_id, day_of_week);
+    CONSTRAINT uq_hospital_business_hours_hospital_id_day_of_week
+        UNIQUE (hospital_id, day_of_week)
+);
