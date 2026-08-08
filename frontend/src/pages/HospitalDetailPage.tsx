@@ -1,28 +1,57 @@
+import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useHospitalStore } from '../stores/hospitalStore'
+import type { DayOfWeek } from '../types'
 
-const mockHospital = {
-  id: 1,
-  name: '幸せ動物病院',
-  address: '東京都渋谷区道玄坂1-2-3',
-  phone: '03-1234-5678',
-  distance: '0.5km',
-  rating: 4.8,
-  reviews: 124,
-  specialty: ['内科', '外科', '皮膚科'],
-  hours: { weekday: '09:00 - 20:00', saturday: '09:00 - 17:00', sunday: '休診' },
-  open: true,
-  doctors: [
-    { name: '田中 誠', role: '院長', specialty: '内科', experience: '10年' },
-    { name: '佐藤 美咲', role: '獣医師', specialty: '皮膚科', experience: '5年' },
-  ],
-  reviews_list: [
-    { author: 'ボリパパ', rating: 5, date: '2024-10-15', comment: '丁寧に診察してくださいました。待ち時間も短かったです。' },
-    { author: 'ナビママ', rating: 4, date: '2024-10-10', comment: '施設が清潔で先生も優しかったです。' },
-  ],
+const DAY_ORDER: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
+const DAY_LABEL: Record<DayOfWeek, string> = {
+  MONDAY: '月曜日',
+  TUESDAY: '火曜日',
+  WEDNESDAY: '水曜日',
+  THURSDAY: '木曜日',
+  FRIDAY: '金曜日',
+  SATURDAY: '土曜日',
+  SUNDAY: '日曜日',
 }
+
+// バックエンドは "HH:mm:ss" 形式で返すため表示用に秒を落とす
+const formatTime = (time: string) => time.slice(0, 5)
 
 export default function HospitalDetailPage() {
   const { hospitalId } = useParams()
+  const { selectedHospital, businessHours, isLoading, fetchHospitalDetail, fetchBusinessHours } = useHospitalStore()
+
+  useEffect(() => {
+    if (!hospitalId) return
+    fetchHospitalDetail(Number(hospitalId))
+    fetchBusinessHours(Number(hospitalId))
+  }, [hospitalId, fetchHospitalDetail, fetchBusinessHours])
+
+  const handleShare = async () => {
+    if (!selectedHospital) return
+    const shareData = { title: selectedHospital.name, text: selectedHospital.address, url: window.location.href }
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData)
+      } catch {
+        // ユーザーがキャンセルした場合は何もしない
+      }
+    } else {
+      await navigator.clipboard.writeText(window.location.href)
+    }
+  }
+
+  if (isLoading || !selectedHospital) {
+    return (
+      <div className="flex items-center justify-center py-xl">
+        <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
+      </div>
+    )
+  }
+
+  const hospital = selectedHospital
+  const isOpen = hospital.status === 'ACTIVE'
+  const businessHoursByDay = new Map(businessHours.map((bh) => [bh.dayOfWeek, bh]))
 
   return (
     <div className="pb-24">
@@ -33,27 +62,24 @@ export default function HospitalDetailPage() {
           </div>
           <div className="flex-grow min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="font-headline-lg-mobile text-headline-lg-mobile text-neutral-gray-900">{mockHospital.name}</h1>
-              <span className={`font-label-md text-label-md px-2 py-0.5 rounded-full flex-shrink-0 ${mockHospital.open ? 'bg-pet-green-vibrant/10 text-primary' : 'bg-neutral-gray-100 text-neutral-gray-600'}`}>
-                {mockHospital.open ? '営業中' : '営業終了'}
+              <h1 className="font-headline-lg-mobile text-headline-lg-mobile text-neutral-gray-900">{hospital.name}</h1>
+              <span className={`font-label-md text-label-md px-2 py-0.5 rounded-full flex-shrink-0 ${isOpen ? 'bg-pet-green-vibrant/10 text-primary' : 'bg-neutral-gray-100 text-neutral-gray-600'}`}>
+                {isOpen ? '営業中' : '休止中'}
               </span>
             </div>
-            <p className="font-body-md text-body-md text-neutral-gray-600 mt-1">{mockHospital.address}</p>
-            <div className="flex items-center gap-1 mt-2">
-              <span className="material-symbols-outlined text-warning-yellow icon-fill text-[16px]">star</span>
-              <span className="font-body-md text-body-md text-neutral-gray-900 font-medium">{mockHospital.rating}</span>
-              <span className="font-label-md text-label-md text-neutral-gray-600">（{mockHospital.reviews}件のレビュー）</span>
-              <span className="text-neutral-gray-100 mx-1">·</span>
-              <span className="font-label-md text-label-md text-neutral-gray-600">{mockHospital.distance}</span>
-            </div>
+            <p className="font-body-md text-body-md text-neutral-gray-600 mt-1">{hospital.address}</p>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-sm mt-lg">
-          <a href={`tel:${mockHospital.phone}`} className="flex items-center justify-center gap-2 h-[44px] bg-surface-container-low rounded-xl font-button-text text-button-text text-on-surface border border-neutral-gray-100 hover:bg-surface-container transition-colors">
+          <a
+            href={hospital.phoneNumber ? `tel:${hospital.phoneNumber}` : undefined}
+            aria-disabled={!hospital.phoneNumber}
+            className={`flex items-center justify-center gap-2 h-[44px] bg-surface-container-low rounded-xl font-button-text text-button-text text-on-surface border border-neutral-gray-100 transition-colors ${hospital.phoneNumber ? 'hover:bg-surface-container' : 'opacity-50 pointer-events-none'}`}
+          >
             <span className="material-symbols-outlined text-[18px]">phone</span>
             電話する
           </a>
-          <button className="flex items-center justify-center gap-2 h-[44px] bg-surface-container-low rounded-xl font-button-text text-button-text text-on-surface border border-neutral-gray-100 hover:bg-surface-container transition-colors">
+          <button onClick={handleShare} className="flex items-center justify-center gap-2 h-[44px] bg-surface-container-low rounded-xl font-button-text text-button-text text-on-surface border border-neutral-gray-100 hover:bg-surface-container transition-colors">
             <span className="material-symbols-outlined text-[18px]">share</span>
             共有
           </button>
@@ -61,81 +87,32 @@ export default function HospitalDetailPage() {
       </div>
 
       <div className="px-container-margin flex flex-col gap-lg pt-lg">
-        <section>
-          <h2 className="font-headline-md text-headline-md text-neutral-gray-900 mb-sm">専門分野</h2>
-          <div className="flex gap-2 flex-wrap">
-            {mockHospital.specialty.map((s) => (
-              <span key={s} className="font-label-md text-label-md px-3 py-1.5 rounded-full bg-primary/10 text-primary border border-primary/20">{s}</span>
-            ))}
-          </div>
-        </section>
-
         <section className="bg-surface-container-lowest rounded-[16px] border border-neutral-gray-100 overflow-hidden shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
           <div className="px-container-margin py-md border-b border-neutral-gray-100">
             <h2 className="font-headline-md text-headline-md text-neutral-gray-900">診療時間</h2>
           </div>
           <div className="divide-y divide-neutral-gray-100">
-            {[
-              { label: '平日（月〜金）', value: mockHospital.hours.weekday },
-              { label: '土曜日', value: mockHospital.hours.saturday },
-              { label: '日曜日・祝日', value: mockHospital.hours.sunday },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex justify-between items-center px-container-margin py-sm">
-                <span className="font-label-md text-label-md text-neutral-gray-600">{label}</span>
-                <span className={`font-body-md text-body-md ${value === '休診' ? 'text-error-red' : 'text-neutral-gray-900'}`}>{value}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="font-headline-md text-headline-md text-neutral-gray-900 mb-sm">医療スタッフ</h2>
-          <div className="flex flex-col gap-sm">
-            {mockHospital.doctors.map((d) => (
-              <div key={d.name} className="bg-surface-container-lowest rounded-xl border border-neutral-gray-100 px-container-margin py-md flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center flex-shrink-0">
-                  <span className="material-symbols-outlined text-secondary text-[20px]">person</span>
+            {DAY_ORDER.map((day) => {
+              const bh = businessHoursByDay.get(day)
+              return (
+                <div key={day} className="flex justify-between items-center px-container-margin py-sm">
+                  <span className="font-label-md text-label-md text-neutral-gray-600">{DAY_LABEL[day]}</span>
+                  {bh ? (
+                    <span className="font-body-md text-body-md text-neutral-gray-900">
+                      {formatTime(bh.openTime)} - {formatTime(bh.closeTime)}
+                      {bh.breakStartTime && bh.breakEndTime && (
+                        <span className="text-neutral-gray-600">（休憩 {formatTime(bh.breakStartTime)} - {formatTime(bh.breakEndTime)}）</span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="font-body-md text-body-md text-error-red">休診</span>
+                  )}
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-body-lg text-body-lg text-neutral-gray-900 font-medium">{d.name}</p>
-                    <span className="font-label-md text-label-md text-neutral-gray-600 bg-neutral-gray-50 px-2 py-0.5 rounded-full border border-neutral-gray-100">{d.role}</span>
-                  </div>
-                  <p className="font-label-md text-label-md text-neutral-gray-600 mt-0.5">{d.specialty} · 経歴 {d.experience}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <div className="flex items-center justify-between mb-sm">
-            <h2 className="font-headline-md text-headline-md text-neutral-gray-900">レビュー</h2>
-            <div className="flex items-center gap-1">
-              <span className="material-symbols-outlined text-warning-yellow icon-fill text-[18px]">star</span>
-              <span className="font-body-md text-body-md text-neutral-gray-900 font-medium">{mockHospital.rating}</span>
-            </div>
-          </div>
-          <div className="flex flex-col gap-sm">
-            {mockHospital.reviews_list.map((r) => (
-              <div key={`${r.author}-${r.date}`} className="bg-surface-container-lowest rounded-xl border border-neutral-gray-100 px-container-margin py-md">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-secondary-container flex items-center justify-center">
-                      <span className="material-symbols-outlined text-secondary text-[14px]">person</span>
-                    </div>
-                    <span className="font-body-md text-body-md text-neutral-gray-900 font-medium">{r.author}</span>
-                  </div>
-                  <div className="flex items-center gap-0.5">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <span key={i} className={`material-symbols-outlined text-[14px] ${i < r.rating ? 'text-warning-yellow icon-fill' : 'text-neutral-gray-100'}`}>star</span>
-                    ))}
-                  </div>
-                </div>
-                <p className="font-body-md text-body-md text-neutral-gray-900">{r.comment}</p>
-                <p className="font-label-md text-label-md text-neutral-gray-600 mt-1">{r.date}</p>
-              </div>
-            ))}
+              )
+            })}
+            {businessHours.length === 0 && (
+              <p className="px-container-margin py-md font-body-md text-body-md text-neutral-gray-600">診療時間はまだ登録されていません。</p>
+            )}
           </div>
         </section>
       </div>

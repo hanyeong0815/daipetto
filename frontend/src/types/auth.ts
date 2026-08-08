@@ -14,9 +14,10 @@ export interface AuthTokens {
   refreshToken: string
 }
 
+// バックエンドのRole enum（Role.java）はROLE_プレフィックス付きのname()をそのまま返す
 export interface UserProfile {
   id: number
   email: string
   nickname: string
-  role: 'USER' | 'HOSPITAL_ADMIN' | 'SYSTEM_ADMIN'
+  role: 'ROLE_USER' | 'ROLE_HOSPITAL_ADMIN' | 'ROLE_SYSTEM_ADMIN'
 }

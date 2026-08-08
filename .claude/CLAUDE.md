@@ -96,6 +96,8 @@ presentation/{ドメイン}/ Controller
 | USER-002 | バリデーションエラー | 400 |
 | HOSPITAL-001 | 存在しない病院 | 404 |
 | HOSPITAL-002 | 存在しない予約枠、または指定したhospitalIdに属さない予約枠 | 404 |
+| HOSPITAL-003 | 存在しない営業時間、または指定したhospitalIdに属さない営業時間 | 404 |
+| HOSPITAL-004 | 既に登録されている曜日への重複登録 | 409 |
 | RESERVATION-001〜005 | 重複予約/予約不可時間/BLOCKED/他人ペット/過去日時（未実装・設計済み） | - |
 
 エラーメッセージは日本語。新ドメイン追加時は `{DOMAIN}-{連番}` 形式で採番する。
@@ -130,8 +132,8 @@ presentation/{ドメイン}/ Controller
 ## 6. DB / Flyway
 
 - DB 変更は Flyway migration のみ。手動変更禁止。論理削除（deleted_at）が基本。
-- 現ブランチ適用済み: `V1__create_users` / `V2__create_refresh_tokens` / `V3__create_pets` / `V5__create_hospitals` / `V6__create_hospital_schedules`
-- **V4 は未マージの `feat/spring/pet-fields` が使用済み**（`V4__alter_pets_add_columns.sql`）。新規 migration は V7 以降を使い、採番前に全ブランチの番号衝突を確認すること。
+- 現ブランチ適用済み: `V1__create_users` / `V2__create_refresh_tokens` / `V3__create_pets` / `V4__create_hospitals` / `V5__create_hospital_business_hours` / `V6__create_hospital_schedules`
+- **V4 は未マージの `feat/spring/pet-fields` ブランチも `V4__alter_pets_add_columns.sql` として使用済み → 番号衝突あり**。マージ時にどちらかをリナンバーする必要がある。新規 migration は V7 以降を使い、採番前に全ブランチの番号衝突を確認すること。
 - 未作成テーブル: reservations / health_records / vaccinations / notifications / hospital_admins（定義は 06_ERD 参照）
 
 ---
@@ -163,15 +165,9 @@ presentation/{ドメイン}/ Controller
 
 ## 9. 進捗と意図的未実装（練習用）
 
-**完了**: 会員登録 / ログイン / JWT / Refresh Token 再発行（rotation） / ログアウト / `GET /users/me` / Pet CRUD 全部 / Hospital（Create・List・Detail・ScheduleList）/ Frontend 全画面 SC-001〜015（auth・pet のみ実API連動済み）
+**完了**: 会員登録 / ログイン / JWT / Refresh Token 再発行（rotation） / ログアウト / `GET /users/me` / Pet CRUD 全部 / Hospital（Create・Update・Suspend・List・Detail）/ HospitalSchedule（Create・List・Block・Unblock）/ HospitalBusinessHours（Create・List・Update・Delete、2026-08-09実装）/ Frontend 全画面 SC-001〜015（auth・pet のみ実API連動済み）
 
-**練習用にあえて未実装（ユーザー本人が実装する。勝手に実装しないこと）**:
-- `PATCH /api/v1/admin/hospitals/{id}`（病院更新。PUT→PATCH 整合性は要再確認）
-- `PATCH /api/v1/admin/hospitals/{id}/suspend`（病院停止）
-- `POST /api/v1/hospitals/{hospitalId}/schedules`（予約枠登録。docs 未記載のため設計から必要）
-- 予約枠 AVAILABLE/BLOCKED 切替 API
-
-**未着手**: Reservation API / HealthRecord API / Vaccination API / Notification API / ワクチン通知 Scheduler / django-api 全体 / Frontend の病院・予約・健康記録・通知・管理者画面の実API連動 / Protected Route・ロールガード
+**未着手**: Reservation API / HealthRecord API / Vaccination API / Notification API / 予約枠自動生成 Scheduler（`hospital_business_hours`を元に`hospital_schedules`を生成。`TODO.md`参照） / ワクチン通知 Scheduler / django-api 全体 / Frontend の病院・予約・健康記録・通知・管理者画面の実API連動 / Protected Route・ロールガード
 
 **未マージブランチ**: `feat/spring/pet-fields`（breed 等の Pet 列追加 + docs 06/07 更新）, `feat/spring/hospital`（現ブランチ）
 
