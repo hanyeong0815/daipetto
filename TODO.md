@@ -1,6 +1,6 @@
 # Daipetto — 作業TODOリスト
 
-最終更新: 2026-06-27
+最終更新: 2026-08-02
 
 ---
 
@@ -67,13 +67,40 @@
 
 > Hospital API 追加後は V5 以降にずれるため、マイグレーションファイル番号に注意
 
-### Hospital API
-- [ ] `Hospital` ドメイン・エンティティ・テーブル作成 (`V4__create_hospitals.sql`)
-- [ ] `POST /api/v1/hospitals` — 病院登録（HOSPITAL_ADMIN）
-- [ ] `GET /api/v1/hospitals` — 病院一覧（検索・フィルタ対応）
-- [ ] `GET /api/v1/hospitals/{id}` — 病院詳細
-- [ ] `PATCH /api/v1/hospitals/{id}` — 病院情報更新
-- [ ] Hospital 関連テスト
+### Hospital API（branch: `feat/spring/hospital`）
+- [x] `Hospital` / `HospitalSchedule` ドメイン・エンティティ・テーブル作成
+  - 実際のマイグレーション番号: `V5__create_hospitals.sql` / `V6__create_hospital_schedules.sql`（Pet列追加がV4を使用したためズレ）
+- [x] `GET /api/v1/hospitals` — 病院一覧（keyword・area検索対応、ACTIVEのみ）
+- [x] `GET /api/v1/hospitals/{id}` — 病院詳細
+- [x] `POST /api/v1/admin/hospitals` — 病院登録（`docs/07_API_Design`のRole別権限表に合わせROLE_SYSTEM_ADMIN限定。パスはdocs通り`/admin`配下）
+- [x] `GET /api/v1/hospitals/{hospitalId}/schedules` — 病院予約枠一覧
+- [x] Hospital/HospitalSchedule 関連テスト（Create/List/Detail/ScheduleList分）
+
+**あえて未実装のまま残した項目（練習用、ユーザーが実装中）:**
+- [x] `PATCH /api/v1/admin/hospitals/{id}` — 病院情報更新（実装済み、`hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')`）
+- [x] `PATCH /api/v1/admin/hospitals/{id}/suspend` — 病院停止（実装済み、`ROLE_SYSTEM_ADMIN`）
+- [x] `POST /api/v1/admin/hospitals/{hospitalId}/schedules` — 予約枠の個別手動登録（ユーザー実装。`@Valid`・`existsById`チェック追加済み）
+- [x] 予約枠のAVAILABLE/BLOCKED切り替え — `PATCH .../schedules/{scheduleId}/block`・`.../unblock`（Claude Code実装、2026-08-02。`BlockHospitalScheduleService`/`UnblockHospitalScheduleService`、`HospitalErrorCode.HOSPITAL_SCHEDULE_NOT_FOUND`追加、`docs/07_API_Design` 8-5・8-6追記、テスト10件green）
+  - 状態遷移は`Hospital.suspend()`と同じ「不変オブジェクト・新インスタンス返却」パターン
+  - schedule.hospitalIdとpath変数のhospitalIdが一致しない場合もHOSPITAL-002（他病院の予約枠を弄れないようにするガード。Pet の owner check に相当するが hospital_admins が無いので厳密な権限チェックではない点に注意）
+  - **予約による自動BLOCKEDは行わない**（`06_ERD` §12業務制約、§18参照）
+- [x] Hospital/HospitalSchedule 全体テスト整備（Claude Code、2026-08-02）。テスト作成中に発見して同時に修正したバグ:
+  - `HospitalAdminControllerTest`の`@MockBean`漏れ（`UpdateHospitalUseCase`/`SuspendHospitalUseCase`未Mock → 3件失敗）を修正
+  - `CreateHospitalScheduleResponse.HospitalScheduleId`（大文字始まり）→`scheduleId`に修正（docsと不一致だった）
+  - **`HospitalScheduleService`の予約枠登録で`Preconditions.validate(!hospitalRepository.existsById(hospitalId), ...)`が条件反転していたバグ** — 存在する病院への登録が誤ってHOSPITAL-001で弾かれ、存在しない病院への登録はDB制約違反まで素通りしていた。`!`を削除して修正
+  - Hospital(Update/Suspend/Create) + HospitalSchedule(Create/Block/Unblock/List) 全メソッドにService・Controllerテスト追加、`./gradlew test`で84件全green
+
+### 病院営業時間管理・予約枠自動生成バッチ（設計決定、未実装 — 2026-08-02）
+> ユーザーとの設計議論の結論。コードは未着手、docsのみ先行更新済み（`06_ERD` §9-1・§18、`07_API_Design` §8-4注記・§19、`04_System_Architecture` §14）
+
+- [ ] `hospital_business_hours` テーブル作成（曜日単位、`day_of_week`は`java.time.DayOfWeek`のname()と一致させる。日付単位ではなく曜日単位で管理する方針）
+  - カラム: hospital_id, day_of_week, open_time, close_time, break_start_time, break_end_time, slot_duration_minutes
+  - UNIQUE(hospital_id, day_of_week)。レコードが無い曜日 = 休診（フラグは持たない）
+- [ ] 予約枠自動生成Scheduler（`@Scheduled`、`04_System_Architecture` §14参照）
+  - `hospital_business_hours`を元に、翌月分など一定期間の`hospital_schedules`を`slot_duration_minutes`単位で分割生成
+  - 休憩時間帯も同じ単位で分割し`BLOCKED`として生成（行を作らず空白にする方式は採らない — 画面上「休憩中」と表示できるようにするため）
+  - 既に生成済みの期間は再生成しない（手動BLOCKEDの上書き防止）
+- [ ] `hospital_business_hours` 管理API（未設計、`docs/07_API_Design` §19に将来予定として記載のみ）
 
 ### Reservation API
 - [ ] `Reservation` ドメイン・エンティティ・テーブル作成 (`V5__create_reservations.sql`)
