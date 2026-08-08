@@ -175,10 +175,11 @@
 - [ ] `reservationStore.ts` — 予約一覧・詳細
 - [ ] `notificationStore.ts` — 通知・未読数
 
-### 認証フロー
-- [ ] Protected Route 実装（未ログイン → `/login` にリダイレクト）
-- [ ] ロールガード（HOSPITAL_ADMIN / SYSTEM_ADMIN ページ保護）
-- [ ] ページリロード時のアクセストークン復元（`refreshToken` → `/auth/refresh` で再取得）
+### 認証フロー（2026-08-09 実装、branch: `fix/auth-session-issues`）
+- [x] Protected Route 実装（`components/auth/ProtectedRoute.tsx`。未ログイン → `/login` にリダイレクト）
+- [x] ロールガード（`/admin/hospitals`・`/admin/reservations`はROLE_HOSPITAL_ADMIN/ROLE_SYSTEM_ADMIN、`/admin/users`はROLE_SYSTEM_ADMIN限定）
+- [x] ページリロード時のアクセストークン復元（`App.tsx`起動時に`refreshToken`があれば`/auth/refresh`を呼びaccessTokenを復元。復元完了までスピナー表示）
+  - refreshTokenはローテーション式（使用後失効）のため、React 18 StrictModeのeffect二重実行対策として`useRef`で初回のみ実行するガードを追加
 
 ---
 
