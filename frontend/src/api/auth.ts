@@ -1,4 +1,5 @@
-import { apiClient } from "./client";
+import axios from "axios";
+import { apiClient, BASE_URL } from "./client";
 import type {
   ApiResponse,
   AuthTokens,
@@ -11,6 +12,12 @@ export const authApi = {
   login: (body: LoginRequest) =>
     apiClient
       .post<ApiResponse<AuthTokens>>("/api/v1/auth/login", body)
+      .then((r) => r.data),
+
+  // apiClientのインターセプターを経由すると401→再refresh→無限ループになりうるため、素のaxiosを使う
+  refresh: (refreshToken: string) =>
+    axios
+      .post<ApiResponse<AuthTokens>>(`${BASE_URL}/api/v1/auth/refresh`, { refreshToken })
       .then((r) => r.data),
 
   register: (body: RegisterRequest) =>

@@ -16,7 +16,7 @@ function resolveBaseUrl(): string {
   return import.meta.env.VITE_API_BASE_URL_WEB ?? 'http://localhost:8080'
 }
 
-const BASE_URL = resolveBaseUrl()
+export const BASE_URL = resolveBaseUrl()
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,
