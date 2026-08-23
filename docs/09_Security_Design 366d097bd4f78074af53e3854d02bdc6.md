@@ -10,7 +10,7 @@
 | Document | Security Design |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-05-17 |
+| Updated | 2026-08-23 |
 
 ---
 
@@ -214,7 +214,7 @@ flowchart LR
 
 BCryptを利用する。
 
-```mermaid
+```java
 BCryptPasswordEncoder
 ```
 

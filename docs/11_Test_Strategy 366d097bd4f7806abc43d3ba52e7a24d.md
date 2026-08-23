@@ -10,7 +10,7 @@
 | Document | Test Strategy |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-05-17 |
+| Updated | 2026-08-23 |
 
 ---
 
@@ -67,7 +67,7 @@
 | **項目** | **内容** |
 | --- | --- |
 | Frontend | React 18.3.1 |
-| Node.js | 20.20.2 LTS |
+| Node.js | 24.17.0 |
 | Spring Boot | 3.3.13 |
 | Java | 17 |
 | Python | 3.12.10 |
@@ -81,19 +81,11 @@
 
 | **項目** | **内容** |
 | --- | --- |
-| Unit Test | H2 In-Memory DB |
-| Integration Test | PostgreSQL Test Container |
+| Unit Test | DB不使用（Repository を Mockito でモック） |
+| Integration Test | 未導入（導入時は PostgreSQL Testcontainers を想定） |
 | Local Manual Test | Docker PostgreSQL |
 
----
-
-## **4-3. Test Profile**
-
-Spring Bootではテスト用Profileを利用する。
-
-```
-application-test.yml
-```
+> **注記:** Repository をモックする単体テストでは null 許容パラメータの `@Query` 不具合を検出できない（`12_Trouble_Shooting` §3-10 の実例参照）。null 許容パラメータを含む `@Query` には実DB接続の統合テスト追加が望ましい。
 
 ---
 

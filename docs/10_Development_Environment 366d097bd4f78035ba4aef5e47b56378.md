@@ -10,7 +10,7 @@
 | Document | Development Environment |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-06-27 |
+| Updated | 2026-08-23 |
 
 ---
 
@@ -76,6 +76,7 @@ flowchart TB
 | State Management | Zustand | 5.0.14 |
 | HTTP Client | Axios | 1.18.1 |
 | Routing | React Router DOM | 6.30.4 |
+| Mobile | Capacitor（Android / iOS） | 8.4.1 |
 | Backend Language | Java | 17 |
 | Backend Framework | Spring Boot | 3.3.13 |
 | Security | Spring Security | 6.3.x |
@@ -103,7 +104,8 @@ flowchart TB
 | Tailwind CSS | 3.4.19 | スタイリング |
 | React Router DOM | 6.30.4 | ルーティング |
 | Axios | 1.18.1 | HTTP通信（JWT自動付与・リフレッシュ対応） |
-| Zustand | 5.0.14 | 状態管理（Auth・Pet） |
+| Zustand | 5.0.14 | 状態管理（Auth・Pet・Hospital） |
+| Capacitor | 8.4.1 | Android / iOS ネイティブラッパー |
 
 ---
 
@@ -137,52 +139,41 @@ npm 11.13.0
 frontend/
 ├── src/
 │   ├── api/           # axios client + 各APIモジュール
-│   │   ├── client.ts  # axiosインスタンス (JWT付与・401リフレッシュ)
+│   │   ├── client.ts  # axiosインスタンス (JWT付与・401リフレッシュ・プラットフォーム別ベースURL)
 │   │   ├── auth.ts    # 認証API
-│   │   └── pet.ts     # ペットAPI
+│   │   ├── pet.ts     # ペットAPI
+│   │   └── hospital.ts # 病院API（公開4 + 管理者6）
 │   ├── components/
-│   │   └── layout/    # MainLayout / DetailLayout / BottomNav / TopAppBar
+│   │   ├── layout/    # MainLayout / DetailLayout / BottomNav / TopAppBar
+│   │   └── auth/      # ProtectedRoute（認証・ロールガード）
 │   ├── pages/
 │   │   └── admin/     # 管理者画面
 │   ├── stores/        # Zustand ストア
 │   │   ├── authStore.ts
-│   │   └── petStore.ts
+│   │   ├── petStore.ts
+│   │   └── hospitalStore.ts
 │   ├── types/         # TypeScript型定義
 │   │   ├── common.ts  # ApiResponse
 │   │   ├── auth.ts
-│   │   └── pet.ts
-│   ├── App.tsx        # ルーター設定
+│   │   ├── pet.ts
+│   │   └── hospital.ts
+│   ├── App.tsx        # ルーター設定 + 起動時トークン復元
 │   └── main.tsx
-├── .env.local         # VITE_API_BASE_URL=http://localhost:8080
+├── android/ ios/      # Capacitor ネイティブプロジェクト
+├── .env.local         # VITE_API_BASE_URL_WEB / _ANDROID / _IOS
 └── package.json
 ```
 
 ---
 
-# **4-6. package.json方針**
-
-```json
-{
-  "engines": {
-    "node": ">=20.20.2"
-  }
-}
-```
-
----
-
-# **4-7. Node.js Version管理**
+# **4-6. Node.js Version管理**
 
 Node.js Version管理には `nvm` を利用する。
 
----
-
-# **4-8. Node.js切替例**
-
 ```
-nvm install 20
-nvm use 20
-nvm alias default 20
+nvm install 24
+nvm use 24
+nvm alias default 24
 ```
 
 ---
@@ -236,22 +227,21 @@ Gradle 8.14.4
 
 # **5-6. Backend Directory構成**
 
+Domain と JPA Entity を分離した Hexagonal-like 構造（詳細は `04_System_Architecture` §11 参照）。
+
 ```
-backend-spring/
-├── src/main/java/
-│   ├── domain/
-│   ├── controller/
-│   ├── service/
-│   ├── repository/
-│   ├── entity/
-│   ├── dto/
-│   ├── config/
-│   ├── security/
-│   ├── exception/
-│   └── common/
+spring-api/
+├── src/main/java/koh/portfolio/springapi/
+│   ├── common/          # exception (ErrorCode/CustomException/Preconditions/GlobalExceptionHandler),
+│   │                    # response (ApiResponse), time (ServerTime)
+│   ├── domain/{X}/      # model / exception / port（JPA非依存）
+│   ├── application/{X}/ # dto / usecase (interface) / service (実装体)
+│   ├── infrastructure/  # mapper (MapStruct), persistence/{X} (Entity/JpaRepository/Adapter),
+│   │                    # security (jwt / handler / cors)
+│   └── presentation/{X}/ # Controller
 ├── src/main/resources/
-│   ├── db/migration/
-│   └── application.yml
+│   ├── db/migration/    # Flyway V1〜V7
+│   └── application*.yml # local / docker プロファイル
 └── build.gradle
 ```
 
@@ -262,15 +252,21 @@ backend-spring/
 ```mermaid
 flowchart TB
 
-	A["Controller"]
+	C["Controller"]
+	UI["UseCase Interface"]
+	US["UseCase Service"]
+	D["Domain Model"]
+	P["Repository Port"]
+	A["Persistence Adapter"]
+	M["MapStruct Mapper"]
+	E["JPA Entity"]
+	J["JpaRepository"]
+	DB["PostgreSQL"]
 
-	B["Service"]
-
-	C["Repository"]
-
-	D["Entity"]
-
-	A --> B --> C --> D
+	C --> UI --> US --> D
+	US --> P --> A
+	A --> M --> E
+	A --> J --> DB
 ```
 
 ---
@@ -283,19 +279,13 @@ flowchart TB
 | spring-boot-starter-security | 認証・認可 |
 | spring-boot-starter-validation | Validation |
 | spring-boot-starter-data-jpa | ORM |
-| flyway-core | Migration |
+| flyway-core / flyway-database-postgresql | Migration |
 | postgresql | PostgreSQL Driver |
-| springdoc-openapi | Swagger UI |
+| jjwt (api / impl / jackson) 0.12.6 | JWT発行・検証 |
+| mapstruct 1.5.5.Final + lombok-mapstruct-binding | Domain ↔ Entity 変換 |
+| lombok | ボイラープレート削減 |
 
----
-
-# **5-9. springdoc Version**
-
-```mermaid
-springdoc-openapi-starter-webmvc-ui 2.6.0
-```
-
-Spring Boot 3.3.13との互換性を考慮して選定する。
+> **注記:** springdoc-openapi（Swagger UI）は未導入。導入時は Spring Boot 3.3.x 互換の `springdoc-openapi-starter-webmvc-ui 2.6.0` を利用する。
 
 ---
 
@@ -314,13 +304,19 @@ Spring Boot 3.3.13との互換性を考慮して選定する。
 
 # **6-2. Python Version**
 
+```
+Python 3.12.10
+```
+
 ---
 
 # **6-3. Django REST Framework Version**
 
-```mermaid
+```
 Django REST Framework 3.15.2
 ```
+
+> **注記:** django-api/ は未着手（Dockerfileのみ存在）。本節は着手時の予定構成。
 
 ---
 
@@ -332,10 +328,10 @@ Django REST Framework 3.15.2
 
 ---
 
-# **6-5. Django Directory構成**
+# **6-5. Django Directory構成（予定）**
 
 ```
-backend-django/
+django-api/
 ├── app/
 ├── analysis/
 ├── api/
@@ -450,8 +446,12 @@ docker compose down
 
 # **9-1. Frontend**
 
+実行時に `Capacitor.getPlatform()` でプラットフォームを判定し、対応する変数を使用する。
+
 ```
-VITE_API_URL=http://localhost:8080
+VITE_API_BASE_URL_WEB=http://localhost:8080
+VITE_API_BASE_URL_ANDROID=http://10.0.2.2:8080
+VITE_API_BASE_URL_IOS=http://localhost:8080
 ```
 
 ---
@@ -490,13 +490,19 @@ DB変更はFlywayで管理する。
 
 ---
 
-# **10-2. Migration命名規則**
+# **10-2. Migration一覧（適用済み）**
 
 ```
 V1__create_users.sql
-V2__create_pets.sql
-V3__create_reservations.sql
+V2__create_refresh_tokens.sql
+V3__create_pets.sql
+V4__create_hospitals.sql
+V5__create_hospital_business_hours.sql
+V6__create_hospital_schedules.sql
+V7__create_reservations.sql
 ```
+
+新規は V8 以降。採番前に全ブランチの番号衝突を確認する（未マージ `feat/spring/pet-fields` が V4 を使用中）。
 
 ---
 
