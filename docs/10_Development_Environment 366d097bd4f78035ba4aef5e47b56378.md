@@ -10,7 +10,7 @@
 | Document | Development Environment |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-05-17 |
+| Updated | 2026-06-27 |
 
 ---
 
@@ -68,11 +68,14 @@ flowchart TB
 | **区分** | **技術** | **Version** |
 | --- | --- | --- |
 | Frontend Framework | React | 18.3.1 |
-| Frontend Language | TypeScript | 5.8.3 |
-| Frontend Build Tool | Vite | 5.4.19 |
-| Frontend Runtime | Node.js | 20.20.2 LTS |
-| Package Manager | npm | 10.8.2 |
-| CSS Framework | Tailwind CSS | 3.4.17 |
+| Frontend Language | TypeScript | 5.7.3 |
+| Frontend Build Tool | Vite | 6.4.3 |
+| Frontend Runtime | Node.js | 24.17.0 |
+| Package Manager | npm | 11.13.0 |
+| CSS Framework | Tailwind CSS | 3.4.19 |
+| State Management | Zustand | 5.0.14 |
+| HTTP Client | Axios | 1.18.1 |
+| Routing | React Router DOM | 6.30.4 |
 | Backend Language | Java | 17 |
 | Backend Framework | Spring Boot | 3.3.13 |
 | Security | Spring Security | 6.3.x |
@@ -84,7 +87,7 @@ flowchart TB
 | Infrastructure | Docker Compose | v2 |
 | API | REST API | JSON |
 | Documentation | Notion | Latest |
-| UI Design | Figma | Latest |
+| UI Design | Google Stitch | Latest |
 
 ---
 
@@ -92,23 +95,22 @@ flowchart TB
 
 # **4-1. 技術構成**
 
-| **項目** | **内容** |
-| --- | --- |
-| Framework | React |
-| Language | TypeScript |
-| Build Tool | Vite |
-| Styling | Tailwind CSS |
-| Routing | React Router |
-| HTTP Client | Axios |
-| State Management | Zustand |
-| Form | React Hook Form |
+| **項目** | **バージョン** | **用途** |
+| --- | --- | --- |
+| React | 18.3.1 | UIフレームワーク |
+| TypeScript | 5.7.3 | 型安全性 |
+| Vite | 6.4.3 | ビルドツール |
+| Tailwind CSS | 3.4.19 | スタイリング |
+| React Router DOM | 6.30.4 | ルーティング |
+| Axios | 1.18.1 | HTTP通信（JWT自動付与・リフレッシュ対応） |
+| Zustand | 5.0.14 | 状態管理（Auth・Pet） |
 
 ---
 
 # **4-2. Node Version**
 
 ```
-Node.js 20.20.2 LTS
+Node.js 24.17.0
 ```
 
 ---
@@ -116,7 +118,7 @@ Node.js 20.20.2 LTS
 # **4-3. npm Version**
 
 ```
-npm 10.8.2
+npm 11.13.0
 ```
 
 ---
@@ -134,16 +136,24 @@ npm 10.8.2
 ```
 frontend/
 ├── src/
-│   ├── api/
+│   ├── api/           # axios client + 各APIモジュール
+│   │   ├── client.ts  # axiosインスタンス (JWT付与・401リフレッシュ)
+│   │   ├── auth.ts    # 認証API
+│   │   └── pet.ts     # ペットAPI
 │   ├── components/
+│   │   └── layout/    # MainLayout / DetailLayout / BottomNav / TopAppBar
 │   ├── pages/
-│   ├── layouts/
-│   ├── hooks/
-│   ├── stores/
-│   ├── types/
-│   ├── utils/
-│   └── router/
-├── public/
+│   │   └── admin/     # 管理者画面
+│   ├── stores/        # Zustand ストア
+│   │   ├── authStore.ts
+│   │   └── petStore.ts
+│   ├── types/         # TypeScript型定義
+│   │   ├── common.ts  # ApiResponse
+│   │   ├── auth.ts
+│   │   └── pet.ts
+│   ├── App.tsx        # ルーター設定
+│   └── main.tsx
+├── .env.local         # VITE_API_BASE_URL=http://localhost:8080
 └── package.json
 ```
 

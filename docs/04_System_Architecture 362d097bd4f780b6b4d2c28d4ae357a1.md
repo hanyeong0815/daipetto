@@ -10,7 +10,7 @@
 | Document | System Architecture |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-05-17 |
+| Updated | 2026-08-02 |
 
 ---
 
@@ -357,18 +357,31 @@ sequenceDiagram
 
 ## **Layer構成**
 
+認証・予約などのトランザクション整合性が重要な業務ロジックに対し、Domain ModelとJPA Entityを分離したHexagonal-likeアーキテクチャを採用する。
+
 ```mermaid
 flowchart TB
 
 	C["Controller"]
+	UI["UseCase Interface"]
+	US["UseCase Service"]
+	D["Domain Model"]
+	P["Repository Port"]
+	A["Persistence Adapter"]
+	M["MapStruct Mapper"]
+	E["JPA Entity"]
+	J["JpaRepository"]
+	DB["PostgreSQL"]
 
-	S["Service"]
-
-	R["Repository"]
-
-	E["Entity"]
-
-	C --> S --> R --> E
+	C --> UI
+	UI --> US
+	US --> D
+	US --> P
+	P --> A
+	A --> M
+	M --> E
+	A --> J
+	J --> DB
 ```
 
 ---
@@ -377,10 +390,27 @@ flowchart TB
 
 | **Layer** | **責務** |
 | --- | --- |
-| Controller | Request/Response制御 |
-| Service | 業務ロジック |
-| Repository | DBアクセス |
-| Entity | DBマッピング |
+| Controller | HTTP Request / Response制御 |
+| UseCase Interface | Application-levelビジネス契約 |
+| UseCase Service | ビジネスフロー実装 |
+| Domain Model | ビジネスルール・状態遷移・ドメインバリデーション |
+| Repository Port | 永続化インターフェース（Domain層に属する） |
+| Persistence Adapter | Repository Port実装（JPA利用） |
+| MapStruct Mapper | Domain ↔ JPA Entity 変換 |
+| JPA Entity | DBテーブルマッピング専用 |
+| JpaRepository | Spring Data JPA DBアクセス |
+| GlobalExceptionHandler | Exception → ApiResponse 変換 |
+
+---
+
+## **採用理由**
+
+| **理由** | **内容** |
+| --- | --- |
+| Domain保護 | JPA依存をDomainに持ち込まない |
+| テスト容易性 | UseCase単位でMock可能 |
+| 状態遷移保護 | Domainが状態変更ルールを持つ |
+| 責務明確化 | 各Layerの責務が単一 |
 
 ---
 
@@ -410,8 +440,8 @@ flowchart TB
 | --- | --- |
 | View | API Entry Point |
 | Serializer | Validation / Data変換 |
-| Service | 分析処理 |
-| Model |  |
+| Service | 分析処理・統計ロジック |
+| Model | DBテーブルマッピング（Django ORM） |
 
 ---
 
@@ -453,6 +483,7 @@ flowchart TB
 | **Scheduler** | **実行時間** |
 | --- | --- |
 | ワクチン通知 | 毎日 09:00 |
+| 予約枠自動生成 | 例: 毎月1日 00:00（`hospital_business_hours`を元に翌月分の`hospital_schedules`を生成） |
 
 ---
 

@@ -462,6 +462,45 @@ kill -9 PID
 
 ---
 
+# **3-10. `function lower(bytea) does not exist`**
+
+## **症状**
+
+`@Query`でnull許容の検索パラメータを`(:param IS NULL OR LOWER(...) LIKE ...)`パターンで使うJPQLが、パラメータが実際に`null`の場合にのみ500エラーになる。
+
+```
+ERROR: function lower(bytea) does not exist
+```
+
+`GET /api/v1/hospitals`（keyword・area省略時）で発見（2026-08-09）。単体テストはRepositoryをモックしているため検出できず、実際にDBへ接続するまで気づけなかった。
+
+---
+
+## **原因**
+
+Hibernate 6がnull値のバインドパラメータの型を推論できず、PostgreSQL JDBCドライバがデフォルトの`bytea`型として送信してしまう。
+
+---
+
+## **対応方法**
+
+該当パラメータをJPQLで明示的にキャストする。
+
+```java
+@Query("""
+        SELECT h FROM HospitalEntity h
+        WHERE (:keyword IS NULL OR LOWER(h.name) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%')))
+        """)
+```
+
+---
+
+## **教訓**
+
+Service層のモックテストだけでは検出できないため、null許容パラメータを含む`@Query`には最低限1件、実DBに接続する統合テスト（`@DataJpaTest`等）を追加することが望ましい。
+
+---
+
 # **4. Django関連**
 
 # **4-1. Python Version不一致**

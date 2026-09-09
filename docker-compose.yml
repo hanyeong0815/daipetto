@@ -12,7 +12,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      VITE_API_URL: http://localhost:8080
+      VITE_API_BASE_URL: http://spring-api:8080
     depends_on:
       - spring-api
     networks:
@@ -29,18 +29,20 @@ services:
       - ./spring-api:/app
       - gradle-cache:/home/gradle/.gradle
     environment:
-      SPRING_PROFILES_ACTIVE: local
+      SPRING_PROFILES_ACTIVE: docker
 
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: daipetto
-      DB_USERNAME: daipetto_user
-      DB_PASSWORD: daipetto_password
+      DB_NAME: ${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
 
-      JWT_SECRET: local-dev-only-secret
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TOKEN_EXPIRATION_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRATION_MINUTES:-30}
+      JWT_REFRESH_TOKEN_EXPIRATION_DAYS: ${JWT_REFRESH_TOKEN_EXPIRATION_DAYS:-14}
 
       DJANGO_API_URL: http://django-api:8000
-      INTERNAL_API_KEY: internal-api-secret
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
     depends_on:
       - postgres
       - django-api
@@ -61,11 +63,11 @@ services:
 
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: daipetto
-      DB_USERNAME: daipetto_user
-      DB_PASSWORD: daipetto_password
+      DB_NAME: ${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
 
-      INTERNAL_API_KEY: internal-api-secret
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
     depends_on:
       - postgres
     networks:
@@ -78,9 +80,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: daipetto
-      POSTGRES_USER: daipetto_user
-      POSTGRES_PASSWORD: daipetto_password
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       TZ: Asia/Tokyo
     volumes:
       - postgres-data:/var/lib/postgresql/data

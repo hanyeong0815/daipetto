@@ -1,0 +1,38 @@
+spring:
+  config:
+    import: "optional:file:.env[.properties]"
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:daipetto}?currentSchema=public
+    username: ${DB_USERNAME:your_db_user}
+    password: ${DB_PASSWORD}
+
+  flyway:
+    enabled: true
+    schemas: public
+    baseline-on-migrate: true
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+
+  sql:
+    init:
+      mode: never
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-expiration-minutes: ${JWT_ACCESS_TOKEN_EXPIRATION_MINUTES:30}
+  refresh-token-expiration-days: ${JWT_REFRESH_TOKEN_EXPIRATION_DAYS:14}
+
+cors:
+  allowed-origins:
+    - http://localhost:5173      # Vite dev server (ブラウザ開発)
+    - http://localhost           # Capacitor Android WebView
+    - capacitor://localhost      # Capacitor iOS WebView
+
+logging:
+  level:
+    org.hibernate.SQL: debug
