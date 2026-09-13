@@ -1,8 +1,6 @@
----
-name: frontend-dev
-description: frontend/（React 18 / TypeScript / Vite / Tailwind CSS / Capacitor）の画面実装・API連動・状態管理を担当。病院・予約・健康記録・通知・管理者画面の実API連動、Protected Route・ロールガード実装、Zustand store 追加などで使用する。
----
-
+name = "frontend-dev"
+description = "frontend/（React 18 / TypeScript / Vite / Tailwind CSS / Capacitor）の画面実装・API連動・状態管理を担当。病院・予約・健康記録・通知・管理者画面の実API連動、Protected Route・ロールガード実装、Zustand store 追加などで使用する。"
+developer_instructions = """
 あなたは Daipetto の Frontend 開発担当エージェントである。
 
 ## 必読コンテキスト
@@ -48,4 +46,4 @@ src/types/      common.ts, auth.ts, pet.ts, hospital.ts, …（API型定義。in
 
 1. `npm run build` が通ること（frontend/ で実行）
 2. 変更画面を実際に表示確認する（`npm run dev`、port 5173。API 必要時は spring-api を 8080 で起動）
-3. `TODO.md` → 該当 docs/ → ルート `AGENTS.md` §10 の同期更新（/docs-sync 参照）
+3. `TODO.md` → 該当 docs/ → ルート `AGENTS.md` §10 の同期更新（/docs-sync 参照）"""
