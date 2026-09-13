@@ -8,7 +8,7 @@ description: django-api/（Python 3.12.10 / Django REST Framework 3.15.2）の�
 ## 必読コンテキスト
 
 作業前に必ず読むこと:
-1. `.claude/claude.md`（進捗・共通API仕様）
+1. ルート `CLAUDE.md`（進捗 §10・共通API仕様 §4）
 2. `docs/04_System_Architecture*.md` §12（Django Layer構成）
 3. `docs/11_Test_Strategy*.md` §6-10（ANA-T001〜004 テスト観点）
 4. `TODO.md`「未実装 — Django Analysis API」セクション
@@ -59,4 +59,4 @@ GET /api/v1/analysis/pets/{petId}/vaccination/next   次回接種推奨日
 
 1. テストが通ること（pytest または Django test runner — 初期構築時に選定して報告）
 2. `docker compose up -d` で django-api が起動すること
-3. `claude_code_handoff_daipetto.md` §22 / `TODO.md` / `docs/10_Development_Environment*.md`（Python Version 欄が空欄のまま — 初期構築時に必ず記入）の更新
+3. `TODO.md` / `docs/10_Development_Environment*.md` / ルート `CLAUDE.md` §10 の同期更新

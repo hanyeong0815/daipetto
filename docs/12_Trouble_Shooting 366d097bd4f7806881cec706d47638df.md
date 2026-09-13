@@ -10,7 +10,7 @@
 | Document | Trouble Shooting |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-05-17 |
+| Updated | 2026-08-23 |
 
 ---
 
@@ -79,8 +79,8 @@ npm -v
 
 | **項目** | **Version** |
 | --- | --- |
-| Node.js | 20.20.2 LTS |
-| npm | 10.8.2 |
+| Node.js | 24.17.0 |
+| npm | 11.13.0 |
 
 ---
 
@@ -145,10 +145,10 @@ Axios通信時にNetwork Error発生。
 ## **対応方法**
 
 ```
-VITE_API_URL=http://localhost:8080
+VITE_API_BASE_URL_WEB=http://localhost:8080
 ```
 
-確認。
+を確認（Android エミュレーターは `VITE_API_BASE_URL_ANDROID=http://10.0.2.2:8080`）。
 
 ---
 

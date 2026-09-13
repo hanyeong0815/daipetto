@@ -1,6 +1,6 @@
 # Daipetto — 作業TODOリスト
 
-最終更新: 2026-08-09
+最終更新: 2026-08-23
 
 ---
 
@@ -18,6 +18,13 @@
 - [x] ユーザープロフィール取得 `GET /api/v1/users/me`
 - [x] ペット CRUD API (`POST / GET list / GET detail / PATCH / DELETE /api/v1/pets`)
   - owner チェックを `Preconditions.validate` パターンで統一済み
+- [x] Hospital・HospitalSchedule・HospitalBusinessHours CRUD API（2026-08-02〜08-09実装、詳細は本ファイル下部参照）
+- [x] Reservation API（2026-08-23実装。予約却下`reject`のみ練習用に未実装、下記参照）
+  - `V7__create_reservations.sql`、`domain/reservation`・`application/reservation`・`infrastructure/persistence/reservation`・`presentation/reservation` 一式
+  - 実装: `POST /api/v1/reservations`（申請）・`GET /api/v1/reservations`（一覧）・`GET /api/v1/reservations/{id}`（詳細）・`PATCH /api/v1/reservations/{id}/cancel`（キャンセル）・`PATCH /api/v1/admin/reservations/{id}/approve`（承認）・`PATCH /api/v1/admin/reservations/{id}/complete`（診療完了）
+  - `ReservationErrorCode`: RESERVATION-001〜005（`docs/07_API_Design` §9-3準拠）に加え、実装時に006（予約が見つからない）・007（予約者本人ではない）・008（不正な状態遷移）を新規追加
+  - 状態遷移（承認・キャンセル・完了）は `Reservation` ドメインモデル内のメソッドで制御（`Hospital.suspend()`と同じ不変オブジェクトパターン）
+  - テスト31件追加（Service 22件・Mapper 2件・Controller 7件）、`./gradlew clean test`で133件全green
 
 ### Frontend
 - [x] プロジェクト初期構築 (React 18 + TypeScript + Vite + Tailwind CSS)
@@ -50,26 +57,17 @@
 
 ## 🚧 未実装 — Spring API
 
-### Pet テーブル不足カラム追加
-> フロントは送信済みだが DB・Entity に存在しないため現在は無視されている
+### Pet テーブル不足カラム追加（実装済み・未マージ — branch: `feat/spring/pet-fields`）
+> 2026-07-05 実装済み。`breed` は自由入力文字列で確定（マスタテーブル無し）。**develop へのマージ待ち**
 
-- [ ] `V4__alter_pets_add_columns.sql` — `breed`, `neutered`, `microchip_number` カラム追加
-  ```sql
-  ALTER TABLE pets
-    ADD COLUMN breed            VARCHAR(100) NULL,
-    ADD COLUMN neutered         BOOLEAN      NOT NULL DEFAULT FALSE,
-    ADD COLUMN microchip_number VARCHAR(15)  NULL;
-  ```
-- [ ] `PetEntity` に `breed` / `neutered` / `microchipNumber` フィールド追加
-- [ ] `Pet` ドメインモデルに同フィールド追加
-- [ ] `PetMapper` の変換ロジック更新
-- [ ] 既存テストが通ることを確認（`PetServiceTest`）
-
-> Hospital API 追加後は V5 以降にずれるため、マイグレーションファイル番号に注意
+- [x] `V4__alter_pets_add_columns.sql` — `breed`, `neutered`, `microchip_number` カラム追加
+- [x] `PetEntity` / `Pet` ドメイン / `PetMapper` / DTO / Service 反映
+- [x] docs/06_ERD・07_API_Design 更新（同ブランチ内）
+- [ ] **マージ時の必須作業**: migration 番号衝突の解消 — 現ブランチの `V4` は hospitals が使用中のため、`V4__alter_pets_add_columns.sql` を V8 以降へリナンバーする
 
 ### Hospital API（branch: `feat/spring/hospital`）
 - [x] `Hospital` / `HospitalSchedule` ドメイン・エンティティ・テーブル作成
-  - 実際のマイグレーション番号: `V5__create_hospitals.sql` / `V6__create_hospital_schedules.sql`（Pet列追加がV4を使用したためズレ）
+  - 実際のマイグレーション番号: `V4__create_hospitals.sql` / `V6__create_hospital_schedules.sql`（Pet列追加が未マージのままV4を使用しているためズレ、V5はHospitalBusinessHoursが使用）
 - [x] `GET /api/v1/hospitals` — 病院一覧（keyword・area検索対応、ACTIVEのみ）
 - [x] `GET /api/v1/hospitals/{id}` — 病院詳細
 - [x] `POST /api/v1/admin/hospitals` — 病院登録（`docs/07_API_Design`のRole別権限表に合わせROLE_SYSTEM_ADMIN限定。パスはdocs通り`/admin`配下）
@@ -109,16 +107,22 @@
   - 休憩時間帯も同じ単位で分割し`BLOCKED`として生成（行を作らず空白にする方式は採らない — 画面上「休憩中」と表示できるようにするため）
   - 既に生成済みの期間は再生成しない（手動BLOCKEDの上書き防止）
 
-### Reservation API
-- [ ] `Reservation` ドメイン・エンティティ・テーブル作成 (`V5__create_reservations.sql`)
-- [ ] 予約ステータス設計: `PENDING → CONFIRMED → COMPLETED / CANCELLED`
-- [ ] `POST /api/v1/reservations` — 予約作成（USER）
-- [ ] `GET /api/v1/reservations` — 予約一覧（ユーザー別）
-- [ ] `GET /api/v1/reservations/{id}` — 予約詳細
-- [ ] `PATCH /api/v1/reservations/{id}/confirm` — 予約承認（HOSPITAL_ADMIN）
-- [ ] `PATCH /api/v1/reservations/{id}/cancel` — 予約キャンセル
-- [ ] `PATCH /api/v1/reservations/{id}/complete` — 診療完了
-- [ ] Reservation 関連テスト
+### Reservation API（2026-08-23実装、Claude Code）
+- [x] `Reservation` ドメイン・エンティティ・テーブル作成 (`V7__create_reservations.sql`。V5/V6はHospitalBusinessHours/HospitalScheduleが使用済みのためV7から)
+- [x] 予約ステータス設計: `REQUESTED → APPROVED → COMPLETED`／`REQUESTED → REJECTED`／`REQUESTED・APPROVED → CANCELLED`（`docs/06_ERD` §12・`docs/08_State_Design` §6・ルート`CLAUDE.md` §6 準拠。旧記載の `PENDING → CONFIRMED` は誤りだったため修正）
+- [x] `POST /api/v1/reservations` — 予約申請（USER、docs/07_API_Design §9-3）
+- [x] `GET /api/v1/reservations` — 予約一覧（ユーザー別、§9-1）
+- [x] `GET /api/v1/reservations/{id}` — 予約詳細（§9-2）
+- [x] `PATCH /api/v1/reservations/{id}/cancel` — 予約キャンセル（USER、§9-4）
+- [x] `PATCH /api/v1/admin/reservations/{id}/approve` — 予約承認（HOSPITAL_ADMIN、§9-5）
+- [x] `PATCH /api/v1/admin/reservations/{id}/complete` — 診療完了（HOSPITAL_ADMIN、§9-7）
+- [x] RESERVATION-001〜008 ErrorCode 追加（001〜005はdocs/07_API_Design §9-3準拠、006〜008は実装時に新規追加。ルート`CLAUDE.md` §5参照）
+- [x] Reservation 関連テスト（Service 20件・Mapper 2件・Controller 7件、計29件）
+
+**あえて未実装のまま残した項目（練習用、ユーザーが実装予定）:**
+- [ ] `PATCH /api/v1/admin/reservations/{id}/reject` — 予約却下（HOSPITAL_ADMIN、docs/07_API_Design §9-6に「（未実装）」表示済み）
+  - 参考パターン: `ApproveReservationService`・`CancelReservationService`（`application/reservation/service/`）とほぼ同じ構造（findById → 状態チェック → save）。却下理由（`reason`）を永続化するかは設計判断が必要（現状`reservations`テーブルに保存先カラム無し。永続化するなら`docs/06_ERD`にカラム追加が必要）
+  - `ReservationErrorCode.RESERVATION_NOT_FOUND`（RESERVATION-006）・`INVALID_STATE_TRANSITION`（RESERVATION-008）は実装済みのためそのまま使える
 
 ### Notification API
 - [ ] `Notification` ドメイン・エンティティ・テーブル作成
@@ -185,10 +189,7 @@
 
 ## 🔖 設計未決定事項（TODO）
 
-- [ ] **品種（breed）フィールドの管理方針**
-  - 案A: SYSTEM_ADMIN が品種マスタ管理 → ユーザーはドロップダウン選択
-  - 案B: 自由入力 + オートコンプリート、リスト未登録品種はユーザーが追加申請可能
-  - → 決定後、`GET /api/v1/breeds` API 実装要否も確定する
+- [x] **品種（breed）フィールドの管理方針** — 自由入力文字列で確定（2026-07-05、`feat/spring/pet-fields`）。マスタテーブルは導入せず、統計精度が必要になれば再検討
 
 - [ ] **画像アップロード方針**
   - ペット写真・病院写真の保存先（S3 / ローカルストレージ）

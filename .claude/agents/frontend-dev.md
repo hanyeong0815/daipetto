@@ -8,7 +8,7 @@ description: frontend/（React 18 / TypeScript / Vite / Tailwind CSS / Capacitor
 ## 必読コンテキスト
 
 作業前に必ず読むこと:
-1. `.claude/claude.md`（進捗・API仕様・ErrorCode）
+1. ルート `CLAUDE.md`（進捗 §10・API仕様 §4・ErrorCode §5）
 2. `docs/05_Screen_Design*.md`（SC-001〜015 の画面仕様）
 3. `docs/07_API_Design*.md`（連動対象 API の Request / Response）
 4. 実際の `frontend/src/` コード（既存パターンに合わせる）
@@ -22,11 +22,11 @@ Capacitor 8.4.1（iOS・Android。safe area 対応済み — レイアウト変�
 ## ディレクトリ規則（既存構造に従う）
 
 ```text
-src/api/        client.ts（JWT interceptor + 401自動リフレッシュ）, auth.ts, pet.ts, …
-src/stores/     authStore.ts, petStore.ts（Zustand。ドメイン別に分割）
+src/api/        client.ts（JWT interceptor + 401自動リフレッシュ + プラットフォーム別ベースURL）, auth.ts, pet.ts, hospital.ts, …
+src/stores/     authStore.ts, petStore.ts, hospitalStore.ts（Zustand。ドメイン別に分割）
 src/pages/      画面コンポーネント（SC番号と対応。管理者画面は pages/admin/）
-src/components/ layout/（MainLayout / DetailLayout / BottomNav / TopAppBar）
-src/types/      common.ts, auth.ts, pet.ts, …（API型定義。index.ts で re-export）
+src/components/ layout/（MainLayout / DetailLayout / BottomNav / TopAppBar）, auth/（ProtectedRoute）
+src/types/      common.ts, auth.ts, pet.ts, hospital.ts, …（API型定義。index.ts で re-export）
 ```
 
 ## 絶対規則
@@ -38,16 +38,14 @@ src/types/      common.ts, auth.ts, pet.ts, …（API型定義。index.ts で re
 - Mobile First・CardベースUI・Tailwind ユーティリティクラス（既存画面のトークン・spacing に合わせる）
 - 画面変更が `docs/05_Screen_Design*.md` の仕様に影響する場合、更新すべき箇所を列挙する
 
-## 未連動画面（実API接続が必要）
+## 連動状況（2026-08-23）
 
-- HospitalSearchPage / HospitalDetailPage（Hospital API は実装済み・接続可能）
-- ReservationPage / ReservationHistoryPage（Reservation API 未実装 — API 完成後）
-- HealthRecordPage / NotificationsPage（対応 API 未実装 — API 完成後）
-- AdminReservationPage / AdminHospitalPage / AdminUserPage
-- Protected Route（未ログイン→ `/login`）・ロールガード・リロード時トークン復元
+- 連動済み: auth / pet / hospital 系全画面、ProtectedRoute + ロールガード、リロード時トークン復元
+- 未連動: ReservationPage / ReservationHistoryPage（Reservation API は実装済み — 接続可能）、
+  HealthRecordPage / NotificationsPage / AdminReservationPage / AdminUserPage（対応 API 未実装 — API 完成後）
 
 ## 完了条件
 
 1. `npm run build` が通ること（frontend/ で実行）
 2. 変更画面を実際に表示確認する（`npm run dev`、port 5173。API 必要時は spring-api を 8080 で起動）
-3. `claude_code_handoff_daipetto.md` §22 と `TODO.md` の更新
+3. `TODO.md` → 該当 docs/ → ルート `CLAUDE.md` §10 の同期更新（/docs-sync 参照）

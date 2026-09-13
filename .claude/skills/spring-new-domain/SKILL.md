@@ -10,7 +10,7 @@ description: Daipetto の Spring API に新ドメイン（Reservation / HealthRe
 1. `docs/06_ERD*.md` でテーブル定義、`docs/07_API_Design*.md` で API 仕様、`docs/08_State_Design*.md` で状態遷移を確認する
 2. 文書に仕様が無い場合は**設計追記が先**（docs-sync スキル参照）。設計せずに実装しない
 3. Flyway 番号の衝突確認: `git branch -a` の全ブランチで `spring-api/src/main/resources/db/migration/` を確認する
-   （V1〜V3, V5, V6 は現ブランチ、**V4 は未マージ feat/spring/pet-fields が使用済み**。V7 以降を使う）
+   （V1〜V7 は現ブランチが使用済み、**V4 は未マージ feat/spring/pet-fields も使用しており衝突中**。V8 以降を使う）
 
 ## 作成ファイル一式（{domain} = 例: reservation）
 
@@ -33,7 +33,7 @@ infrastructure/mapper/ …                         @Mapper(componentModel="sprin
 presentation/{domain}/{Domain}Controller.java    ApiResponse 返却
 ```
 
-## 実装規則（抜粋 — 詳細は .claude/claude.md §3）
+## 実装規則（抜粋 — 詳細はルート CLAUDE.md §3）
 
 - `userId` は DTO に入れず `Authentication.getPrincipal()` から `Long` で取得
 - owner チェックは `Preconditions.validate(...)` パターン（`UpdatePetService` 参照）
@@ -54,4 +54,4 @@ presentation/{domain}/{Domain}Controller.java    ApiResponse 返却
 
 1. `./gradlew clean test` が通る（spring-api/ で実行）
 2. テスト作成は spring-test スキルの規則に従う
-3. docs-sync スキルで handoff §22 → TODO.md → docs/ を更新する
+3. docs-sync スキルで TODO.md → docs/ → ルート CLAUDE.md を更新する

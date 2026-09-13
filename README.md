@@ -125,7 +125,23 @@ GET    /api/v1/pets              # ペット一覧
 GET    /api/v1/pets/:id          # ペット詳細
 PATCH  /api/v1/pets/:id          # ペット情報更新
 DELETE /api/v1/pets/:id          # ペット削除
+
+GET    /api/v1/hospitals                          # 病院検索（keyword・area）
+GET    /api/v1/hospitals/:id                      # 病院詳細
+GET    /api/v1/hospitals/:id/schedules            # 予約枠一覧
+GET    /api/v1/hospitals/:id/business-hours       # 営業時間一覧
+POST   /api/v1/admin/hospitals                    # 病院登録（管理者）
+# ほか管理者API: 病院更新/停止・予約枠登録/block/unblock・営業時間CRUD
+
+POST   /api/v1/reservations                       # 予約申請
+GET    /api/v1/reservations                       # 予約一覧
+GET    /api/v1/reservations/:id                   # 予約詳細
+PATCH  /api/v1/reservations/:id/cancel            # 予約キャンセル
+PATCH  /api/v1/admin/reservations/:id/approve     # 予約承認（管理者）
+PATCH  /api/v1/admin/reservations/:id/complete    # 診療完了（管理者）
 ```
+
+全API仕様は `docs/07_API_Design*.md` を参照。
 
 レスポンス形式は全エンドポイント共通：
 
@@ -185,11 +201,14 @@ url: 'http://10.0.2.2:5173'
 詳細は [TODO.md](./TODO.md) を参照。
 
 **完了**
-- 会員登録 / ログイン / JWT認証 / リフレッシュ / ログアウト
+- 会員登録 / ログイン / JWT認証 / リフレッシュ（rotation） / ログアウト
 - ペット CRUD API
-- Frontend 全画面（認証・ペット管理のみ実 API 連動、他はスタブ）
+- 病院 API（登録・更新・停止・検索・詳細・予約枠・曜日別営業時間）
+- 予約 API（申請・一覧・詳細・キャンセル・承認・診療完了。却下のみ未実装）
+- Frontend 全画面（認証・ペット・病院は実 API 連動、他はスタブ）
+- Protected Route / ロールガード / リロード時トークン復元
 
 **実装中・予定**
-- 病院 API / 予約 API / 通知 API / 健康記録 API
-- Protected Route（未ログイン時のリダイレクト）
+- 予約却下 API / 通知 API / 健康記録 API / ワクチン API
+- 予約枠自動生成 Scheduler（曜日別営業時間から生成）
 - Django Analysis API（体重推移・健康スコア）
