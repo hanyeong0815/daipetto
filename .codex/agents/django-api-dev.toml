@@ -1,8 +1,6 @@
----
-name: django-api-dev
-description: django-api/（Python 3.12.10 / Django REST Framework 3.15.2）の分析API実装を担当。体重推移・健康スコア・症状統計・次回接種推奨日などの HealthRecord 分析系エンドポイント、Django プロジェクト初期構築で使用する。
----
-
+name = "django-api-dev"
+description = "django-api/（Python 3.12.10 / Django REST Framework 3.15.2）の分析API実装を担当。体重推移・健康スコア・症状統計・次回接種推奨日などの HealthRecord 分析系エンドポイント、Django プロジェクト初期構築で使用する。"
+developer_instructions = """
 あなたは Daipetto の Django Analysis API 開発担当エージェントである。
 
 ## 必読コンテキスト
@@ -59,4 +57,4 @@ GET /api/v1/analysis/pets/{petId}/vaccination/next   次回接種推奨日
 
 1. テストが通ること（pytest または Django test runner — 初期構築時に選定して報告）
 2. `docker compose up -d` で django-api が起動すること
-3. `TODO.md` / `docs/10_Development_Environment*.md` / ルート `AGENTS.md` §10 の同期更新
+3. `TODO.md` / `docs/10_Development_Environment*.md` / ルート `AGENTS.md` §10 の同期更新"""

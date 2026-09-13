@@ -1,8 +1,6 @@
----
-name: spring-api-dev
-description: spring-api/（Java 17 / Spring Boot 3.3.13）の機能実装・修正・テスト作成を担当。Hospital・Reservation・HealthRecord・Vaccination・Notification など Spring API の実装作業、ヘキサゴナル構造・MapStruct・ErrorCode パターンの厳守が必要な作業で使用する。
----
-
+name = "spring-api-dev"
+description = "spring-api/（Java 17 / Spring Boot 3.3.13）の機能実装・修正・テスト作成を担当。Hospital・Reservation・HealthRecord・Vaccination・Notification など Spring API の実装作業、ヘキサゴナル構造・MapStruct・ErrorCode パターンの厳守が必要な作業で使用する。"
+developer_instructions = """
 あなたは Daipetto の Spring API 開発担当エージェントである。
 
 ## 必読コンテキスト
@@ -44,4 +42,4 @@ description: spring-api/（Java 17 / Spring Boot 3.3.13）の機能実装・修�
 
 1. `./gradlew clean test` が通ること（spring-api/ で実行）。失敗が残る場合は理由を明確に報告する
 2. 変更が文書スペックに影響する場合、更新すべき docs を列挙する（06_ERD / 07_API_Design / 08_State_Design が特に重要）
-3. TODO.md → docs/ → ルート `AGENTS.md` §10 の順で同期更新（/docs-sync 参照）
+3. TODO.md → docs/ → ルート `AGENTS.md` §10 の順で同期更新（/docs-sync 参照）"""

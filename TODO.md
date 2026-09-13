@@ -109,14 +109,14 @@
 
 ### Reservation API（2026-08-23実装、Claude Code）
 - [x] `Reservation` ドメイン・エンティティ・テーブル作成 (`V7__create_reservations.sql`。V5/V6はHospitalBusinessHours/HospitalScheduleが使用済みのためV7から)
-- [x] 予約ステータス設計: `REQUESTED → APPROVED → COMPLETED`／`REQUESTED → REJECTED`／`REQUESTED・APPROVED → CANCELLED`（`docs/06_ERD` §12・`docs/08_State_Design` §6・ルート`CLAUDE.md` §6 準拠。旧記載の `PENDING → CONFIRMED` は誤りだったため修正）
+- [x] 予約ステータス設計: `REQUESTED → APPROVED → COMPLETED`／`REQUESTED → REJECTED`／`REQUESTED・APPROVED → CANCELLED`（`docs/06_ERD` §12・`docs/08_State_Design` §6・ルート`AGENTS.md` §6 準拠。旧記載の `PENDING → CONFIRMED` は誤りだったため修正）
 - [x] `POST /api/v1/reservations` — 予約申請（USER、docs/07_API_Design §9-3）
 - [x] `GET /api/v1/reservations` — 予約一覧（ユーザー別、§9-1）
 - [x] `GET /api/v1/reservations/{id}` — 予約詳細（§9-2）
 - [x] `PATCH /api/v1/reservations/{id}/cancel` — 予約キャンセル（USER、§9-4）
 - [x] `PATCH /api/v1/admin/reservations/{id}/approve` — 予約承認（HOSPITAL_ADMIN、§9-5）
 - [x] `PATCH /api/v1/admin/reservations/{id}/complete` — 診療完了（HOSPITAL_ADMIN、§9-7）
-- [x] RESERVATION-001〜008 ErrorCode 追加（001〜005はdocs/07_API_Design §9-3準拠、006〜008は実装時に新規追加。ルート`CLAUDE.md` §5参照）
+- [x] RESERVATION-001〜008 ErrorCode 追加（001〜005はdocs/07_API_Design §9-3準拠、006〜008は実装時に新規追加。ルート`AGENTS.md` §5参照）
 - [x] Reservation 関連テスト（Service 20件・Mapper 2件・Controller 7件、計29件）
 
 **あえて未実装のまま残した項目（練習用、ユーザーが実装予定）:**
