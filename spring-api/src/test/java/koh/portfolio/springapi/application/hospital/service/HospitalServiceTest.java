@@ -22,6 +22,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -131,7 +133,7 @@ class HospitalServiceTest {
     // ------------------------------------------------------------------ update
 
     @Test
-    @DisplayName("病院情報更新成功時、更新された内容で保存される")
+    @DisplayName("病院情報更新成功時、情報列だけを更新しstatusは書き込まない")
     void update_hospital_success() {
         // given
         Long hospitalId = 1L;
@@ -141,17 +143,41 @@ class HospitalServiceTest {
         UpdateHospitalRequest request = new UpdateHospitalRequest("Tokyo Animal Hospital 2nd", "Tokyo, Shinjuku", "03-9999-9999");
 
         when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(hospital));
-        when(hospitalRepository.save(any(Hospital.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(hospitalRepository.updateInfo(any(Hospital.class))).thenReturn(true);
 
         // when
         updateHospitalService.execute(hospitalId, request);
 
         // then
         ArgumentCaptor<Hospital> captor = ArgumentCaptor.forClass(Hospital.class);
-        verify(hospitalRepository).save(captor.capture());
+        verify(hospitalRepository).updateInfo(captor.capture());
         assertThat(captor.getValue().getName()).isEqualTo("Tokyo Animal Hospital 2nd");
         assertThat(captor.getValue().getAddress()).isEqualTo("Tokyo, Shinjuku");
         assertThat(captor.getValue().getPhoneNumber()).isEqualTo("03-9999-9999");
+
+        // 同時の停止を取り消さないよう、全体保存・status更新を使わない
+        verify(hospitalRepository, never()).save(any(Hospital.class));
+        verify(hospitalRepository, never()).updateStatus(anyLong(), any(HospitalStatus.class), any(LocalDateTime.class));
+    }
+
+    @Test
+    @DisplayName("読み取り後に病院が無くなっていた場合、情報更新は0件となりHOSPITAL-001例外が発生する")
+    void update_hospital_fail_when_row_gone_before_write() {
+        // given
+        Long hospitalId = 1L;
+        LocalDateTime now = LocalDateTime.now();
+        Hospital hospital = new Hospital(hospitalId, "Tokyo Animal Hospital", "Tokyo, Shibuya", "03-1234-5678",
+                HospitalStatus.ACTIVE, now, now, null);
+
+        when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(hospital));
+        when(hospitalRepository.updateInfo(any(Hospital.class))).thenReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> updateHospitalService.execute(hospitalId,
+                new UpdateHospitalRequest("Tokyo Animal Hospital 2nd", "Tokyo, Shinjuku", null)))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                        .isEqualTo(HospitalErrorCode.HOSPITAL_NOT_FOUND.code()));
     }
 
     @Test
@@ -176,7 +202,7 @@ class HospitalServiceTest {
     // ----------------------------------------------------------------- suspend
 
     @Test
-    @DisplayName("病院停止成功時、statusがSUSPENDEDで保存される")
+    @DisplayName("病院停止成功時、status列だけをSUSPENDEDに更新し情報列は書き込まない")
     void suspend_hospital_success() {
         // given
         Long hospitalId = 1L;
@@ -185,15 +211,15 @@ class HospitalServiceTest {
                 HospitalStatus.ACTIVE, now, now, null);
 
         when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(hospital));
-        when(hospitalRepository.save(any(Hospital.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(hospitalRepository.updateStatus(anyLong(), any(HospitalStatus.class), any(LocalDateTime.class))).thenReturn(true);
 
         // when
         suspendHospitalService.execute(hospitalId);
 
         // then
-        ArgumentCaptor<Hospital> captor = ArgumentCaptor.forClass(Hospital.class);
-        verify(hospitalRepository).save(captor.capture());
-        assertThat(captor.getValue().getStatus()).isEqualTo(HospitalStatus.SUSPENDED);
+        verify(hospitalRepository).updateStatus(eq(hospitalId), eq(HospitalStatus.SUSPENDED), any(LocalDateTime.class));
+        verify(hospitalRepository, never()).save(any(Hospital.class));
+        verify(hospitalRepository, never()).updateInfo(any(Hospital.class));
     }
 
     @Test

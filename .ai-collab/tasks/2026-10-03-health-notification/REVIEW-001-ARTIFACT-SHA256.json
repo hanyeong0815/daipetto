@@ -1,0 +1,166 @@
+[
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001.patch",
+    "sha256": "7932F6AB9BEEDCBACD28035602F9E0F599415FD15A0057AB7FAEB23CDFA14272"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/dto/HealthRecordDto.java",
+    "sha256": "396B7B535B79F9AC89C1845BF89E68F0402EC4B7B965DB0ABCE0B277E377E245"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/service/DeleteHealthRecordService.java",
+    "sha256": "2FBDA0B5E950CB4CCEC9648B9968FB34C4531342F52518E04AF8AEE3803B1BFF"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/service/HealthRecordService.java",
+    "sha256": "1DAA2BB7C259437011F17C55379A75AB9F7C390B2B7A3A2620F422225679FDC6"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/service/UpdateHealthRecordService.java",
+    "sha256": "3025A773857E6989C9152A1EDECC9638136EF3CBCB43F8115BA907EFAC40128D"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/CreateHealthRecordUseCase.java",
+    "sha256": "7C88259E34C6D5956EC954F30F6C537CD47E259A6C0D689A7B3EE768A0A91364"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/DeleteHealthRecordUseCase.java",
+    "sha256": "87C5D255FC81E841868A2C246A8E9DE4EA59CA93A86FD818ADC93337329B35EC"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/GetHealthRecordListUseCase.java",
+    "sha256": "7D00963FEB8DDA5989404DC089BCEFF5AE2779551607A4244FA3A715FF9A2B1D"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/UpdateHealthRecordUseCase.java",
+    "sha256": "84782CF3CD72F3CD290151CC4ACC407391983DF0DD10237EF25D4815CF249A1E"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/application/notification/dto/NotificationDto.java",
+    "sha256": "6AA8340D59ADE21F6D490F4467A9CDBC7EEEFC402020EB297412F265C0F35644"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/application/notification/service/NotificationService.java",
+    "sha256": "13AB70745DAE96E5254BB1D835EAE66236DB9ED26E993F81B51DF0DFE06A4237"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/application/notification/usecase/GetNotificationListUseCase.java",
+    "sha256": "014C28DEBE8190F454B7FCA1AA5CB0E7F47039636A379767F2E64AEDEC0E139F"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/application/notification/usecase/MarkNotificationAsReadUseCase.java",
+    "sha256": "C19C960674D2129E3943A70D528AE034F77145CA2B2CBC148F1E779F02658757"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/application/notification/usecase/NotifyReservationEventUseCase.java",
+    "sha256": "72B26C32F32ABE152000C408A229D48A0AD468BC805928EF8BEAA5D591DB525B"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/exception/HealthRecordErrorCode.java",
+    "sha256": "E6B5F2272F749D3CDBD58BD31F22B2A53641496B96430D3A3BB7B110728ACE05"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/exception/HealthRecordException.java",
+    "sha256": "B00231C3F180A7033B576C0755AB5BE3C24A2E872C151D2B93F80FB085527083"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/model/HealthRecord.java",
+    "sha256": "DAA6BE71E8567434A2DED7EC3AA968FF1E53FC8AD333954F6CA0E7B0532ADAC6"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/port/HealthRecordRepository.java",
+    "sha256": "37D854023D4031C9DC6228ACD65793C8669A5317372C43E717968642CA9A56BD"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/exception/NotificationErrorCode.java",
+    "sha256": "F3DE716B37FDEAF7224302220330E33B67E129F37706C01D89D12AAB093D216C"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/exception/NotificationException.java",
+    "sha256": "300557D7E84BC41DB98FBC78A344DA4F8765780D6FB8F55503F51C5054148FE7"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/Notification.java",
+    "sha256": "BDC7C293621AC1E1368BFDD5C4FF7039E248E96B28A390C8DDD6DAEA0E8303AF"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/NotificationType.java",
+    "sha256": "506222312E932141E80C23024C51D20CE14C39EB06C82E1B445F2C2241C2A6EC"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/port/NotificationRepository.java",
+    "sha256": "F83A64A6D626DF2B46DCB3F09A925E133639C8A9AA0358DECC8EBC8DDD68C764"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordEntity.java",
+    "sha256": "7FCFA49315E64B53762E8937774FB770DDAE7F8E66EC3C92EC48DD78FDD653B9"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordJpaRepository.java",
+    "sha256": "0DDE437596EE6FB5BE79BF2BAE05E782487E90998CFD782F0CBA0D843D7C2E18"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordMapper.java",
+    "sha256": "9D37AC1334A56289950A93C60FC06B26753314BC1F3A25C9ABB783EF4B5C924E"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordPersistenceAdapter.java",
+    "sha256": "7499041A56DD78548E4370AE02D40961B29A22C5D4CF6C47D3BEBA537C196521"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationEntity.java",
+    "sha256": "F5286ED9C33BF158B20DED94172FC277BD86316BD56550263A0FD9B6E3C2D235"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationJpaRepository.java",
+    "sha256": "89A153B23716110061FA1D5CE577221C67D5B966A603AAF33B76D30CB7094C5C"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationMapper.java",
+    "sha256": "FF5E575FCF58555E2F72874DB2AC67C861D0061FFEC05C82B884B42229721589"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationPersistenceAdapter.java",
+    "sha256": "32378C94FEB0A95ACA038A316CAD91ECD9611E8243BB04E5E8A9D31CB929591D"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/presentation/healthrecord/HealthRecordController.java",
+    "sha256": "C4188E2AAD0679A1C3E2B18E4D9D12E1A24BA0BF5A43376B7F7E555B33077B89"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/java/koh/portfolio/springapi/presentation/notification/NotificationController.java",
+    "sha256": "0BC5802E7183C4AC90DB1AFF4E28DF25C1E53BE76346AA42FB21BF9E99037AC0"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/resources/db/migration/V10__create_notifications.sql",
+    "sha256": "D8322A6F8211EE3B8454882887C414E69E8B46500C31BC26916C35A74422D8ED"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/main/resources/db/migration/V9__create_health_records.sql",
+    "sha256": "8A3792804ECAF1926B38F69DE6D65D2B856030D688F4FA08938F8ED704839997"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/test/java/koh/portfolio/springapi/application/healthrecord/service/HealthRecordServiceTest.java",
+    "sha256": "D90FD53B03DF7784AE38985B5E3FC4317A95C2A8EBF27E90CC871B318039692F"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/test/java/koh/portfolio/springapi/application/notification/service/NotificationServiceTest.java",
+    "sha256": "36B8EC57AE4D3DA8944F0E2CF905D17B5E134E830B423DE78195E9C52F9F4334"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordMapperTest.java",
+    "sha256": "B7FBB6C782B69D936C040D155C2C13098C2CF1083BE1F1562FDE311122FCF782"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationMapperTest.java",
+    "sha256": "9EE93E88B19D08657D7F289512D67B4101E6B732E2ED03CF265781BDC292C8FB"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/test/java/koh/portfolio/springapi/presentation/healthrecord/HealthRecordControllerTest.java",
+    "sha256": "1D2A600E49B9109D39085217DF17540400516480B34731BCFA392D35E6A3CF6B"
+  },
+  {
+    "path": ".ai-collab/tasks/2026-10-03-health-notification/REVIEW-001-untracked/spring-api/src/test/java/koh/portfolio/springapi/presentation/notification/NotificationControllerTest.java",
+    "sha256": "39586054BF8C92FE6225E6BF25852844E6BF3C6A64D995B93D808A3E27F1934C"
+  }
+]

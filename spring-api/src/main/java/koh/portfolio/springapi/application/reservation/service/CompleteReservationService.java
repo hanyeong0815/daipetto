@@ -1,7 +1,9 @@
 package koh.portfolio.springapi.application.reservation.service;
 
+import koh.portfolio.springapi.application.notification.usecase.NotifyReservationEventUseCase;
 import koh.portfolio.springapi.application.reservation.usecase.CompleteReservationUseCase;
 import koh.portfolio.springapi.common.exception.Preconditions;
+import koh.portfolio.springapi.domain.notification.model.NotificationType;
 import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
 import koh.portfolio.springapi.domain.reservation.model.Reservation;
 import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
@@ -13,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CompleteReservationService implements CompleteReservationUseCase {
     private final ReservationRepository reservationRepository;
+    private final NotifyReservationEventUseCase notifyReservationEventUseCase;
 
     @Override
     @Transactional
@@ -27,5 +30,8 @@ public class CompleteReservationService implements CompleteReservationUseCase {
                         reservation.getId(), reservation.getStatus(), completed.getStatus(), completed.getUpdatedAt()),
                 ReservationErrorCode.INVALID_STATE_TRANSITION
         );
+
+        notifyReservationEventUseCase.execute(
+                reservation.getUserId(), reservation.getId(), NotificationType.TREATMENT_COMPLETED);
     }
 }

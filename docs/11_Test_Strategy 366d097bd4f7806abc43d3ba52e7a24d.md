@@ -10,7 +10,7 @@
 | Document | Test Strategy |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-09-13 |
+| Updated | 2026-10-03 |
 
 ---
 
@@ -169,6 +169,12 @@ flowchart TB
 | HEALTH-T003 | 体重に負数入力 | Validation Error |
 | HEALTH-T004 | 健康記録一覧取得 | 登録済データ取得 |
 | HEALTH-T005 | 健康記録削除 | deleted_at設定 |
+| HEALTH-T006 | 一部項目のみのPATCH（例: memoのみ）・空のPATCH | 未指定項目は既存値を維持 |
+| HEALTH-T007 | symptom / memo に空文字を指定したPATCH | 該当項目のみNULLに消去 |
+| HEALTH-T008 | 論理削除のcommit後に書き込まれるPATCH | HEALTH-001、記録は削除状態のまま |
+| HEALTH-T009 | 別項目への更新がcommitされるまで待たされたPATCH（例: memo更新中のweightのみ・空のPATCH、別項目を変える2つのPATCHの同時実行） | 未指定項目は確定済みの最新値を維持し、双方の変更が残る |
+
+> HEALTH-T008・T009の同時実行は単体テスト（モック）とH2では再現できない。単体テストは行ロック付き読み取りを使うこと、`@DataJpaTest`はその読み取りが論理削除済みを除外することまでを確認し、インターリーブ自体は実PostgreSQLの受け入れスクリプト（`.ai-collab/tasks/2026-10-03-health-notification/scripts/`）で確認している。
 
 ---
 
@@ -177,7 +183,9 @@ flowchart TB
 | **Test ID** | **観点** | **期待結果** |
 | --- | --- | --- |
 | HOSP-T001 | 病院一覧取得 | ACTIVE病院のみ取得 |
-| HOSP-T002 | 停止病院への予約 | RESERVATION-002 |
+| HOSP-T002 | 停止病院への予約 | RESERVATION-009（2026-09-13 R-05対応で002から変更。RSV-T007と同一観点） |
+| HOSP-T003 | 停止の直前に読み取った内容での病院情報更新 | statusはSUSPENDEDのまま（情報列だけを更新） |
+| HOSP-T004 | 情報更新の直前に読み取った内容での病院停止 | 更新済みの情報を古い値で上書きしない |
 | SCH-T001 | AVAILABLE予約枠取得 | 取得成功 |
 | SCH-T002 | BLOCKED予約枠予約 | RESERVATION-003 |
 | SCH-T003 | 過去予約枠予約 | RESERVATION-005 |

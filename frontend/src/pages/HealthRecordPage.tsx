@@ -1,5 +1,6 @@
 import { useState, FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
+import { todayInJapan } from '../utils/date'
 
 type RecordType = 'symptom' | 'weight' | 'vaccine' | 'medicine' | 'note'
 
@@ -23,7 +24,7 @@ export default function HealthRecordPage() {
   useParams()
   const [showForm, setShowForm] = useState(false)
   const [recordType, setRecordType] = useState<RecordType>('symptom')
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [date, setDate] = useState(todayInJapan)
   const [note, setNote] = useState('')
   const [weight, setWeight] = useState('')
 

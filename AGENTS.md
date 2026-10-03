@@ -56,7 +56,7 @@ Rules:
 2. UseCase = interface, Service = implementation. Simple domains (User, Pet): one Service may implement several UseCases. Complex domains (Reservation): one Service per UseCase.
 3. Business errors: domain `ErrorCode` enum (separate `code()`, not `name()`) + `CustomException` + `Preconditions.validate(...)`. All responses via `ApiResponse`. `GlobalExceptionHandler` handles CustomException / AccessDeniedException / MethodArgumentNotValidException / Exception.
 4. `userId` comes from `Authentication.getPrincipal()` as `Long` — never in request DTOs.
-5. Prefer explicit `@Modifying` update queries over dirty checking for important state changes.
+5. Prefer explicit `@Modifying` update queries over dirty checking for important state changes. **Never persist an update by `save()`-ing a previously read entity**: write only the columns the operation owns, put its precondition in the `WHERE` (`deleted_at IS NULL`, expected status, owning parent id), and treat 0 affected rows as not-found/conflict. A full save rewrites `status`/`deleted_at` with stale values and silently undoes concurrent suspensions and deletions (docs/12 §3-12). `save()` is for inserts only. When a partial update fills unsent fields from the read row, read it with `@Lock(PESSIMISTIC_WRITE)` (`findByIdForUpdate`) so a concurrent commit to an unsent column is not written back.
 6. Role checks via `@PreAuthorize("hasAuthority('ROLE_...')")`; SecurityConfig only guarantees `authenticated()`.
 7. Owner checks with the `Preconditions.validate` pattern (see `UpdatePetService`).
 8. Domain state transitions are methods returning a new immutable instance (see `Hospital.suspend()`, `Reservation.approve()`); Lombok on Domain: `@Getter`/constructors only, never `@Setter`/`@Data`.
@@ -97,7 +97,11 @@ Error messages in Japanese. New codes follow `{DOMAIN}-{seq}`; `{DOMAIN}-999` is
 | RESERVATION-007 | 予約者本人でない | 403 |
 | RESERVATION-008 | 不正な状態遷移（同時実行で負けた側を含む） | 409 |
 | RESERVATION-009 | SUSPENDED病院への予約 | 409 |
-| AUTH/USER/PET/HOSPITAL/RESERVATION-999 | domain default | 500 |
+| HEALTH-001 | 存在しない健康記録 | 404 |
+| HEALTH-002 | 存在しないペット / 他ユーザーのペット | 403 |
+| NOTIFICATION-001 | 存在しない通知 | 404 |
+| NOTIFICATION-002 | 受信者本人でない | 403 |
+| AUTH/USER/PET/HOSPITAL/RESERVATION/HEALTH/NOTIFICATION-999 | domain default | 500 |
 | VALIDATION-001 | `@Valid` failure (GlobalExceptionHandler) | 400 |
 | SERVER-001 | unhandled exception fallback | 500 |
 
@@ -121,16 +125,17 @@ Reservation transitions (only these; enforced in the Domain model):
 | APPROVED | COMPLETED | HOSPITAL_ADMIN |
 | APPROVED | CANCELLED | USER |
 
-Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COMPLETED→CANCELLED. Max 1 REQUESTED/APPROVED per schedule_id. Approve/reject/complete should create a Notification (docs/08 §6-6 — Notification domain not built yet).
+Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COMPLETED→CANCELLED. Max 1 REQUESTED/APPROVED per schedule_id. Approve/reject/complete create a Notification in the same transaction, only when the transition succeeds (docs/08 §6-6, docs/07 §10).
 `hospital_schedules.status` only expresses hospital-side availability; "already booked" is judged from `reservations` (no auto-BLOCK on booking — docs/06 §18).
 
 ## 7. DB / Flyway
 
 - DB changes only via Flyway; logical delete (`deleted_at`) is the default.
-- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile).
-- ⚠ Unmerged `feat/spring/pet-fields` also uses **V4** (`V4__alter_pets_add_columns.sql` — breed/neutered/microchip_number). Renumber one side at merge. New migrations start at **V9**; check every branch for number collisions before numbering.
+- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile), V9 health_records, V10 notifications.
+- ⚠ Unmerged `feat/spring/pet-fields` also uses **V4** (`V4__alter_pets_add_columns.sql` — breed/neutered/microchip_number). Renumber one side at merge. New migrations start at **V11**; check every branch for number collisions before numbering.
+- `notifications.vaccination_id` exists as a column with no FK yet; add the constraint when `vaccinations` is created (docs/06 §15 note).
 - ⚠ V8 fails on an existing database that already holds duplicate active reservations for one schedule; clean those rows before applying.
-- Not created yet: health_records / vaccinations / notifications / hospital_admins (definitions in docs/06). Because `hospital_admins` is missing, admin APIs cannot verify "own hospital" — hospital-affiliation checks are intentionally skipped for now.
+- Not created yet: vaccinations / hospital_admins (definitions in docs/06). Because `hospital_admins` is missing, admin APIs cannot verify "own hospital" — hospital-affiliation checks are intentionally skipped for now.
 
 ## 8. Test rules
 
@@ -140,7 +145,7 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 - Principal is `Long`: use `new UsernamePasswordAuthenticationToken(1L, null, authorities)` — `.with(user(...))` fails.
 - Most unit tests mock repositories. H2 **is** available for `@DataJpaTest` (`application-test.yml`, `MODE=PostgreSQL`, `ddl-auto=create-drop`, Flyway disabled) — see `RefreshTokenPersistenceAdapterTest`; Testcontainers is not introduced.
 - Mocked repositories prove neither real SQL nor concurrency. Null-tolerant `@Query` bugs escape them (docs/12 §3-10) and so do races (docs/12 §3-11). No PostgreSQL concurrency test exists yet.
-- Verify: `./gradlew clean test` in `spring-api/` (161 green as of 2026-09-23).
+- Verify: `./gradlew clean test` in `spring-api/` (209 green as of 2026-10-04).
 
 ## 9. Environment
 
@@ -151,21 +156,24 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 | Django | Python 3.12.10 / DRF 3.15.2 (not started) |
 | DB | PostgreSQL 16.9 (db/user: daipetto) |
 | Ports | frontend 5173 / spring 8080 / django 8000 / postgres 5432 |
+| Timezone | JST `Asia/Tokyo` everywhere (Japan-facing service). Spring sets the JVM default in `main` from `ServerTime.ZONE_ID`; postgres container `TZ=Asia/Tokyo`; frontend computes "today" with `todayInJapan()` (`src/utils/date.ts`), never `toISOString()`; Django `TIME_ZONE` must match when built. |
 
 Start: `docker compose up -d` (postgres) → `./gradlew bootRun` / `npm run dev`.
 API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (`VITE_API_BASE_URL_WEB` / `_ANDROID` / `_IOS`).
 
 ## 10. Status (2026-09-13)
 
-**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · Frontend all screens SC-001〜015 (auth·pet·hospital wired to real API) · ProtectedRoute + role guards · token restore on reload.
+**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · HealthRecord CRUD · Notification (list/read + generation on reservation approve/reject/complete, 2026-10-03) · Frontend all screens SC-001〜015 (auth·pet·hospital wired to real API) · ProtectedRoute + role guards · token restore on reload.
 
-**Practice gaps** (user implements these personally — do NOT implement unless explicitly asked; list in TODO.md is authoritative): none outstanding as of this date.
+**Practice gaps** (user implements these personally — do NOT implement unless explicitly asked; list in TODO.md is authoritative): none outstanding. The user waived the gap for the HealthRecord/Notification round (2026-10-03); the §11 rule still applies to future domains unless they waive it again.
+
+**HealthRecord/Notification review (Codex REVIEW-001, 2026-10-03)** in `.ai-collab/tasks/2026-10-03-health-notification/`: partial PATCH erased omitted fields (R-01), and stale full-entity saves could resurrect deleted health records (R-02) or undo a hospital suspension (R-03, pre-existing). Fixed with column-specific conditional updates (§3 rule 5), applied also to the same pattern in Pet and HospitalBusinessHours updates. Response in `HANDOFF-002.md`. Re-review REVIEW-002 (2026-10-04) accepted those and found R-04: a concurrent partial PATCH still wrote back stale values of unsent fields; fixed by reading the health record with a row lock (§3 rule 5). Response in `HANDOFF-003.md`.
 
 **Review round 2 (Codex REVIEW-002, 2026-09-14)**: R-02〜R-08 accepted as resolved; R-01 stayed open because the conditional revoke did not serialize refresh against the per-user bulk revoke in login/logout. Fixed on 2026-09-23 by locking the user row in all three operations (see §3 rule 9); response in `HANDOFF-003.md`. That also closes the previously deferred concurrent-login residual.
 
 **Review round 2026-09-13** (Codex REVIEW-001 → fixes in `.ai-collab/tasks/2026-09-13-implementation-review/HANDOFF-002.md`): R-01〜R-08 addressed — refresh rotation now single-consumption (conditional revoke must affect exactly 1 row), refresh tokens carry `jti`, access/refresh separated by a `type` claim so a refresh token used as Bearer no longer throws inside the filter, reservations are protected by a DB-level partial unique index plus expected-status conditional updates, SUSPENDED hospitals reject new reservations (RESERVATION-009), deleted pets no longer break reservation history, and the frontend refresh queue settles every waiter on failure. **Still unverified**: real PostgreSQL concurrency runs for the race fixes.
 
-**Not started**: HealthRecord / Vaccination / Notification APIs · schedule auto-generation Scheduler (from `hospital_business_hours`) · vaccine reminder Scheduler · django-api entirely · frontend wiring for reservation/health/notification/admin(reservation·user) screens.
+**Not started**: Vaccination API (needed before the VACCINATION notification type and its reminder can work) · schedule auto-generation Scheduler (from `hospital_business_hours`) · vaccine reminder Scheduler · django-api entirely · frontend wiring for reservation/health/notification/admin(reservation·user) screens.
 
 **Unmerged branches**: `feat/spring/pet-fields` (pet columns + docs 06/07 updates); verify current unmerged set with `git branch --all` and `git log` before relying on this line — not re-audited in this update.
 

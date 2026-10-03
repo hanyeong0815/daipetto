@@ -167,7 +167,7 @@ class HospitalBusinessHoursServiceTest {
     // ----------------------------------------------------------------- update
 
     @Test
-    @DisplayName("営業時間更新成功時、変更内容が保存される")
+    @DisplayName("営業時間更新成功時、時間列だけを条件付きで更新する")
     void update_hospital_business_hours_success() {
         // given
         Long hospitalId = 1L;
@@ -180,18 +180,42 @@ class HospitalBusinessHoursServiceTest {
         );
 
         when(hospitalBusinessHoursRepository.findById(businessHoursId)).thenReturn(Optional.of(businessHours));
-        when(hospitalBusinessHoursRepository.save(any(HospitalBusinessHours.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(hospitalBusinessHoursRepository.updateHours(any(HospitalBusinessHours.class))).thenReturn(true);
 
         // when
         updateHospitalBusinessHoursService.execute(hospitalId, businessHoursId, request);
 
         // then
         ArgumentCaptor<HospitalBusinessHours> captor = ArgumentCaptor.forClass(HospitalBusinessHours.class);
-        verify(hospitalBusinessHoursRepository).save(captor.capture());
+        verify(hospitalBusinessHoursRepository).updateHours(captor.capture());
         assertThat(captor.getValue().getOpenTime()).isEqualTo(LocalTime.of(10, 0));
         assertThat(captor.getValue().getCloseTime()).isEqualTo(LocalTime.of(19, 0));
         assertThat(captor.getValue().getSlotDurationMinutes()).isEqualTo(20);
         assertThat(captor.getValue().getDayOfWeek()).isEqualTo(DayOfWeek.MONDAY);
+
+        // mergeは削除済みの行を作り直し得るため使わない
+        verify(hospitalBusinessHoursRepository, never()).save(any(HospitalBusinessHours.class));
+    }
+
+    @Test
+    @DisplayName("読み取り後に営業時間が削除されていた場合、更新は0件となりHOSPITAL-003例外が発生する")
+    void update_hospital_business_hours_fail_when_deleted_after_read() {
+        // given
+        Long hospitalId = 1L;
+        Long businessHoursId = 10L;
+        LocalDateTime now = LocalDateTime.now();
+        HospitalBusinessHours businessHours = new HospitalBusinessHours(businessHoursId, hospitalId, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(18, 0), null, null, 30, now, now);
+
+        when(hospitalBusinessHoursRepository.findById(businessHoursId)).thenReturn(Optional.of(businessHours));
+        when(hospitalBusinessHoursRepository.updateHours(any(HospitalBusinessHours.class))).thenReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> updateHospitalBusinessHoursService.execute(hospitalId, businessHoursId,
+                new UpdateHospitalBusinessHoursRequest(LocalTime.of(10, 0), LocalTime.of(19, 0), null, null, 20)))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                        .isEqualTo(HospitalErrorCode.HOSPITAL_BUSINESS_HOURS_NOT_FOUND.code()));
     }
 
     @Test

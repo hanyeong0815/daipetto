@@ -1,6 +1,8 @@
 package koh.portfolio.springapi.application.reservation.service;
 
+import koh.portfolio.springapi.application.notification.usecase.NotifyReservationEventUseCase;
 import koh.portfolio.springapi.common.exception.CustomException;
+import koh.portfolio.springapi.domain.notification.model.NotificationType;
 import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
 import koh.portfolio.springapi.domain.reservation.model.Reservation;
 import koh.portfolio.springapi.domain.reservation.model.ReservationStatus;
@@ -20,6 +22,7 @@ import static org.mockito.Mockito.*;
 class ReservationStateTransitionServiceTest {
 
     private ReservationRepository reservationRepository;
+    private NotifyReservationEventUseCase notifyReservationEventUseCase;
     private ApproveReservationService approveReservationService;
     private CancelReservationService cancelReservationService;
     private CompleteReservationService completeReservationService;
@@ -31,10 +34,15 @@ class ReservationStateTransitionServiceTest {
     @BeforeEach
     void setUp() {
         reservationRepository = mock(ReservationRepository.class);
-        approveReservationService = new ApproveReservationService(reservationRepository);
+        notifyReservationEventUseCase = mock(NotifyReservationEventUseCase.class);
+        approveReservationService = new ApproveReservationService(reservationRepository, notifyReservationEventUseCase);
         cancelReservationService = new CancelReservationService(reservationRepository);
-        completeReservationService = new CompleteReservationService(reservationRepository);
-        rejectReservationService = new RejectReservationService(reservationRepository);
+        completeReservationService = new CompleteReservationService(reservationRepository, notifyReservationEventUseCase);
+        rejectReservationService = new RejectReservationService(reservationRepository, notifyReservationEventUseCase);
+    }
+
+    private void verifyNoNotification() {
+        verify(notifyReservationEventUseCase, never()).execute(anyLong(), anyLong(), any(NotificationType.class));
     }
 
     private Reservation reservation(ReservationStatus status) {
@@ -83,6 +91,9 @@ class ReservationStateTransitionServiceTest {
 
         // then
         verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.APPROVED);
+
+        // NOTI-T001
+        verify(notifyReservationEventUseCase).execute(userId, reservationId, NotificationType.RESERVATION_APPROVED);
     }
 
     @Test
@@ -132,6 +143,9 @@ class ReservationStateTransitionServiceTest {
         assertInvalidStateTransition(() -> approveReservationService.execute(reservationId));
 
         verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.APPROVED);
+
+        // 遷移が成立しなかった場合は通知も作らない
+        verifyNoNotification();
     }
 
     @Test
@@ -233,6 +247,9 @@ class ReservationStateTransitionServiceTest {
 
         // then
         verifyTransition(ReservationStatus.APPROVED, ReservationStatus.COMPLETED);
+
+        // NOTI-T003
+        verify(notifyReservationEventUseCase).execute(userId, reservationId, NotificationType.TREATMENT_COMPLETED);
     }
 
     @Test
@@ -274,6 +291,9 @@ class ReservationStateTransitionServiceTest {
 
         // then
         verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.REJECTED);
+
+        // NOTI-T002
+        verify(notifyReservationEventUseCase).execute(userId, reservationId, NotificationType.RESERVATION_REJECTED);
     }
 
     @Test
@@ -335,6 +355,8 @@ class ReservationStateTransitionServiceTest {
         assertInvalidStateTransition(() -> rejectReservationService.execute(reservationId));
 
         verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.REJECTED);
+
+        verifyNoNotification();
     }
 
     @Test

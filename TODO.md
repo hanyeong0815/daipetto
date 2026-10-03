@@ -1,6 +1,6 @@
 # Daipetto — 作業TODOリスト
 
-最終更新: 2026-09-23
+最終更新: 2026-10-03
 
 ---
 
@@ -137,17 +137,45 @@
 - [x] `PATCH /api/v1/admin/reservations/{id}/reject` — 予約却下（HOSPITAL_ADMIN/SYSTEM_ADMIN、docs/07_API_Design §9-6。2026-09-13、ユーザー実装＋Claude Codeレビューで完成。詳細は上部の完了済みセクション参照）
 - [x] Reservation 関連テスト（Service 28件・Mapper 2件・Controller 7件、計37件）
 
-### Notification API
-- [ ] `Notification` ドメイン・エンティティ・テーブル作成
-- [ ] `GET /api/v1/notifications` — 通知一覧
-- [ ] `PATCH /api/v1/notifications/{id}/read` — 既読
-- [ ] 予約確定・リマインダー時の通知生成ロジック
-- [ ] 予防接種リマインダー Scheduler
+### Notification API（2026-10-03実装、Claude Code）
+- [x] `Notification` ドメイン・エンティティ・テーブル作成（`V10__create_notifications.sql`）
+  - `vaccination_id`は列のみ作成しFKは保留（`vaccinations`未作成。`docs/06_ERD` §15注記）
+- [x] `GET /api/v1/notifications` — 通知一覧（作成日時の降順、本人宛のみ）
+- [x] `PATCH /api/v1/notifications/{id}/read` — 既読（未読のみを対象にした条件付きUPDATEで冪等）
+- [x] 予約承認・却下・診療完了時の通知生成（`NotifyReservationEventUseCase`、`08_State_Design` §6-6）
+  - 状態遷移と同一トランザクション。遷移が成立しなかった場合は通知を作らない
+  - キャンセルは §6-6 に通知定義が無いため生成しない
+- [x] `NOTIFICATION-001`（存在しない通知）・`NOTIFICATION-002`（受信者本人でない）追加
+- [ ] 予防接種リマインダー Scheduler（`VACCINATION`種別。Vaccination ドメイン実装後）
 
-### Health Record API
-- [ ] `HealthRecord` エンティティ・テーブル作成
-- [ ] `POST /api/v1/pets/{petId}/health-records`
-- [ ] `GET /api/v1/pets/{petId}/health-records`
+### Health Record API（2026-10-03実装、Claude Code）
+- [x] `HealthRecord` ドメイン・エンティティ・テーブル作成（`V9__create_health_records.sql`）
+- [x] `POST /api/v1/pets/{petId}/health-records` — 登録（`recordedDate`省略時は当日）
+- [x] `GET /api/v1/pets/{petId}/health-records` — 一覧（記録日の降順、論理削除分を除く）
+- [x] `PATCH /api/v1/health-records/{id}` — 更新（docs 6-3のPUTはプロジェクト規約に合わせPATCHへ変更）
+- [x] `DELETE /api/v1/health-records/{id}` — 論理削除
+- [x] `HEALTH-001`（存在しない健康記録）・`HEALTH-002`（存在しない/他ユーザーのペット）追加
+  - 健康記録は`user_id`を持たないため所有者判定はペット経由
+
+> **この回は練習用ギャップを作っていない**（ユーザーの指示: 「이번엔 따로 안남겨도 돼」）。新ドメインに1〜2機能を残す方針（`AGENTS.md` §11-1）は次回以降も有効。
+
+**Codexレビュー（REVIEW-001、2026-10-03）への対応 — Claude Code**
+- [x] R-01 [P1] 健康記録のPATCHで未指定項目が消える → `HealthRecord.patch`で未指定（null）は既存値を維持、`symptom`/`memo`は空文字で消去
+- [x] R-02 [P2] PATCHが同時に論理削除された記録を復活させる → 内容列だけを`deleted_at IS NULL`の条件付きUPDATEで書き、0件ならHEALTH-001
+- [x] R-03 [P2・既存] 病院情報の更新が停止を取り消す → 情報更新（name/address/phone）と停止（status）を別UPDATEに分離（逆方向の上書きも防止）
+- [x] 同じ「読み取ったエンティティ全体を保存」パターンをペット更新（論理削除の復活）と営業時間更新（削除行の作り直し）でも修正。予約枠のBLOCKED切替はstatus1列のみの操作のため対象外
+- [x] D-01 文書の実装状況表記（ERDの`未作成`、AGENTS.md §6）を修正。あわせて`docs/11` HOSP-T002の期待値をRESERVATION-002→009に修正（2026-09-13のR-05対応時の同期漏れ）
+- 検証: `./gradlew clean test` 208件green。実PostgreSQLで決定的インターリーブ（SQLが競合更新を保持→HTTPがUPDATEで待機→commit）による受け入れ確認10件全通過。Codexの再現スクリプト（無改変）はR-01の欠陥アサーションで停止＝欠陥が再現しないことを確認
+
+**Codex再レビュー（REVIEW-002、2026-10-04）への対応 — Claude Code**
+- [x] R-04 [P2] 同時実行の部分PATCHが未指定項目を古い値で戻す → 健康記録の更新は行ロック付きで読み取り（`findByIdForUpdate`）、別PATCH・論理削除と直列化
+- [x] T-01 [P3] スモークの記録日アサーションがUTC日付と比較していた → サーバー時刻（Asia/Tokyo）で比較し、日付境界をまたぐ場合も許容
+- [x] 基準タイムゾーンをJST（Asia/Tokyo）に統一（ユーザー指示、日本向けサービスのため）: Spring APIは`main`でJVM既定を固定、`ServerTime`をAsia/SeoulからAsia/Tokyoへ、フロントの「今日」をUTC計算（`toISOString()`）からJSTへ（`docs/07` §2-7、`docs/12` §3-13）
+- [ ] **要判断（既存の文書・実装の食い違い）**: `docs/07` §2-7 の例はオフセット付き（`2026-05-17T10:00:00+09:00`）だが、APIは`LocalDateTime`をオフセットなし（`2026-05-17T10:00:00`）で返している。オフセットを付けるか、文書をオフセットなし（JST）に直すかはユーザー判断
+- 検証: `./gradlew clean test` 209件green。実PostgreSQLでR-04受け入れ3件（weightのみ・空のPATCH・別項目の2PATCH同時）、REVIEW-001受け入れ10件、スモーク14件（00:43 KST＝UTC日付が前日の時間帯）、通知チェック4件、認証/予約e2e 12件が全通過
+- [ ] **要判断（既存の文書・実装の食い違い）**: `docs/07_API_Design` §5-4 はペット更新を「部分更新」としているが、実装は`birthDate`/`weight`省略時にNULLで上書きする全体置換。フロントは常にフォーム全体を送るため実害は出ていない。実装を部分更新に揃えるか、文書を全体置換に直すかはユーザー判断（今回は変更していない）
+
+**検証（2026-10-03）**: テスト31件追加で`./gradlew clean test` 192件green。実PostgreSQL（捨てDB `daipetto_hn`）でV9/V10適用・`ddl-auto: validate`通過を確認し、API 14項目のスモークも全通過（`.ai-collab/tasks/2026-10-03-health-notification/scripts/smoke-health-notification.mjs`）
 
 ---
 
@@ -182,11 +210,12 @@
 - [x] プラットフォーム別APIベースURL — `Capacitor.getPlatform()`で実行時に自動判定（Web/Android/iOS）、`.env`の手動書き換えが不要に
 
 ### 実 API 接続が必要な画面（残り）
-- [ ] 予約 (`ReservationPage`) — Reservation API 連動（バックエンド未実装のため連動不可）
-- [ ] 予約履歴 (`ReservationHistoryPage`) — Reservation API 連動
-- [ ] 健康記録 (`HealthRecordPage`) — HealthRecord API 連動
-- [ ] 通知 (`NotificationsPage`) — Notification API 連動
-- [ ] 管理者画面 (`AdminReservationPage` / `AdminUserPage`) — 各API連動（バックエンド未実装のため連動不可）
+- [ ] 予約 (`ReservationPage`) — Reservation API 連動（バックエンド実装済み・連動可能）
+- [ ] 予約履歴 (`ReservationHistoryPage`) — Reservation API 連動（バックエンド実装済み・連動可能）
+- [ ] 健康記録 (`HealthRecordPage`) — HealthRecord API 連動（バックエンド実装済み・連動可能）
+- [ ] 通知 (`NotificationsPage`) — Notification API 連動（バックエンド実装済み・連動可能）
+- [ ] 管理者画面 `AdminReservationPage` — 予約承認/却下/完了API連動（バックエンド実装済み・連動可能）
+- [ ] 管理者画面 `AdminUserPage` — ユーザー管理API連動（バックエンド未実装のため連動不可）
 
 ### 状態管理追加
 - [ ] `reservationStore.ts` — 予約一覧・詳細

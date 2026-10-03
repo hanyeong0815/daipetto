@@ -14,4 +14,8 @@ public interface PetRepository {
     List<Pet> findAllByUserId(Long userId);
     Optional<Pet> findByUserIdAndName(Long userId, String name);
     void softDelete(Long id, LocalDateTime deletedAt);
+
+    // プロフィール列だけを、論理削除されていない行に限って更新する。
+    // エンティティ全体を保存すると、読み取り後にcommitされた削除を deleted_at=NULL で取り消してしまう
+    boolean updateProfile(Pet pet);
 }

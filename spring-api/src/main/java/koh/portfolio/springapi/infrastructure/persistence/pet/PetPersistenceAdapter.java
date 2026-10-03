@@ -53,4 +53,17 @@ public class PetPersistenceAdapter implements PetRepository {
     public void softDelete(Long id, LocalDateTime deletedAt) {
         petJpaRepository.softDeleteById(id, deletedAt);
     }
+
+    @Override
+    public boolean updateProfile(Pet pet) {
+        return petJpaRepository.updateProfile(
+                pet.getId(),
+                pet.getName(),
+                pet.getPetType(),
+                pet.getBirthDate(),
+                pet.getGender(),
+                pet.getWeight(),
+                pet.getUpdatedAt()
+        ) == 1;
+    }
 }

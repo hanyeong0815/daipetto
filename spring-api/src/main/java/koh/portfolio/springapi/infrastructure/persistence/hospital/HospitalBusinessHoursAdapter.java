@@ -47,4 +47,18 @@ public class HospitalBusinessHoursAdapter implements HospitalBusinessHoursReposi
     public void deleteById(Long id) {
         hospitalBusinessHoursJpaRepository.deleteById(id);
     }
+
+    @Override
+    public boolean updateHours(HospitalBusinessHours hospitalBusinessHours) {
+        return hospitalBusinessHoursJpaRepository.updateHours(
+                hospitalBusinessHours.getId(),
+                hospitalBusinessHours.getHospitalId(),
+                hospitalBusinessHours.getOpenTime(),
+                hospitalBusinessHours.getCloseTime(),
+                hospitalBusinessHours.getBreakStartTime(),
+                hospitalBusinessHours.getBreakEndTime(),
+                hospitalBusinessHours.getSlotDurationMinutes(),
+                hospitalBusinessHours.getUpdatedAt()
+        ) == 1;
+    }
 }
