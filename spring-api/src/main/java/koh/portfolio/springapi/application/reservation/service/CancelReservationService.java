@@ -22,6 +22,12 @@ public class CancelReservationService implements CancelReservationUseCase {
 
         Preconditions.validate(reservation.getUserId().equals(userId), ReservationErrorCode.NOT_RESERVATION_OWNER);
 
-        reservationRepository.save(reservation.cancel());
+        Reservation cancelled = reservation.cancel();
+
+        Preconditions.validate(
+                reservationRepository.updateStatus(
+                        reservation.getId(), reservation.getStatus(), cancelled.getStatus(), cancelled.getUpdatedAt()),
+                ReservationErrorCode.INVALID_STATE_TRANSITION
+        );
     }
 }

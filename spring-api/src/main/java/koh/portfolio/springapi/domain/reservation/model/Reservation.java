@@ -53,4 +53,11 @@ public class Reservation {
         return new Reservation(this.id, this.userId, this.petId, this.hospitalId, this.scheduleId,
                 this.reservationDatetime, ReservationStatus.COMPLETED, this.memo, this.createdAt, LocalDateTime.now(), this.deletedAt);
     }
+
+    public Reservation reject() {
+        Preconditions.validate(this.status == ReservationStatus.REQUESTED, ReservationErrorCode.INVALID_STATE_TRANSITION);
+
+        return new Reservation(this.id, this.userId, this.petId, this.hospitalId, this.scheduleId,
+                this.reservationDatetime, ReservationStatus.REJECTED, this.memo, this.createdAt, LocalDateTime.now(), this.deletedAt);
+    }
 }

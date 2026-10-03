@@ -10,7 +10,7 @@ description: Daipetto の Spring API に新ドメイン（Reservation / HealthRe
 1. `docs/06_ERD*.md` でテーブル定義、`docs/07_API_Design*.md` で API 仕様、`docs/08_State_Design*.md` で状態遷移を確認する
 2. 文書に仕様が無い場合は**設計追記が先**（docs-sync スキル参照）。設計せずに実装しない
 3. Flyway 番号の衝突確認: `git branch -a` の全ブランチで `spring-api/src/main/resources/db/migration/` を確認する
-   （V1〜V7 は現ブランチが使用済み、**V4 は未マージ feat/spring/pet-fields も使用しており衝突中**。V8 以降を使う）
+   （V1〜V10 使用済み、**V4 は未マージ feat/spring/pet-fields も使用しており衝突中**。V11 以降を使う）
 
 ## 作成ファイル一式（{domain} = 例: reservation）
 

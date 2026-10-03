@@ -65,7 +65,7 @@ class GetReservationServiceTest {
         LocalDateTime now = LocalDateTime.now();
         when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(
                 new Hospital(hospitalId, "Tokyo Animal Hospital", "Tokyo, Shibuya", "03-1234-5678", HospitalStatus.ACTIVE, now, now, null)));
-        when(petRepository.findById(petId)).thenReturn(Optional.of(
+        when(petRepository.findByIdIncludingDeleted(petId)).thenReturn(Optional.of(
                 new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null, now, now, null)));
         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(
                 new HospitalSchedule(scheduleId, hospitalId, LocalDate.of(2026, 5, 20),
@@ -88,6 +88,30 @@ class GetReservationServiceTest {
         assertThat(result.get(0).hospitalName()).isEqualTo("Tokyo Animal Hospital");
         assertThat(result.get(0).petName()).isEqualTo("Momo");
         assertThat(result.get(0).status()).isEqualTo(ReservationStatus.REQUESTED);
+    }
+
+    @Test
+    @DisplayName("論理削除済みペットの予約も一覧に表示される（他の予約も巻き込まれない）")
+    void get_reservation_list_success_when_pet_deleted() {
+        // given
+        LocalDateTime now = LocalDateTime.now();
+        when(reservationRepository.findAllByUserId(userId))
+                .thenReturn(List.of(reservation(userId, ReservationStatus.COMPLETED)));
+        when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(
+                new Hospital(hospitalId, "Tokyo Animal Hospital", "Tokyo, Shibuya", "03-1234-5678", HospitalStatus.ACTIVE, now, now, null)));
+        when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(
+                new HospitalSchedule(scheduleId, hospitalId, LocalDate.of(2026, 5, 20),
+                        LocalTime.of(10, 0), LocalTime.of(10, 30), HospitalScheduleStatus.AVAILABLE, now, now)));
+        when(petRepository.findByIdIncludingDeleted(petId)).thenReturn(Optional.of(
+                new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null, now, now, now)));
+
+        // when
+        List<ReservationSummary> result = getReservationService.execute(userId);
+
+        // then
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).petName()).isEqualTo("Momo");
+        assertThat(result.get(0).status()).isEqualTo(ReservationStatus.COMPLETED);
     }
 
     @Test

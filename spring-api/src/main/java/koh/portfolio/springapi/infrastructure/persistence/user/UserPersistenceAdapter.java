@@ -37,4 +37,9 @@ public class UserPersistenceAdapter implements UserRepository {
         return userJpaRepository.findById(id)
                 .map(userMapper::toDomain);
     }
+
+    @Override
+    public void lockForSessionUpdate(Long userId) {
+        userJpaRepository.findByIdForUpdate(userId);
+    }
 }

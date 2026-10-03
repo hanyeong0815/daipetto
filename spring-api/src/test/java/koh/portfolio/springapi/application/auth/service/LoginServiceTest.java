@@ -14,6 +14,7 @@ import koh.portfolio.springapi.infrastructure.security.jwt.JwtProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
@@ -111,6 +112,12 @@ class LoginServiceTest {
         verify(passwordEncoder).matches("password123", "$2a$encoded-password");
         verify(refreshTokenRepository).revokeAllByUserId(1L);
         verify(refreshTokenRepository).save(any(RefreshToken.class));
+
+        // 一括revokeより先にユーザー行を排他取得していること（同時refreshとの直列化）
+        InOrder inOrder = inOrder(userRepository, refreshTokenRepository);
+        inOrder.verify(userRepository).lockForSessionUpdate(1L);
+        inOrder.verify(refreshTokenRepository).revokeAllByUserId(1L);
+        inOrder.verify(refreshTokenRepository).save(any(RefreshToken.class));
     }
 
     @Test

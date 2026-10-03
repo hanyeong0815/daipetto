@@ -85,6 +85,7 @@ flowchart TB
 | Backend Language | Python | 3.12.10 |
 | Python Framework | Django REST Framework | 3.15.2 |
 | Database | PostgreSQL | 16.9 |
+| Timezone | JST（Asia/Tokyo） | Spring: `SpringApiApplication.main`でJVM既定を設定 / DB: compose `TZ` |
 | Infrastructure | Docker Compose | v2 |
 | API | REST API | JSON |
 | Documentation | Notion | Latest |

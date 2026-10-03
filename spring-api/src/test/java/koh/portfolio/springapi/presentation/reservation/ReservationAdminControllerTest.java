@@ -2,6 +2,7 @@ package koh.portfolio.springapi.presentation.reservation;
 
 import koh.portfolio.springapi.application.reservation.usecase.ApproveReservationUseCase;
 import koh.portfolio.springapi.application.reservation.usecase.CompleteReservationUseCase;
+import koh.portfolio.springapi.application.reservation.usecase.RejectReservationUseCase;
 import koh.portfolio.springapi.common.exception.GlobalExceptionHandler;
 import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
 import org.junit.jupiter.api.DisplayName;
@@ -40,6 +41,9 @@ class ReservationAdminControllerTest {
     @MockBean
     private CompleteReservationUseCase completeReservationUseCase;
 
+    @MockBean
+    private RejectReservationUseCase rejectReservationUseCase;
+
     @Test
     @DisplayName("PATCH /api/v1/admin/reservations/{reservationId}/approve - 予約承認成功")
     void approve_reservation_success() throws Exception {
@@ -60,5 +64,16 @@ class ReservationAdminControllerTest {
                 .andExpect(jsonPath("$.success").value(true));
 
         verify(completeReservationUseCase).execute(1L);
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/admin/reservations/{reservationId}/reject - 予約却下成功")
+    void reject_reservation_success() throws Exception {
+        // when & then
+        mockMvc.perform(patch("/api/v1/admin/reservations/1/reject"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(rejectReservationUseCase).execute(1L);
     }
 }

@@ -10,7 +10,7 @@
 | Document | Security Design |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-08-23 |
+| Updated | 2026-09-13 |
 
 ---
 
@@ -94,6 +94,17 @@ Authorization: Bearer {access_token}
 
 > **注記（MVP方針）:** Refresh TokenはMVP段階ではRequest Body方式で実装する。セキュリティ強化フェーズでHttpOnly Cookie方式への移行を検討する。
 
+## **Claim構成**
+
+| **Token** | **Claim** |
+| --- | --- |
+| Access Token | `sub`（userId） / `email` / `role` / `type=access` / `iat` / `exp` |
+| Refresh Token | `jti`（発行ごとのUUID） / `sub`（userId） / `type=refresh` / `iat` / `exp` |
+
+`type` claimでTokenの用途を区別する。`JwtAuthenticationFilter`は`type=access`かつ`role`を持つTokenのみ認証情報を設定し、それ以外（Refresh Tokenを含む）は認証せずに次のフィルターへ進める（結果として401 AUTH-001）。
+
+`jti`が無いと`iat`/`exp`が秒単位のため、同一ユーザーが同一秒に再発行したRefresh Tokenが同一文字列となり`refresh_tokens.token`のUNIQUE制約に衝突する。発行ごとにUUIDを付与して回避する。
+
 ---
 
 # **3-3. Token有効期限**
@@ -124,6 +135,10 @@ refresh_tokens
 | Logout | revoked=true |
 | Token再発行 | 旧Token失効 |
 | 有効期限超過 | 使用不可 |
+
+再発行時の失効は`UPDATE ... WHERE token = ? AND revoked = false`の条件付きUPDATEで行い、**更新件数が1件の呼び出しのみ**が後続Tokenを発行できる。同時リフレッシュやログアウト後の再利用は0件更新となりAUTH-003を返す（rotationの単一消費）。
+
+さらに、ログイン・再発行・ログアウトはいずれも**対象ユーザー行を`SELECT ... FOR UPDATE`で排他取得してから**Tokenを操作する。これが無いと、再発行が旧Tokenを失効させて後続Tokenをinsertする間に、ログイン／ログアウトの一括revoke（`WHERE user_id = ? AND revoked = false`）が走り、後続Tokenをスナップショットから取りこぼす。結果としてログアウト成功後もセッションが生き残る、あるいは有効なRefresh Tokenが2本残る（`docs/12` §3-11）。ユーザー単位の直列化により「有効なRefresh Tokenは1ユーザー1本」の不変条件が3操作すべてで保たれる。
 
 ---
 

@@ -59,8 +59,17 @@ public class RefreshTokenService implements RefreshTokenUseCase {
                 AuthErrorCode.SUSPENDED_ACCOUNT
         );
 
-        // 既存のrefreshToken無効化
-        refreshTokenRepository.revokeByToken(requestRefreshToken);
+        // login / logout の一括revokeと直列化する（REVIEW-002 R-01）。
+        // 先に取らないと、ここで発行する後続Tokenが同時実行のlogout/loginから見えず生き残る
+        userRepository.lockForSessionUpdate(userId);
+
+        // 既存のrefreshToken無効化。
+        // 条件付きUPDATEが1件を更新できた呼び出しだけが後続を発行できる（rotationの単一消費）。
+        // 同時リフレッシュやログアウト後の再利用は0件となりAUTH-003で弾く
+        validate(
+                refreshTokenRepository.revokeByToken(requestRefreshToken) == 1,
+                AuthErrorCode.INVALID_REFRESH_TOKEN
+        );
 
         // 新たなaccessToken生成
         String newAccessToken = jwtProvider.createAccessToken(

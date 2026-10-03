@@ -14,6 +14,7 @@ public enum ReservationErrorCode implements ErrorCode {
     RESERVATION_NOT_FOUND("RESERVATION-006", "存在しない予約です。", HttpStatus.NOT_FOUND),
     NOT_RESERVATION_OWNER("RESERVATION-007", "予約者本人ではありません。", HttpStatus.FORBIDDEN),
     INVALID_STATE_TRANSITION("RESERVATION-008", "現在の状態からは変更できません。", HttpStatus.CONFLICT),
+    HOSPITAL_NOT_AVAILABLE("RESERVATION-009", "利用停止中の病院です。", HttpStatus.CONFLICT),
     DEFAULT("RESERVATION-999", "予約関連エラーです。", HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final String code;

@@ -1,0 +1,3717 @@
+diff --git a/.agents/skills/spring-new-domain/SKILL.md b/.agents/skills/spring-new-domain/SKILL.md
+index 4691968..319c9ca 100644
+--- a/.agents/skills/spring-new-domain/SKILL.md
++++ b/.agents/skills/spring-new-domain/SKILL.md
+@@ -10,7 +10,7 @@ description: Daipetto の Spring API に新ドメイン（Reservation / HealthRe
+ 1. `docs/06_ERD*.md` でテーブル定義、`docs/07_API_Design*.md` で API 仕様、`docs/08_State_Design*.md` で状態遷移を確認する
+ 2. 文書に仕様が無い場合は**設計追記が先**（docs-sync スキル参照）。設計せずに実装しない
+ 3. Flyway 番号の衝突確認: `git branch -a` の全ブランチで `spring-api/src/main/resources/db/migration/` を確認する
+-   （V1〜V7 は現ブランチが使用済み、**V4 は未マージ feat/spring/pet-fields も使用しており衝突中**。V8 以降を使う）
++   （V1〜V10 使用済み、**V4 は未マージ feat/spring/pet-fields も使用しており衝突中**。V11 以降を使う）
+ 
+ ## 作成ファイル一式（{domain} = 例: reservation）
+ 
+diff --git a/AGENTS.md b/AGENTS.md
+index a3d7e02..95ece1a 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -56,7 +56,7 @@ Rules:
+ 2. UseCase = interface, Service = implementation. Simple domains (User, Pet): one Service may implement several UseCases. Complex domains (Reservation): one Service per UseCase.
+ 3. Business errors: domain `ErrorCode` enum (separate `code()`, not `name()`) + `CustomException` + `Preconditions.validate(...)`. All responses via `ApiResponse`. `GlobalExceptionHandler` handles CustomException / AccessDeniedException / MethodArgumentNotValidException / Exception.
+ 4. `userId` comes from `Authentication.getPrincipal()` as `Long` — never in request DTOs.
+-5. Prefer explicit `@Modifying` update queries over dirty checking for important state changes.
++5. Prefer explicit `@Modifying` update queries over dirty checking for important state changes. **Never persist an update by `save()`-ing a previously read entity**: write only the columns the operation owns, put its precondition in the `WHERE` (`deleted_at IS NULL`, expected status, owning parent id), and treat 0 affected rows as not-found/conflict. A full save rewrites `status`/`deleted_at` with stale values and silently undoes concurrent suspensions and deletions (docs/12 §3-12). `save()` is for inserts only.
+ 6. Role checks via `@PreAuthorize("hasAuthority('ROLE_...')")`; SecurityConfig only guarantees `authenticated()`.
+ 7. Owner checks with the `Preconditions.validate` pattern (see `UpdatePetService`).
+ 8. Domain state transitions are methods returning a new immutable instance (see `Hospital.suspend()`, `Reservation.approve()`); Lombok on Domain: `@Getter`/constructors only, never `@Setter`/`@Data`.
+@@ -97,7 +97,11 @@ Error messages in Japanese. New codes follow `{DOMAIN}-{seq}`; `{DOMAIN}-999` is
+ | RESERVATION-007 | 予約者本人でない | 403 |
+ | RESERVATION-008 | 不正な状態遷移（同時実行で負けた側を含む） | 409 |
+ | RESERVATION-009 | SUSPENDED病院への予約 | 409 |
+-| AUTH/USER/PET/HOSPITAL/RESERVATION-999 | domain default | 500 |
++| HEALTH-001 | 存在しない健康記録 | 404 |
++| HEALTH-002 | 存在しないペット / 他ユーザーのペット | 403 |
++| NOTIFICATION-001 | 存在しない通知 | 404 |
++| NOTIFICATION-002 | 受信者本人でない | 403 |
++| AUTH/USER/PET/HOSPITAL/RESERVATION/HEALTH/NOTIFICATION-999 | domain default | 500 |
+ | VALIDATION-001 | `@Valid` failure (GlobalExceptionHandler) | 400 |
+ | SERVER-001 | unhandled exception fallback | 500 |
+ 
+@@ -121,16 +125,17 @@ Reservation transitions (only these; enforced in the Domain model):
+ | APPROVED | COMPLETED | HOSPITAL_ADMIN |
+ | APPROVED | CANCELLED | USER |
+ 
+-Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COMPLETED→CANCELLED. Max 1 REQUESTED/APPROVED per schedule_id. Approve/reject/complete should create a Notification (docs/08 §6-6 — Notification domain not built yet).
++Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COMPLETED→CANCELLED. Max 1 REQUESTED/APPROVED per schedule_id. Approve/reject/complete create a Notification in the same transaction, only when the transition succeeds (docs/08 §6-6, docs/07 §10).
+ `hospital_schedules.status` only expresses hospital-side availability; "already booked" is judged from `reservations` (no auto-BLOCK on booking — docs/06 §18).
+ 
+ ## 7. DB / Flyway
+ 
+ - DB changes only via Flyway; logical delete (`deleted_at`) is the default.
+-- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile).
+-- ⚠ Unmerged `feat/spring/pet-fields` also uses **V4** (`V4__alter_pets_add_columns.sql` — breed/neutered/microchip_number). Renumber one side at merge. New migrations start at **V9**; check every branch for number collisions before numbering.
++- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile), V9 health_records, V10 notifications.
++- ⚠ Unmerged `feat/spring/pet-fields` also uses **V4** (`V4__alter_pets_add_columns.sql` — breed/neutered/microchip_number). Renumber one side at merge. New migrations start at **V11**; check every branch for number collisions before numbering.
++- `notifications.vaccination_id` exists as a column with no FK yet; add the constraint when `vaccinations` is created (docs/06 §15 note).
+ - ⚠ V8 fails on an existing database that already holds duplicate active reservations for one schedule; clean those rows before applying.
+-- Not created yet: health_records / vaccinations / notifications / hospital_admins (definitions in docs/06). Because `hospital_admins` is missing, admin APIs cannot verify "own hospital" — hospital-affiliation checks are intentionally skipped for now.
++- Not created yet: vaccinations / hospital_admins (definitions in docs/06). Because `hospital_admins` is missing, admin APIs cannot verify "own hospital" — hospital-affiliation checks are intentionally skipped for now.
+ 
+ ## 8. Test rules
+ 
+@@ -140,7 +145,7 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
+ - Principal is `Long`: use `new UsernamePasswordAuthenticationToken(1L, null, authorities)` — `.with(user(...))` fails.
+ - Most unit tests mock repositories. H2 **is** available for `@DataJpaTest` (`application-test.yml`, `MODE=PostgreSQL`, `ddl-auto=create-drop`, Flyway disabled) — see `RefreshTokenPersistenceAdapterTest`; Testcontainers is not introduced.
+ - Mocked repositories prove neither real SQL nor concurrency. Null-tolerant `@Query` bugs escape them (docs/12 §3-10) and so do races (docs/12 §3-11). No PostgreSQL concurrency test exists yet.
+-- Verify: `./gradlew clean test` in `spring-api/` (161 green as of 2026-09-23).
++- Verify: `./gradlew clean test` in `spring-api/` (208 green as of 2026-10-03).
+ 
+ ## 9. Environment
+ 
+@@ -157,15 +162,17 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
+ 
+ ## 10. Status (2026-09-13)
+ 
+-**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · Frontend all screens SC-001〜015 (auth·pet·hospital wired to real API) · ProtectedRoute + role guards · token restore on reload.
++**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · HealthRecord CRUD · Notification (list/read + generation on reservation approve/reject/complete, 2026-10-03) · Frontend all screens SC-001〜015 (auth·pet·hospital wired to real API) · ProtectedRoute + role guards · token restore on reload.
+ 
+-**Practice gaps** (user implements these personally — do NOT implement unless explicitly asked; list in TODO.md is authoritative): none outstanding as of this date.
++**Practice gaps** (user implements these personally — do NOT implement unless explicitly asked; list in TODO.md is authoritative): none outstanding. The user waived the gap for the HealthRecord/Notification round (2026-10-03); the §11 rule still applies to future domains unless they waive it again.
++
++**HealthRecord/Notification review (Codex REVIEW-001, 2026-10-03)** in `.ai-collab/tasks/2026-10-03-health-notification/`: partial PATCH erased omitted fields (R-01), and stale full-entity saves could resurrect deleted health records (R-02) or undo a hospital suspension (R-03, pre-existing). Fixed with column-specific conditional updates (§3 rule 5), applied also to the same pattern in Pet and HospitalBusinessHours updates. Response in `HANDOFF-002.md`.
+ 
+ **Review round 2 (Codex REVIEW-002, 2026-09-14)**: R-02〜R-08 accepted as resolved; R-01 stayed open because the conditional revoke did not serialize refresh against the per-user bulk revoke in login/logout. Fixed on 2026-09-23 by locking the user row in all three operations (see §3 rule 9); response in `HANDOFF-003.md`. That also closes the previously deferred concurrent-login residual.
+ 
+ **Review round 2026-09-13** (Codex REVIEW-001 → fixes in `.ai-collab/tasks/2026-09-13-implementation-review/HANDOFF-002.md`): R-01〜R-08 addressed — refresh rotation now single-consumption (conditional revoke must affect exactly 1 row), refresh tokens carry `jti`, access/refresh separated by a `type` claim so a refresh token used as Bearer no longer throws inside the filter, reservations are protected by a DB-level partial unique index plus expected-status conditional updates, SUSPENDED hospitals reject new reservations (RESERVATION-009), deleted pets no longer break reservation history, and the frontend refresh queue settles every waiter on failure. **Still unverified**: real PostgreSQL concurrency runs for the race fixes.
+ 
+-**Not started**: HealthRecord / Vaccination / Notification APIs · schedule auto-generation Scheduler (from `hospital_business_hours`) · vaccine reminder Scheduler · django-api entirely · frontend wiring for reservation/health/notification/admin(reservation·user) screens.
++**Not started**: Vaccination API (needed before the VACCINATION notification type and its reminder can work) · schedule auto-generation Scheduler (from `hospital_business_hours`) · vaccine reminder Scheduler · django-api entirely · frontend wiring for reservation/health/notification/admin(reservation·user) screens.
+ 
+ **Unmerged branches**: `feat/spring/pet-fields` (pet columns + docs 06/07 updates); verify current unmerged set with `git branch --all` and `git log` before relying on this line — not re-audited in this update.
+ 
+diff --git a/TODO.md b/TODO.md
+index 11c40f5..6e2cfd1 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -1,6 +1,6 @@
+ # Daipetto — 作業TODOリスト
+ 
+-最終更新: 2026-09-23
++最終更新: 2026-10-03
+ 
+ ---
+ 
+@@ -137,17 +137,38 @@
+ - [x] `PATCH /api/v1/admin/reservations/{id}/reject` — 予約却下（HOSPITAL_ADMIN/SYSTEM_ADMIN、docs/07_API_Design §9-6。2026-09-13、ユーザー実装＋Claude Codeレビューで完成。詳細は上部の完了済みセクション参照）
+ - [x] Reservation 関連テスト（Service 28件・Mapper 2件・Controller 7件、計37件）
+ 
+-### Notification API
+-- [ ] `Notification` ドメイン・エンティティ・テーブル作成
+-- [ ] `GET /api/v1/notifications` — 通知一覧
+-- [ ] `PATCH /api/v1/notifications/{id}/read` — 既読
+-- [ ] 予約確定・リマインダー時の通知生成ロジック
+-- [ ] 予防接種リマインダー Scheduler
+-
+-### Health Record API
+-- [ ] `HealthRecord` エンティティ・テーブル作成
+-- [ ] `POST /api/v1/pets/{petId}/health-records`
+-- [ ] `GET /api/v1/pets/{petId}/health-records`
++### Notification API（2026-10-03実装、Claude Code）
++- [x] `Notification` ドメイン・エンティティ・テーブル作成（`V10__create_notifications.sql`）
++  - `vaccination_id`は列のみ作成しFKは保留（`vaccinations`未作成。`docs/06_ERD` §15注記）
++- [x] `GET /api/v1/notifications` — 通知一覧（作成日時の降順、本人宛のみ）
++- [x] `PATCH /api/v1/notifications/{id}/read` — 既読（未読のみを対象にした条件付きUPDATEで冪等）
++- [x] 予約承認・却下・診療完了時の通知生成（`NotifyReservationEventUseCase`、`08_State_Design` §6-6）
++  - 状態遷移と同一トランザクション。遷移が成立しなかった場合は通知を作らない
++  - キャンセルは §6-6 に通知定義が無いため生成しない
++- [x] `NOTIFICATION-001`（存在しない通知）・`NOTIFICATION-002`（受信者本人でない）追加
++- [ ] 予防接種リマインダー Scheduler（`VACCINATION`種別。Vaccination ドメイン実装後）
++
++### Health Record API（2026-10-03実装、Claude Code）
++- [x] `HealthRecord` ドメイン・エンティティ・テーブル作成（`V9__create_health_records.sql`）
++- [x] `POST /api/v1/pets/{petId}/health-records` — 登録（`recordedDate`省略時は当日）
++- [x] `GET /api/v1/pets/{petId}/health-records` — 一覧（記録日の降順、論理削除分を除く）
++- [x] `PATCH /api/v1/health-records/{id}` — 更新（docs 6-3のPUTはプロジェクト規約に合わせPATCHへ変更）
++- [x] `DELETE /api/v1/health-records/{id}` — 論理削除
++- [x] `HEALTH-001`（存在しない健康記録）・`HEALTH-002`（存在しない/他ユーザーのペット）追加
++  - 健康記録は`user_id`を持たないため所有者判定はペット経由
++
++> **この回は練習用ギャップを作っていない**（ユーザーの指示: 「이번엔 따로 안남겨도 돼」）。新ドメインに1〜2機能を残す方針（`AGENTS.md` §11-1）は次回以降も有効。
++
++**Codexレビュー（REVIEW-001、2026-10-03）への対応 — Claude Code**
++- [x] R-01 [P1] 健康記録のPATCHで未指定項目が消える → `HealthRecord.patch`で未指定（null）は既存値を維持、`symptom`/`memo`は空文字で消去
++- [x] R-02 [P2] PATCHが同時に論理削除された記録を復活させる → 内容列だけを`deleted_at IS NULL`の条件付きUPDATEで書き、0件ならHEALTH-001
++- [x] R-03 [P2・既存] 病院情報の更新が停止を取り消す → 情報更新（name/address/phone）と停止（status）を別UPDATEに分離（逆方向の上書きも防止）
++- [x] 同じ「読み取ったエンティティ全体を保存」パターンをペット更新（論理削除の復活）と営業時間更新（削除行の作り直し）でも修正。予約枠のBLOCKED切替はstatus1列のみの操作のため対象外
++- [x] D-01 文書の実装状況表記（ERDの`未作成`、AGENTS.md §6）を修正。あわせて`docs/11` HOSP-T002の期待値をRESERVATION-002→009に修正（2026-09-13のR-05対応時の同期漏れ）
++- 検証: `./gradlew clean test` 208件green。実PostgreSQLで決定的インターリーブ（SQLが競合更新を保持→HTTPがUPDATEで待機→commit）による受け入れ確認10件全通過。Codexの再現スクリプト（無改変）はR-01の欠陥アサーションで停止＝欠陥が再現しないことを確認
++- [ ] **要判断（既存の文書・実装の食い違い）**: `docs/07_API_Design` §5-4 はペット更新を「部分更新」としているが、実装は`birthDate`/`weight`省略時にNULLで上書きする全体置換。フロントは常にフォーム全体を送るため実害は出ていない。実装を部分更新に揃えるか、文書を全体置換に直すかはユーザー判断（今回は変更していない）
++
++**検証（2026-10-03）**: テスト31件追加で`./gradlew clean test` 192件green。実PostgreSQL（捨てDB `daipetto_hn`）でV9/V10適用・`ddl-auto: validate`通過を確認し、API 14項目のスモークも全通過（`.ai-collab/tasks/2026-10-03-health-notification/scripts/smoke-health-notification.mjs`）
+ 
+ ---
+ 
+@@ -182,11 +203,12 @@
+ - [x] プラットフォーム別APIベースURL — `Capacitor.getPlatform()`で実行時に自動判定（Web/Android/iOS）、`.env`の手動書き換えが不要に
+ 
+ ### 実 API 接続が必要な画面（残り）
+-- [ ] 予約 (`ReservationPage`) — Reservation API 連動（バックエンド未実装のため連動不可）
+-- [ ] 予約履歴 (`ReservationHistoryPage`) — Reservation API 連動
+-- [ ] 健康記録 (`HealthRecordPage`) — HealthRecord API 連動
+-- [ ] 通知 (`NotificationsPage`) — Notification API 連動
+-- [ ] 管理者画面 (`AdminReservationPage` / `AdminUserPage`) — 各API連動（バックエンド未実装のため連動不可）
++- [ ] 予約 (`ReservationPage`) — Reservation API 連動（バックエンド実装済み・連動可能）
++- [ ] 予約履歴 (`ReservationHistoryPage`) — Reservation API 連動（バックエンド実装済み・連動可能）
++- [ ] 健康記録 (`HealthRecordPage`) — HealthRecord API 連動（バックエンド実装済み・連動可能）
++- [ ] 通知 (`NotificationsPage`) — Notification API 連動（バックエンド実装済み・連動可能）
++- [ ] 管理者画面 `AdminReservationPage` — 予約承認/却下/完了API連動（バックエンド実装済み・連動可能）
++- [ ] 管理者画面 `AdminUserPage` — ユーザー管理API連動（バックエンド未実装のため連動不可）
+ 
+ ### 状態管理追加
+ - [ ] `reservationStore.ts` — 予約一覧・詳細
+diff --git a/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md b/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md
+index abd163a..bfd4af0 100644
+--- a/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md	
++++ b/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md	
+@@ -10,7 +10,7 @@
+ | Document | ERD |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-09-13 |
++| Updated | 2026-10-03 |
+ 
+ ---
+ 
+@@ -190,9 +190,9 @@ erDiagram
+ | 病院予約枠 | hospital_schedules | 病院の予約可能時間 | V6 |
+ | 予約 | reservations | 病院予約情報 | V7 |
+ | 病院管理者 | hospital_admins | 病院と管理者の紐付け | 未作成 |
+-| 健康記録 | health_records | ペットの健康記録 | 未作成 |
++| 健康記録 | health_records | ペットの健康記録 | V9 |
+ | ワクチン接種予定 | vaccinations | ワクチン接種予定・完了情報 | 未作成 |
+-| 通知 | notifications | ユーザー向け通知情報 | 未作成 |
++| 通知 | notifications | ユーザー向け通知情報 | V10 |
+ 
+ ---
+ 
+@@ -437,6 +437,8 @@ Refresh Tokenを管理する。
+ | 作成日時 | created_at | TIMESTAMP |  |  | NO |  | CURRENT_TIMESTAMP | 作成日時 |
+ | 既読日時 | read_at | TIMESTAMP |  |  | YES |  | NULL | 既読日時 |
+ 
++> **注記（2026-10-03 実装時点）:** `vaccination_id`は列のみ作成し、FK制約は付けていない（`vaccinations`テーブルが未作成のため）。Vaccination ドメイン実装時にFK制約を追加する。`V10__create_notifications.sql`参照。
++
+ ---
+ 
+ # **16. Status定義**
+diff --git a/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md b/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md
+index 619e1b5..16d30fd 100644
+--- a/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md	
++++ b/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md	
+@@ -10,7 +10,7 @@
+ | Document | API Design |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-09-13 |
++| Updated | 2026-10-03 |
+ 
+ ---
+ 
+@@ -460,7 +460,11 @@ DELETE /api/v1/pets/{petId}
+ 
+ ---
+ 
+-# **6. 健康記録API（未実装）**
++# **6. 健康記録API**
++
++健康記録は`pet_id`のみを持ち`user_id`を持たないため、所有者判定はすべて対象ペット経由で行う（他ユーザーのペットはHEALTH-002）。
++
++---
+ 
+ # **6-1. 健康記録一覧取得**
+ 
+@@ -472,6 +476,39 @@ GET /api/v1/pets/{petId}/health-records
+ 
+ ---
+ 
++## **説明**
++
++指定ペットの健康記録を記録日の降順で返す。論理削除済みの記録は含まない。
++
++---
++
++## **Response**
++
++```json
++{
++  "success": true,
++  "data": [
++    {
++      "healthRecordId": 1,
++      "weight": 4.70,
++      "symptom": "咳, 食欲低下",
++      "memo": "少し元気がない",
++      "recordedDate": "2026-05-20"
++    }
++  ]
++}
++```
++
++---
++
++## **異常系**
++
++| **Code** | **内容** |
++| --- | --- |
++| HEALTH-002 | 存在しないペット、または他ユーザーのペット |
++
++---
++
+ # **6-2. 健康記録登録**
+ 
+ ## **Endpoint**
+@@ -488,10 +525,13 @@ POST /api/v1/pets/{petId}/health-records
+ {
+   "weight": 4.7,
+   "symptom": "咳, 食欲低下",
+-  "memo": "少し元気がない"
++  "memo": "少し元気がない",
++  "recordedDate": "2026-05-20"
+ }
+ ```
+ 
++`recordedDate`は省略可能で、省略時はサーバーの当日日付で登録する（`06_ERD` §13では`recorded_date`がNOT NULLのため、過去分を後から登録する場合のみ明示する）。`weight`は0以上・整数部3桁・小数部2桁まで（`DECIMAL(5,2)`）。
++
+ ---
+ 
+ ## **Response**
+@@ -507,16 +547,41 @@ POST /api/v1/pets/{petId}/health-records
+ 
+ ---
+ 
++## **異常系**
++
++| **Code** | **内容** |
++| --- | --- |
++| HEALTH-002 | 存在しないペット、または他ユーザーのペット |
++| VALIDATION-001 | `weight`が負数、または桁数超過 |
++
++---
++
+ # **6-3. 健康記録更新**
+ 
+ ## **Endpoint**
+ 
+ ```
+-PUT /api/v1/health-records/{healthRecordId}
++PATCH /api/v1/health-records/{healthRecordId}
+ ```
+ 
+ ---
+ 
++## **説明**
++
++部分更新を行う。**null（未指定）の項目は既存値を維持する**（空のPATCHは何も変更しない）。`symptom`・`memo`は空文字を指定すると消去（NULL）される。`weight`はPATCHでは消去できない。更新は内容列だけを`deleted_at IS NULL`の行に限って書き込むため、読み取り後に論理削除がcommitされた場合はHEALTH-001となり、削除が最終状態として維持される。本プロジェクトは部分更新をPATCHで統一しているため、当初PUTで記載していたものをPATCHに変更した（§11-2 病院更新と同じ理由）。
++
++---
++
++## **異常系**
++
++| **Code** | **内容** |
++| --- | --- |
++| HEALTH-001 | 存在しない健康記録 |
++| HEALTH-002 | 対象ペットが他ユーザーのもの |
++| VALIDATION-001 | `weight`が負数、または桁数超過 |
++
++---
++
+ # **6-4. 健康記録削除**
+ 
+ ## **Endpoint**
+@@ -527,6 +592,21 @@ DELETE /api/v1/health-records/{healthRecordId}
+ 
+ ---
+ 
++## **説明**
++
++論理削除を行う（`deleted_at`を設定）。削除後は一覧に表示されない。
++
++---
++
++## **異常系**
++
++| **Code** | **内容** |
++| --- | --- |
++| HEALTH-001 | 存在しない健康記録 |
++| HEALTH-002 | 対象ペットが他ユーザーのもの |
++
++---
++
+ # **7. 分析API（Django）（未実装）**
+ 
+ # **7-1. 健康分析取得**
+@@ -1209,7 +1289,20 @@ PATCH /api/v1/admin/reservations/{reservationId}/complete
+ 
+ ---
+ 
+-# **10. 通知API（未実装）**
++# **10. 通知API**
++
++通知を作成する公開APIは提供しない。通知はシステムが生成する:
++
++| 生成契機 | 種別 | 状態 |
++| --- | --- | --- |
++| 予約承認（§9-5） | RESERVATION_APPROVED | 実装済 |
++| 予約却下（§9-6） | RESERVATION_REJECTED | 実装済 |
++| 診療完了（§9-7） | TREATMENT_COMPLETED | 実装済 |
++| ワクチン接種リマインダー | VACCINATION | 未実装（Vaccination ドメインと Scheduler 実装後） |
++
++予約の状態変更と通知生成は同一トランザクションで行う（`08_State_Design` §6-6）。状態遷移が成立しなかった場合は通知を作成しない。予約キャンセルは §6-6 に通知定義が無いため通知を生成しない。
++
++---
+ 
+ # **10-1. 通知一覧取得**
+ 
+@@ -1221,6 +1314,12 @@ GET /api/v1/notifications
+ 
+ ---
+ 
++## **説明**
++
++ログインユーザー宛の通知を作成日時の降順で返す。
++
++---
++
+ ## **Response**
+ 
+ ```json
+@@ -1228,10 +1327,12 @@ GET /api/v1/notifications
+   "success": true,
+   "data": [
+     {
+-      "id": 1,
+-      "type": "VACCINATION",
+-      "title": "ワクチン接種予定",
+-      "isRead": false
++      "notificationId": 1,
++      "type": "RESERVATION_APPROVED",
++      "title": "予約が承認されました",
++      "message": "ご予約が承認されました。予約内容をご確認ください。",
++      "isRead": false,
++      "createdAt": "2026-05-20T10:00:00"
+     }
+   ]
+ }
+@@ -1249,6 +1350,21 @@ PATCH /api/v1/notifications/{notificationId}/read
+ 
+ ---
+ 
++## **説明**
++
++`is_read`をtrue、`read_at`を現在時刻に更新する。未読の行のみを対象とする条件付きUPDATEで行うため、既読済みの通知に再実行しても成功を返す（冪等）。
++
++---
++
++## **異常系**
++
++| **Code** | **内容** |
++| --- | --- |
++| NOTIFICATION-001 | 存在しない通知 |
++| NOTIFICATION-002 | 受信者本人以外の通知 |
++
++---
++
+ # **11. 管理者API**
+ 
+ # **11-1. 病院登録**
+diff --git a/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md b/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md
+index d5fd92f..0534c76 100644
+--- a/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md	
++++ b/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md	
+@@ -10,7 +10,7 @@
+ | Document | Test Strategy |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-09-13 |
++| Updated | 2026-10-03 |
+ 
+ ---
+ 
+@@ -169,6 +169,9 @@ flowchart TB
+ | HEALTH-T003 | 体重に負数入力 | Validation Error |
+ | HEALTH-T004 | 健康記録一覧取得 | 登録済データ取得 |
+ | HEALTH-T005 | 健康記録削除 | deleted_at設定 |
++| HEALTH-T006 | 一部項目のみのPATCH（例: memoのみ）・空のPATCH | 未指定項目は既存値を維持 |
++| HEALTH-T007 | symptom / memo に空文字を指定したPATCH | 該当項目のみNULLに消去 |
++| HEALTH-T008 | 論理削除のcommit後に書き込まれるPATCH | HEALTH-001、記録は削除状態のまま |
+ 
+ ---
+ 
+@@ -177,7 +180,9 @@ flowchart TB
+ | **Test ID** | **観点** | **期待結果** |
+ | --- | --- | --- |
+ | HOSP-T001 | 病院一覧取得 | ACTIVE病院のみ取得 |
+-| HOSP-T002 | 停止病院への予約 | RESERVATION-002 |
++| HOSP-T002 | 停止病院への予約 | RESERVATION-009（2026-09-13 R-05対応で002から変更。RSV-T007と同一観点） |
++| HOSP-T003 | 停止の直前に読み取った内容での病院情報更新 | statusはSUSPENDEDのまま（情報列だけを更新） |
++| HOSP-T004 | 情報更新の直前に読み取った内容での病院停止 | 更新済みの情報を古い値で上書きしない |
+ | SCH-T001 | AVAILABLE予約枠取得 | 取得成功 |
+ | SCH-T002 | BLOCKED予約枠予約 | RESERVATION-003 |
+ | SCH-T003 | 過去予約枠予約 | RESERVATION-005 |
+diff --git a/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md b/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md
+index 9b971d5..09a1c6b 100644
+--- a/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md	
++++ b/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md	
+@@ -10,7 +10,7 @@
+ | Document | Trouble Shooting |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-09-13 |
++| Updated | 2026-10-03 |
+ 
+ ---
+ 
+@@ -543,6 +543,49 @@ Repositoryをモックした単体テストは「同時実行」を一切検証
+ 
+ ---
+ 
++# **3-12. 読み取ったエンティティ全体の保存による上書き（2026-10-03 コードレビュー指摘）**
++
++## **症状**
++
++| 事象 | 内容 |
++| --- | --- |
++| PATCHで項目が消える | 健康記録に`{"memo":"..."}`だけを送ると、体重・症状がNULLになる |
++| 削除した記録・ペットが復活する | PATCHが行を読んだ後に論理削除がcommitされると、PATCHの保存で`deleted_at`がNULLに戻り一覧に再表示される |
++| 停止した病院がACTIVEに戻る | 病院情報の更新が、同時に行われた停止を`status=ACTIVE`で上書きする（逆に停止が情報更新を古い値で上書きする） |
++| 削除した営業時間が作り直される | 物理削除後に古いエンティティを`save()`（merge）すると行が作り直され得る |
++
++---
++
++## **原因**
++
++更新処理が「行を読み取る → ドメインで値を変える → エンティティ全体を`save()`する」構造だった。
++
++- 全体保存は、その操作が変更しない列（`status`・`deleted_at`など）まで**読み取り時点の値で書き戻す**。読み取りから書き込みまでの間にcommitされた別の更新は消える。
++- PATCHのDTOで未指定の項目はnullになり、それをそのまま渡していたため、部分更新が全体置換になっていた。
++- 単体テストはRepositoryをモックしており、いずれも検出できなかった（§3-11と同種）。
++
++---
++
++## **対応方法**
++
++| 対象 | 対応 |
++| --- | --- |
++| 共通 | 更新は**その操作が所有する列だけ**を`@Modifying`の条件付きUPDATEで書き、更新件数が0なら「存在しない」として扱う |
++| 健康記録 | 内容列だけを`WHERE id=? AND deleted_at IS NULL`で更新。未指定項目は既存値を維持（`HealthRecord.patch`） |
++| ペット | プロフィール列だけを`WHERE id=? AND deleted_at IS NULL`で更新 |
++| 病院 | 情報更新（name/address/phone）と停止（status）を別々のUPDATEに分離 |
++| 営業時間 | 時間列だけを`WHERE id=? AND hospital_id=?`で更新（mergeで行を作り直さない） |
++
++予約枠のBLOCKED/AVAILABLE切替は status 1列だけを変える操作で、他の列を書く操作や削除が無いため対象外とした。
++
++---
++
++## **教訓**
++
++`save()`による全体保存は「読み取ってから書くまでの間、誰もその行を変えない」ことを暗黙に仮定している。状態列・論理削除列を持つエンティティでは、その仮定は同時実行で簡単に崩れる。更新は「変更する列」と「前提条件（`deleted_at IS NULL`など）」を明示したUPDATE文で行う。
++
++---
++
+ # **4. Django関連**
+ 
+ # **4-1. Python Version不一致**
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/dto/HealthRecordDto.java b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/dto/HealthRecordDto.java
+new file mode 100644
+index 0000000..23e0180
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/dto/HealthRecordDto.java
+@@ -0,0 +1,46 @@
++package koh.portfolio.springapi.application.healthrecord.dto;
++
++import jakarta.validation.constraints.Digits;
++import jakarta.validation.constraints.PositiveOrZero;
++import jakarta.validation.constraints.Size;
++import lombok.Builder;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++public record HealthRecordDto() {
++    public record CreateHealthRecordRequest(
++            @PositiveOrZero
++            @Digits(integer = 3, fraction = 2)
++            BigDecimal weight,
++            @Size(max = 255)
++            String symptom,
++            String memo,
++            // 省略時は当日。過去の記録を後から登録する場合のみ指定する
++            LocalDate recordedDate
++    ) {}
++
++    @Builder
++    public record CreateHealthRecordResponse(
++            Long healthRecordId
++    ) {}
++
++    public record UpdateHealthRecordRequest(
++            @PositiveOrZero
++            @Digits(integer = 3, fraction = 2)
++            BigDecimal weight,
++            @Size(max = 255)
++            String symptom,
++            String memo,
++            LocalDate recordedDate
++    ) {}
++
++    @Builder
++    public record HealthRecordResponse(
++            Long healthRecordId,
++            BigDecimal weight,
++            String symptom,
++            String memo,
++            LocalDate recordedDate
++    ) {}
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/service/DeleteHealthRecordService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/service/DeleteHealthRecordService.java
+new file mode 100644
+index 0000000..ca2767e
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/service/DeleteHealthRecordService.java
+@@ -0,0 +1,36 @@
++package koh.portfolio.springapi.application.healthrecord.service;
++
++import koh.portfolio.springapi.application.healthrecord.usecase.DeleteHealthRecordUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.healthrecord.exception.HealthRecordErrorCode;
++import koh.portfolio.springapi.domain.healthrecord.model.HealthRecord;
++import koh.portfolio.springapi.domain.healthrecord.port.HealthRecordRepository;
++import koh.portfolio.springapi.domain.pet.model.Pet;
++import koh.portfolio.springapi.domain.pet.port.PetRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.time.LocalDateTime;
++
++@Service
++@RequiredArgsConstructor
++public class DeleteHealthRecordService implements DeleteHealthRecordUseCase {
++    private final HealthRecordRepository healthRecordRepository;
++    private final PetRepository petRepository;
++
++    @Override
++    @Transactional
++    public void execute(Long userId, Long healthRecordId) {
++        HealthRecord healthRecord = healthRecordRepository.findById(healthRecordId)
++                .orElseThrow(HealthRecordErrorCode.HEALTH_RECORD_NOT_FOUND::defaultException);
++
++        Pet pet = petRepository.findById(healthRecord.getPetId()).orElse(null);
++        Preconditions.validate(
++                pet != null && pet.getUserId().equals(userId),
++                HealthRecordErrorCode.NOT_PET_OWNER
++        );
++
++        healthRecordRepository.softDelete(healthRecordId, LocalDateTime.now());
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/service/HealthRecordService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/service/HealthRecordService.java
+new file mode 100644
+index 0000000..3ee45a5
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/service/HealthRecordService.java
+@@ -0,0 +1,71 @@
++package koh.portfolio.springapi.application.healthrecord.service;
++
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.CreateHealthRecordRequest;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.CreateHealthRecordResponse;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.HealthRecordResponse;
++import koh.portfolio.springapi.application.healthrecord.usecase.CreateHealthRecordUseCase;
++import koh.portfolio.springapi.application.healthrecord.usecase.GetHealthRecordListUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.healthrecord.exception.HealthRecordErrorCode;
++import koh.portfolio.springapi.domain.healthrecord.model.HealthRecord;
++import koh.portfolio.springapi.domain.healthrecord.port.HealthRecordRepository;
++import koh.portfolio.springapi.domain.pet.model.Pet;
++import koh.portfolio.springapi.domain.pet.port.PetRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.time.LocalDate;
++import java.util.List;
++
++@Service
++@RequiredArgsConstructor
++public class HealthRecordService implements CreateHealthRecordUseCase, GetHealthRecordListUseCase {
++    private final HealthRecordRepository healthRecordRepository;
++    private final PetRepository petRepository;
++
++    @Override
++    @Transactional
++    public CreateHealthRecordResponse execute(Long userId, Long petId, CreateHealthRecordRequest request) {
++        validatePetOwner(userId, petId);
++
++        HealthRecord healthRecord = HealthRecord.create(
++                petId,
++                request.weight(),
++                request.symptom(),
++                request.memo(),
++                request.recordedDate() != null ? request.recordedDate() : LocalDate.now()
++        );
++
++        HealthRecord savedHealthRecord = healthRecordRepository.save(healthRecord);
++
++        return CreateHealthRecordResponse.builder()
++                .healthRecordId(savedHealthRecord.getId())
++                .build();
++    }
++
++    @Override
++    public List<HealthRecordResponse> execute(Long userId, Long petId) {
++        validatePetOwner(userId, petId);
++
++        return healthRecordRepository.findAllByPetId(petId).stream()
++                .map(healthRecord -> HealthRecordResponse.builder()
++                        .healthRecordId(healthRecord.getId())
++                        .weight(healthRecord.getWeight())
++                        .symptom(healthRecord.getSymptom())
++                        .memo(healthRecord.getMemo())
++                        .recordedDate(healthRecord.getRecordedDate())
++                        .build())
++                .toList();
++    }
++
++    // 健康記録はペット経由で所有者を判定する（記録自体はuserIdを持たない）
++    private void validatePetOwner(Long userId, Long petId) {
++        Pet pet = petRepository.findById(petId).orElse(null);
++
++        Preconditions.validate(
++                pet != null && pet.getUserId().equals(userId),
++                HealthRecordErrorCode.NOT_PET_OWNER
++        );
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/service/UpdateHealthRecordService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/service/UpdateHealthRecordService.java
+new file mode 100644
+index 0000000..c17372e
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/service/UpdateHealthRecordService.java
+@@ -0,0 +1,46 @@
++package koh.portfolio.springapi.application.healthrecord.service;
++
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.UpdateHealthRecordRequest;
++import koh.portfolio.springapi.application.healthrecord.usecase.UpdateHealthRecordUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.healthrecord.exception.HealthRecordErrorCode;
++import koh.portfolio.springapi.domain.healthrecord.model.HealthRecord;
++import koh.portfolio.springapi.domain.healthrecord.port.HealthRecordRepository;
++import koh.portfolio.springapi.domain.pet.model.Pet;
++import koh.portfolio.springapi.domain.pet.port.PetRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++@Service
++@RequiredArgsConstructor
++public class UpdateHealthRecordService implements UpdateHealthRecordUseCase {
++    private final HealthRecordRepository healthRecordRepository;
++    private final PetRepository petRepository;
++
++    @Override
++    @Transactional
++    public void execute(Long userId, Long healthRecordId, UpdateHealthRecordRequest request) {
++        HealthRecord healthRecord = healthRecordRepository.findById(healthRecordId)
++                .orElseThrow(HealthRecordErrorCode.HEALTH_RECORD_NOT_FOUND::defaultException);
++
++        Pet pet = petRepository.findById(healthRecord.getPetId()).orElse(null);
++        Preconditions.validate(
++                pet != null && pet.getUserId().equals(userId),
++                HealthRecordErrorCode.NOT_PET_OWNER
++        );
++
++        HealthRecord patchedHealthRecord = healthRecord.patch(
++                request.weight(),
++                request.symptom(),
++                request.memo(),
++                request.recordedDate()
++        );
++
++        // 読み取り後に論理削除がcommitされていた場合は0件更新となり、削除を最終状態として維持する
++        Preconditions.validate(
++                healthRecordRepository.updateContent(patchedHealthRecord),
++                HealthRecordErrorCode.HEALTH_RECORD_NOT_FOUND
++        );
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/CreateHealthRecordUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/CreateHealthRecordUseCase.java
+new file mode 100644
+index 0000000..a3c6918
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/CreateHealthRecordUseCase.java
+@@ -0,0 +1,8 @@
++package koh.portfolio.springapi.application.healthrecord.usecase;
++
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.CreateHealthRecordRequest;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.CreateHealthRecordResponse;
++
++public interface CreateHealthRecordUseCase {
++    CreateHealthRecordResponse execute(Long userId, Long petId, CreateHealthRecordRequest request);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/DeleteHealthRecordUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/DeleteHealthRecordUseCase.java
+new file mode 100644
+index 0000000..0977bf1
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/DeleteHealthRecordUseCase.java
+@@ -0,0 +1,5 @@
++package koh.portfolio.springapi.application.healthrecord.usecase;
++
++public interface DeleteHealthRecordUseCase {
++    void execute(Long userId, Long healthRecordId);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/GetHealthRecordListUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/GetHealthRecordListUseCase.java
+new file mode 100644
+index 0000000..2e963a9
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/GetHealthRecordListUseCase.java
+@@ -0,0 +1,9 @@
++package koh.portfolio.springapi.application.healthrecord.usecase;
++
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.HealthRecordResponse;
++
++import java.util.List;
++
++public interface GetHealthRecordListUseCase {
++    List<HealthRecordResponse> execute(Long userId, Long petId);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/UpdateHealthRecordUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/UpdateHealthRecordUseCase.java
+new file mode 100644
+index 0000000..dae8037
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/healthrecord/usecase/UpdateHealthRecordUseCase.java
+@@ -0,0 +1,7 @@
++package koh.portfolio.springapi.application.healthrecord.usecase;
++
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.UpdateHealthRecordRequest;
++
++public interface UpdateHealthRecordUseCase {
++    void execute(Long userId, Long healthRecordId, UpdateHealthRecordRequest request);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/SuspendHospitalService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/SuspendHospitalService.java
+index a11daf4..cce547f 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/SuspendHospitalService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/SuspendHospitalService.java
+@@ -1,12 +1,14 @@
+ package koh.portfolio.springapi.application.hospital.service;
+ 
+ import koh.portfolio.springapi.application.hospital.usecase.SuspendHospitalUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
+ import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
+ import koh.portfolio.springapi.domain.hospital.model.Hospital;
+ import koh.portfolio.springapi.domain.hospital.model.HospitalStatus;
+ import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
+ import lombok.RequiredArgsConstructor;
+ import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
+ 
+ @Service
+ @RequiredArgsConstructor
+@@ -14,12 +16,17 @@ public class SuspendHospitalService implements SuspendHospitalUseCase {
+     private final HospitalRepository hospitalRepository;
+ 
+     @Override
++    @Transactional
+     public void execute(Long hospitalId) {
+         Hospital hospital = hospitalRepository.findById(hospitalId)
+                 .orElseThrow(HospitalErrorCode.HOSPITAL_NOT_FOUND::defaultException);
+ 
+         Hospital suspendedHospital = hospital.suspend(HospitalStatus.SUSPENDED);
+ 
+-        hospitalRepository.save(suspendedHospital);
++        // status列だけを書く。同時に行われた情報更新を古い値で上書きしない
++        Preconditions.validate(
++                hospitalRepository.updateStatus(hospitalId, suspendedHospital.getStatus(), suspendedHospital.getUpdatedAt()),
++                HospitalErrorCode.HOSPITAL_NOT_FOUND
++        );
+     }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/UpdateHospitalBusinessHoursService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/UpdateHospitalBusinessHoursService.java
+index a03ef44..048d4d9 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/UpdateHospitalBusinessHoursService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/UpdateHospitalBusinessHoursService.java
+@@ -31,6 +31,10 @@ public class UpdateHospitalBusinessHoursService implements UpdateHospitalBusines
+                 request.slotDurationMinutes()
+         );
+ 
+-        hospitalBusinessHoursRepository.save(updatedBusinessHours);
++        // 読み取り後に削除されていた場合は0件更新（mergeで行を作り直さない）
++        Preconditions.validate(
++                hospitalBusinessHoursRepository.updateHours(updatedBusinessHours),
++                HospitalErrorCode.HOSPITAL_BUSINESS_HOURS_NOT_FOUND
++        );
+     }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/UpdateHospitalService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/UpdateHospitalService.java
+index 2a63d33..4c562ea 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/UpdateHospitalService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/UpdateHospitalService.java
+@@ -2,11 +2,13 @@ package koh.portfolio.springapi.application.hospital.service;
+ 
+ import koh.portfolio.springapi.application.hospital.dto.HospitalDto.UpdateHospitalRequest;
+ import koh.portfolio.springapi.application.hospital.usecase.UpdateHospitalUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
+ import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
+ import koh.portfolio.springapi.domain.hospital.model.Hospital;
+ import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
+ import lombok.RequiredArgsConstructor;
+ import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
+ 
+ @Service
+ @RequiredArgsConstructor
+@@ -14,6 +16,7 @@ public class UpdateHospitalService implements UpdateHospitalUseCase {
+     private final HospitalRepository hospitalRepository;
+ 
+     @Override
++    @Transactional
+     public void execute(Long hospitalId, UpdateHospitalRequest request) {
+         Hospital hospital = hospitalRepository.findById(hospitalId)
+                 .orElseThrow(HospitalErrorCode.HOSPITAL_NOT_FOUND::defaultException);
+@@ -24,6 +27,10 @@ public class UpdateHospitalService implements UpdateHospitalUseCase {
+                 request.phoneNumber()
+         );
+ 
+-        hospitalRepository.save(updatedHospital);
++        // 情報列だけを書く。statusは触らないため、同時に行われた停止を取り消さない
++        Preconditions.validate(
++                hospitalRepository.updateInfo(updatedHospital),
++                HospitalErrorCode.HOSPITAL_NOT_FOUND
++        );
+     }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/notification/dto/NotificationDto.java b/spring-api/src/main/java/koh/portfolio/springapi/application/notification/dto/NotificationDto.java
+new file mode 100644
+index 0000000..fe5c259
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/notification/dto/NotificationDto.java
+@@ -0,0 +1,18 @@
++package koh.portfolio.springapi.application.notification.dto;
++
++import koh.portfolio.springapi.domain.notification.model.NotificationType;
++import lombok.Builder;
++
++import java.time.LocalDateTime;
++
++public record NotificationDto() {
++    @Builder
++    public record NotificationResponse(
++            Long notificationId,
++            NotificationType type,
++            String title,
++            String message,
++            boolean isRead,
++            LocalDateTime createdAt
++    ) {}
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/notification/service/NotificationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/notification/service/NotificationService.java
+new file mode 100644
+index 0000000..55b7664
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/notification/service/NotificationService.java
+@@ -0,0 +1,62 @@
++package koh.portfolio.springapi.application.notification.service;
++
++import koh.portfolio.springapi.application.notification.dto.NotificationDto.NotificationResponse;
++import koh.portfolio.springapi.application.notification.usecase.GetNotificationListUseCase;
++import koh.portfolio.springapi.application.notification.usecase.MarkNotificationAsReadUseCase;
++import koh.portfolio.springapi.application.notification.usecase.NotifyReservationEventUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.notification.exception.NotificationErrorCode;
++import koh.portfolio.springapi.domain.notification.model.Notification;
++import koh.portfolio.springapi.domain.notification.model.NotificationType;
++import koh.portfolio.springapi.domain.notification.port.NotificationRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.time.LocalDateTime;
++import java.util.List;
++
++@Service
++@RequiredArgsConstructor
++public class NotificationService implements
++        GetNotificationListUseCase,
++        MarkNotificationAsReadUseCase,
++        NotifyReservationEventUseCase {
++
++    private final NotificationRepository notificationRepository;
++
++    @Override
++    public List<NotificationResponse> execute(Long userId) {
++        return notificationRepository.findAllByUserId(userId).stream()
++                .map(notification -> NotificationResponse.builder()
++                        .notificationId(notification.getId())
++                        .type(notification.getNotificationType())
++                        .title(notification.getTitle())
++                        .message(notification.getMessage())
++                        .isRead(notification.isRead())
++                        .createdAt(notification.getCreatedAt())
++                        .build())
++                .toList();
++    }
++
++    @Override
++    @Transactional
++    public void execute(Long userId, Long notificationId) {
++        Notification notification = notificationRepository.findById(notificationId)
++                .orElseThrow(NotificationErrorCode.NOTIFICATION_NOT_FOUND::defaultException);
++
++        Preconditions.validate(
++                notification.getUserId().equals(userId),
++                NotificationErrorCode.NOT_NOTIFICATION_OWNER
++        );
++
++        // 既読済みなら0件更新。再実行しても成功扱いにする（冪等）
++        notificationRepository.markAsRead(notificationId, LocalDateTime.now());
++    }
++
++    @Override
++    @Transactional
++    public void execute(Long userId, Long reservationId, NotificationType notificationType) {
++        notificationRepository.save(Notification.forReservation(userId, reservationId, notificationType));
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/notification/usecase/GetNotificationListUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/notification/usecase/GetNotificationListUseCase.java
+new file mode 100644
+index 0000000..66d6135
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/notification/usecase/GetNotificationListUseCase.java
+@@ -0,0 +1,9 @@
++package koh.portfolio.springapi.application.notification.usecase;
++
++import koh.portfolio.springapi.application.notification.dto.NotificationDto.NotificationResponse;
++
++import java.util.List;
++
++public interface GetNotificationListUseCase {
++    List<NotificationResponse> execute(Long userId);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/notification/usecase/MarkNotificationAsReadUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/notification/usecase/MarkNotificationAsReadUseCase.java
+new file mode 100644
+index 0000000..2c6121b
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/notification/usecase/MarkNotificationAsReadUseCase.java
+@@ -0,0 +1,5 @@
++package koh.portfolio.springapi.application.notification.usecase;
++
++public interface MarkNotificationAsReadUseCase {
++    void execute(Long userId, Long notificationId);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/notification/usecase/NotifyReservationEventUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/notification/usecase/NotifyReservationEventUseCase.java
+new file mode 100644
+index 0000000..9c3d495
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/notification/usecase/NotifyReservationEventUseCase.java
+@@ -0,0 +1,9 @@
++package koh.portfolio.springapi.application.notification.usecase;
++
++import koh.portfolio.springapi.domain.notification.model.NotificationType;
++
++// 予約の承認・却下・診療完了で通知を生成する（08_State_Design §6-6）。
++// 公開APIは持たず、Reservation の状態遷移サービスから呼ばれる内部契約
++public interface NotifyReservationEventUseCase {
++    void execute(Long userId, Long reservationId, NotificationType notificationType);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/UpdatePetService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/UpdatePetService.java
+index 1989177..1bf3c00 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/UpdatePetService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/UpdatePetService.java
+@@ -30,6 +30,8 @@ public class UpdatePetService implements UpdatePetUseCase {
+                 request.gender(),
+                 request.weight()
+         );
+-        petRepository.save(updatedPet);
++
++        // 読み取り後に論理削除がcommitされていた場合は0件更新。削除を最終状態として維持する
++        Preconditions.validate(petRepository.updateProfile(updatedPet), PetErrorCode.PET_NOT_FOUND);
+     }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/ApproveReservationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/ApproveReservationService.java
+index f3989a8..1749fed 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/ApproveReservationService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/ApproveReservationService.java
+@@ -1,7 +1,9 @@
+ package koh.portfolio.springapi.application.reservation.service;
+ 
++import koh.portfolio.springapi.application.notification.usecase.NotifyReservationEventUseCase;
+ import koh.portfolio.springapi.application.reservation.usecase.ApproveReservationUseCase;
+ import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.notification.model.NotificationType;
+ import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
+ import koh.portfolio.springapi.domain.reservation.model.Reservation;
+ import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
+@@ -13,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
+ @RequiredArgsConstructor
+ public class ApproveReservationService implements ApproveReservationUseCase {
+     private final ReservationRepository reservationRepository;
++    private final NotifyReservationEventUseCase notifyReservationEventUseCase;
+ 
+     @Override
+     @Transactional
+@@ -29,5 +32,9 @@ public class ApproveReservationService implements ApproveReservationUseCase {
+                         reservation.getId(), reservation.getStatus(), approved.getStatus(), approved.getUpdatedAt()),
+                 ReservationErrorCode.INVALID_STATE_TRANSITION
+         );
++
++        // 遷移が成立した場合のみ通知を生成する（08_State_Design §6-6）
++        notifyReservationEventUseCase.execute(
++                reservation.getUserId(), reservation.getId(), NotificationType.RESERVATION_APPROVED);
+     }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CompleteReservationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CompleteReservationService.java
+index e664a24..c38eed6 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CompleteReservationService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CompleteReservationService.java
+@@ -1,7 +1,9 @@
+ package koh.portfolio.springapi.application.reservation.service;
+ 
++import koh.portfolio.springapi.application.notification.usecase.NotifyReservationEventUseCase;
+ import koh.portfolio.springapi.application.reservation.usecase.CompleteReservationUseCase;
+ import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.notification.model.NotificationType;
+ import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
+ import koh.portfolio.springapi.domain.reservation.model.Reservation;
+ import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
+@@ -13,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
+ @RequiredArgsConstructor
+ public class CompleteReservationService implements CompleteReservationUseCase {
+     private final ReservationRepository reservationRepository;
++    private final NotifyReservationEventUseCase notifyReservationEventUseCase;
+ 
+     @Override
+     @Transactional
+@@ -27,5 +30,8 @@ public class CompleteReservationService implements CompleteReservationUseCase {
+                         reservation.getId(), reservation.getStatus(), completed.getStatus(), completed.getUpdatedAt()),
+                 ReservationErrorCode.INVALID_STATE_TRANSITION
+         );
++
++        notifyReservationEventUseCase.execute(
++                reservation.getUserId(), reservation.getId(), NotificationType.TREATMENT_COMPLETED);
+     }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/RejectReservationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/RejectReservationService.java
+index 73b5c7a..d5df440 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/RejectReservationService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/RejectReservationService.java
+@@ -1,7 +1,9 @@
+ package koh.portfolio.springapi.application.reservation.service;
+ 
++import koh.portfolio.springapi.application.notification.usecase.NotifyReservationEventUseCase;
+ import koh.portfolio.springapi.application.reservation.usecase.RejectReservationUseCase;
+ import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.notification.model.NotificationType;
+ import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
+ import koh.portfolio.springapi.domain.reservation.model.Reservation;
+ import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
+@@ -13,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
+ @RequiredArgsConstructor
+ public class RejectReservationService implements RejectReservationUseCase {
+     private final ReservationRepository reservationRepository;
++    private final NotifyReservationEventUseCase notifyReservationEventUseCase;
+ 
+     @Override
+     @Transactional
+@@ -27,5 +30,8 @@ public class RejectReservationService implements RejectReservationUseCase {
+                         reservation.getId(), reservation.getStatus(), rejected.getStatus(), rejected.getUpdatedAt()),
+                 ReservationErrorCode.INVALID_STATE_TRANSITION
+         );
++
++        notifyReservationEventUseCase.execute(
++                reservation.getUserId(), reservation.getId(), NotificationType.RESERVATION_REJECTED);
+     }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/exception/HealthRecordErrorCode.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/exception/HealthRecordErrorCode.java
+new file mode 100644
+index 0000000..d0db0dd
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/exception/HealthRecordErrorCode.java
+@@ -0,0 +1,41 @@
++package koh.portfolio.springapi.domain.healthrecord.exception;
++
++import koh.portfolio.springapi.common.exception.ErrorCode;
++import lombok.RequiredArgsConstructor;
++import org.springframework.http.HttpStatus;
++
++@RequiredArgsConstructor
++public enum HealthRecordErrorCode implements ErrorCode {
++    HEALTH_RECORD_NOT_FOUND("HEALTH-001", "存在しない健康記録です。", HttpStatus.NOT_FOUND),
++    NOT_PET_OWNER("HEALTH-002", "存在しないペット、または他のユーザーのペットです。", HttpStatus.FORBIDDEN),
++    DEFAULT("HEALTH-999", "健康記録関連エラーです。", HttpStatus.INTERNAL_SERVER_ERROR);
++
++    private final String code;
++    private final String message;
++    private final HttpStatus status;
++
++    @Override
++    public String code() {
++        return code;
++    }
++
++    @Override
++    public HttpStatus defaultHttpStatus() {
++        return status;
++    }
++
++    @Override
++    public String defaultMessage() {
++        return message;
++    }
++
++    @Override
++    public RuntimeException defaultException() {
++        return new HealthRecordException(this);
++    }
++
++    @Override
++    public RuntimeException defaultException(Throwable cause) {
++        return new HealthRecordException(this, cause);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/exception/HealthRecordException.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/exception/HealthRecordException.java
+new file mode 100644
+index 0000000..f893a87
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/exception/HealthRecordException.java
+@@ -0,0 +1,14 @@
++package koh.portfolio.springapi.domain.healthrecord.exception;
++
++import koh.portfolio.springapi.common.exception.CustomException;
++import koh.portfolio.springapi.common.exception.ErrorCode;
++
++public class HealthRecordException extends CustomException {
++    public HealthRecordException(ErrorCode errorCode) {
++        super(errorCode);
++    }
++
++    public HealthRecordException(ErrorCode errorCode, Throwable cause) {
++        super(errorCode, cause);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/model/HealthRecord.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/model/HealthRecord.java
+new file mode 100644
+index 0000000..59f1b52
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/model/HealthRecord.java
+@@ -0,0 +1,52 @@
++package koh.portfolio.springapi.domain.healthrecord.model;
++
++import lombok.AllArgsConstructor;
++import lombok.Getter;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++
++@Getter
++@AllArgsConstructor
++public class HealthRecord {
++    private Long id;
++    private Long petId;
++    private BigDecimal weight;
++    private String symptom;
++    private String memo;
++    private LocalDate recordedDate;
++    private LocalDateTime createdAt;
++    private LocalDateTime updatedAt;
++    private LocalDateTime deletedAt;
++
++    public static HealthRecord create(Long petId, BigDecimal weight, String symptom, String memo, LocalDate recordedDate) {
++        LocalDateTime now = LocalDateTime.now();
++
++        return new HealthRecord(null, petId, weight, symptom, memo, recordedDate, now, now, null);
++    }
++
++    // PATCHの部分更新: null（未指定）の項目は既存値を維持する。
++    // symptom / memo は空文字を送ると消去（NULL）できる。weight はPATCHでは消去できない
++    public HealthRecord patch(BigDecimal weight, String symptom, String memo, LocalDate recordedDate) {
++        return new HealthRecord(
++                this.id,
++                this.petId,
++                weight != null ? weight : this.weight,
++                mergeText(symptom, this.symptom),
++                mergeText(memo, this.memo),
++                recordedDate != null ? recordedDate : this.recordedDate,
++                this.createdAt,
++                LocalDateTime.now(),
++                this.deletedAt
++        );
++    }
++
++    private static String mergeText(String requested, String current) {
++        if (requested == null) {
++            return current;
++        }
++
++        return requested.isBlank() ? null : requested;
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/port/HealthRecordRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/port/HealthRecordRepository.java
+new file mode 100644
+index 0000000..1c5c5d2
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/healthrecord/port/HealthRecordRepository.java
+@@ -0,0 +1,18 @@
++package koh.portfolio.springapi.domain.healthrecord.port;
++
++import koh.portfolio.springapi.domain.healthrecord.model.HealthRecord;
++
++import java.time.LocalDateTime;
++import java.util.List;
++import java.util.Optional;
++
++public interface HealthRecordRepository {
++    HealthRecord save(HealthRecord healthRecord);
++    Optional<HealthRecord> findById(Long id);
++    List<HealthRecord> findAllByPetId(Long petId);
++    void softDelete(Long id, LocalDateTime deletedAt);
++
++    // 内容列だけを、論理削除されていない行に限って更新する。更新できたかを返す。
++    // エンティティ全体を保存すると、読み取り後にcommitされた論理削除を deleted_at=NULL で上書きしてしまう
++    boolean updateContent(HealthRecord healthRecord);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalBusinessHoursRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalBusinessHoursRepository.java
+index 255f472..55bc5e0 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalBusinessHoursRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalBusinessHoursRepository.java
+@@ -12,4 +12,8 @@ public interface HospitalBusinessHoursRepository {
+     List<HospitalBusinessHours> findByHospitalId(Long hospitalId);
+     boolean existsByHospitalIdAndDayOfWeek(Long hospitalId, DayOfWeek dayOfWeek);
+     void deleteById(Long id);
++
++    // 時間列だけを更新し、更新できたかを返す。エンティティ全体のmergeだと、
++    // 読み取り後に削除された行を新しい行として作り直してしまう（物理削除のため）
++    boolean updateHours(HospitalBusinessHours hospitalBusinessHours);
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalRepository.java
+index 736683d..87b5f3b 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalRepository.java
+@@ -1,7 +1,9 @@
+ package koh.portfolio.springapi.domain.hospital.port;
+ 
+ import koh.portfolio.springapi.domain.hospital.model.Hospital;
++import koh.portfolio.springapi.domain.hospital.model.HospitalStatus;
+ 
++import java.time.LocalDateTime;
+ import java.util.List;
+ import java.util.Optional;
+ 
+@@ -10,4 +12,9 @@ public interface HospitalRepository {
+     Optional<Hospital> findById(Long id);
+     List<Hospital> search(String keyword, String area);
+     boolean existsById(Long id);
++
++    // 情報更新と停止は別々の列だけを書く。エンティティ全体を保存すると、
++    // 同時に行われた停止を情報更新が ACTIVE で上書きする（逆も同様）
++    boolean updateInfo(Hospital hospital);
++    boolean updateStatus(Long hospitalId, HospitalStatus status, LocalDateTime updatedAt);
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/exception/NotificationErrorCode.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/exception/NotificationErrorCode.java
+new file mode 100644
+index 0000000..f68faec
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/exception/NotificationErrorCode.java
+@@ -0,0 +1,41 @@
++package koh.portfolio.springapi.domain.notification.exception;
++
++import koh.portfolio.springapi.common.exception.ErrorCode;
++import lombok.RequiredArgsConstructor;
++import org.springframework.http.HttpStatus;
++
++@RequiredArgsConstructor
++public enum NotificationErrorCode implements ErrorCode {
++    NOTIFICATION_NOT_FOUND("NOTIFICATION-001", "存在しない通知です。", HttpStatus.NOT_FOUND),
++    NOT_NOTIFICATION_OWNER("NOTIFICATION-002", "通知の受信者本人ではありません。", HttpStatus.FORBIDDEN),
++    DEFAULT("NOTIFICATION-999", "通知関連エラーです。", HttpStatus.INTERNAL_SERVER_ERROR);
++
++    private final String code;
++    private final String message;
++    private final HttpStatus status;
++
++    @Override
++    public String code() {
++        return code;
++    }
++
++    @Override
++    public HttpStatus defaultHttpStatus() {
++        return status;
++    }
++
++    @Override
++    public String defaultMessage() {
++        return message;
++    }
++
++    @Override
++    public RuntimeException defaultException() {
++        return new NotificationException(this);
++    }
++
++    @Override
++    public RuntimeException defaultException(Throwable cause) {
++        return new NotificationException(this, cause);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/exception/NotificationException.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/exception/NotificationException.java
+new file mode 100644
+index 0000000..cec6a58
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/exception/NotificationException.java
+@@ -0,0 +1,14 @@
++package koh.portfolio.springapi.domain.notification.exception;
++
++import koh.portfolio.springapi.common.exception.CustomException;
++import koh.portfolio.springapi.common.exception.ErrorCode;
++
++public class NotificationException extends CustomException {
++    public NotificationException(ErrorCode errorCode) {
++        super(errorCode);
++    }
++
++    public NotificationException(ErrorCode errorCode, Throwable cause) {
++        super(errorCode, cause);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/Notification.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/Notification.java
+new file mode 100644
+index 0000000..dcfa519
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/Notification.java
+@@ -0,0 +1,26 @@
++package koh.portfolio.springapi.domain.notification.model;
++
++import lombok.AllArgsConstructor;
++import lombok.Getter;
++
++import java.time.LocalDateTime;
++
++@Getter
++@AllArgsConstructor
++public class Notification {
++    private Long id;
++    private Long userId;
++    private Long reservationId;
++    private Long vaccinationId;
++    private NotificationType notificationType;
++    private String title;
++    private String message;
++    private boolean read;
++    private LocalDateTime createdAt;
++    private LocalDateTime readAt;
++
++    public static Notification forReservation(Long userId, Long reservationId, NotificationType notificationType) {
++        return new Notification(null, userId, reservationId, null, notificationType,
++                notificationType.getTitle(), notificationType.getMessage(), false, LocalDateTime.now(), null);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/NotificationType.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/NotificationType.java
+new file mode 100644
+index 0000000..d53df9c
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/NotificationType.java
+@@ -0,0 +1,17 @@
++package koh.portfolio.springapi.domain.notification.model;
++
++import lombok.Getter;
++import lombok.RequiredArgsConstructor;
++
++@Getter
++@RequiredArgsConstructor
++public enum NotificationType {
++    RESERVATION_APPROVED("予約が承認されました", "ご予約が承認されました。予約内容をご確認ください。"),
++    RESERVATION_REJECTED("予約が却下されました", "ご予約が却下されました。別の予約枠をご確認ください。"),
++    TREATMENT_COMPLETED("診療が完了しました", "診療が完了しました。健康記録の登録をおすすめします。"),
++    // Vaccination ドメイン未実装のため現在は生成されない（08_State_Design §7、文面は07_API_Design §10-1の例に合わせる）
++    VACCINATION("ワクチン接種予定", "ワクチン接種予定日が近づいています。");
++
++    private final String title;
++    private final String message;
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/port/NotificationRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/port/NotificationRepository.java
+new file mode 100644
+index 0000000..fb07df6
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/port/NotificationRepository.java
+@@ -0,0 +1,16 @@
++package koh.portfolio.springapi.domain.notification.port;
++
++import koh.portfolio.springapi.domain.notification.model.Notification;
++
++import java.time.LocalDateTime;
++import java.util.List;
++import java.util.Optional;
++
++public interface NotificationRepository {
++    Notification save(Notification notification);
++    Optional<Notification> findById(Long id);
++    List<Notification> findAllByUserId(Long userId);
++
++    // 未読の行だけを既読に更新し、更新できたかを返す。既読済みは0件（冪等）
++    boolean markAsRead(Long notificationId, LocalDateTime readAt);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/pet/port/PetRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/pet/port/PetRepository.java
+index e19446d..b8dad87 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/pet/port/PetRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/pet/port/PetRepository.java
+@@ -14,4 +14,8 @@ public interface PetRepository {
+     List<Pet> findAllByUserId(Long userId);
+     Optional<Pet> findByUserIdAndName(Long userId, String name);
+     void softDelete(Long id, LocalDateTime deletedAt);
++
++    // プロフィール列だけを、論理削除されていない行に限って更新する。
++    // エンティティ全体を保存すると、読み取り後にcommitされた削除を deleted_at=NULL で取り消してしまう
++    boolean updateProfile(Pet pet);
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordEntity.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordEntity.java
+new file mode 100644
+index 0000000..d5ff899
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordEntity.java
+@@ -0,0 +1,28 @@
++package koh.portfolio.springapi.infrastructure.persistence.healthrecord;
++
++import jakarta.persistence.*;
++import lombok.*;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++
++@Getter
++@Entity
++@Table(name = "health_records")
++@NoArgsConstructor(access = AccessLevel.PROTECTED)
++@AllArgsConstructor(access = AccessLevel.PRIVATE)
++@Builder
++public class HealthRecordEntity {
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++    private Long petId;
++    private BigDecimal weight;
++    private String symptom;
++    private String memo;
++    private LocalDate recordedDate;
++    private LocalDateTime createdAt;
++    private LocalDateTime updatedAt;
++    private LocalDateTime deletedAt;
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordJpaRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordJpaRepository.java
+new file mode 100644
+index 0000000..4163f1b
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordJpaRepository.java
+@@ -0,0 +1,34 @@
++package koh.portfolio.springapi.infrastructure.persistence.healthrecord;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Modifying;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++import java.util.List;
++import java.util.Optional;
++
++public interface HealthRecordJpaRepository extends JpaRepository<HealthRecordEntity, Long> {
++    Optional<HealthRecordEntity> findByIdAndDeletedAtIsNull(Long id);
++
++    List<HealthRecordEntity> findAllByPetIdAndDeletedAtIsNullOrderByRecordedDateDesc(Long petId);
++
++    @Modifying
++    @Query("UPDATE HealthRecordEntity SET deletedAt = ?2 WHERE id = ?1")
++    void softDeleteById(Long id, LocalDateTime deletedAt);
++
++    @Modifying(clearAutomatically = true, flushAutomatically = true)
++    @Query("update HealthRecordEntity set weight = :weight, symptom = :symptom, memo = :memo, "
++            + "recordedDate = :recordedDate, updatedAt = :updatedAt where id = :id and deletedAt is null")
++    int updateContent(
++            @Param("id") Long id,
++            @Param("weight") BigDecimal weight,
++            @Param("symptom") String symptom,
++            @Param("memo") String memo,
++            @Param("recordedDate") LocalDate recordedDate,
++            @Param("updatedAt") LocalDateTime updatedAt
++    );
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordMapper.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordMapper.java
+new file mode 100644
+index 0000000..6867baf
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordMapper.java
+@@ -0,0 +1,9 @@
++package koh.portfolio.springapi.infrastructure.persistence.healthrecord;
++
++import koh.portfolio.springapi.domain.healthrecord.model.HealthRecord;
++import koh.portfolio.springapi.infrastructure.mapper.DomainEntityMapper;
++import org.mapstruct.Mapper;
++
++@Mapper
++public interface HealthRecordMapper extends DomainEntityMapper<HealthRecord, HealthRecordEntity> {
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordPersistenceAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordPersistenceAdapter.java
+new file mode 100644
+index 0000000..2150ea5
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordPersistenceAdapter.java
+@@ -0,0 +1,53 @@
++package koh.portfolio.springapi.infrastructure.persistence.healthrecord;
++
++import koh.portfolio.springapi.domain.healthrecord.model.HealthRecord;
++import koh.portfolio.springapi.domain.healthrecord.port.HealthRecordRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Repository;
++
++import java.time.LocalDateTime;
++import java.util.List;
++import java.util.Optional;
++
++@Repository
++@RequiredArgsConstructor
++public class HealthRecordPersistenceAdapter implements HealthRecordRepository {
++    private final HealthRecordJpaRepository healthRecordJpaRepository;
++    private final HealthRecordMapper healthRecordMapper;
++
++    @Override
++    public HealthRecord save(HealthRecord healthRecord) {
++        HealthRecordEntity savedEntity = healthRecordJpaRepository.save(healthRecordMapper.toEntity(healthRecord));
++
++        return healthRecordMapper.toDomain(savedEntity);
++    }
++
++    @Override
++    public Optional<HealthRecord> findById(Long id) {
++        return healthRecordJpaRepository.findByIdAndDeletedAtIsNull(id)
++                .map(healthRecordMapper::toDomain);
++    }
++
++    @Override
++    public List<HealthRecord> findAllByPetId(Long petId) {
++        return healthRecordJpaRepository.findAllByPetIdAndDeletedAtIsNullOrderByRecordedDateDesc(petId)
++                .stream().map(healthRecordMapper::toDomain).toList();
++    }
++
++    @Override
++    public void softDelete(Long id, LocalDateTime deletedAt) {
++        healthRecordJpaRepository.softDeleteById(id, deletedAt);
++    }
++
++    @Override
++    public boolean updateContent(HealthRecord healthRecord) {
++        return healthRecordJpaRepository.updateContent(
++                healthRecord.getId(),
++                healthRecord.getWeight(),
++                healthRecord.getSymptom(),
++                healthRecord.getMemo(),
++                healthRecord.getRecordedDate(),
++                healthRecord.getUpdatedAt()
++        ) == 1;
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalBusinessHoursAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalBusinessHoursAdapter.java
+index 385d0d2..67b7702 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalBusinessHoursAdapter.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalBusinessHoursAdapter.java
+@@ -47,4 +47,18 @@ public class HospitalBusinessHoursAdapter implements HospitalBusinessHoursReposi
+     public void deleteById(Long id) {
+         hospitalBusinessHoursJpaRepository.deleteById(id);
+     }
++
++    @Override
++    public boolean updateHours(HospitalBusinessHours hospitalBusinessHours) {
++        return hospitalBusinessHoursJpaRepository.updateHours(
++                hospitalBusinessHours.getId(),
++                hospitalBusinessHours.getHospitalId(),
++                hospitalBusinessHours.getOpenTime(),
++                hospitalBusinessHours.getCloseTime(),
++                hospitalBusinessHours.getBreakStartTime(),
++                hospitalBusinessHours.getBreakEndTime(),
++                hospitalBusinessHours.getSlotDurationMinutes(),
++                hospitalBusinessHours.getUpdatedAt()
++        ) == 1;
++    }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalBusinessHoursJpaRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalBusinessHoursJpaRepository.java
+index 8c9e3e1..050a28f 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalBusinessHoursJpaRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalBusinessHoursJpaRepository.java
+@@ -1,11 +1,32 @@
+ package koh.portfolio.springapi.infrastructure.persistence.hospital;
+ 
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Modifying;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
+ 
+ import java.time.DayOfWeek;
++import java.time.LocalDateTime;
++import java.time.LocalTime;
+ import java.util.List;
+ 
+ public interface HospitalBusinessHoursJpaRepository extends JpaRepository<HospitalBusinessHoursEntity, Long> {
+     List<HospitalBusinessHoursEntity> findByHospitalId(Long hospitalId);
+     boolean existsByHospitalIdAndDayOfWeek(Long hospitalId, DayOfWeek dayOfWeek);
++
++    @Modifying(clearAutomatically = true, flushAutomatically = true)
++    @Query("update HospitalBusinessHoursEntity set openTime = :openTime, closeTime = :closeTime, "
++            + "breakStartTime = :breakStartTime, breakEndTime = :breakEndTime, "
++            + "slotDurationMinutes = :slotDurationMinutes, updatedAt = :updatedAt "
++            + "where id = :id and hospitalId = :hospitalId")
++    int updateHours(
++            @Param("id") Long id,
++            @Param("hospitalId") Long hospitalId,
++            @Param("openTime") LocalTime openTime,
++            @Param("closeTime") LocalTime closeTime,
++            @Param("breakStartTime") LocalTime breakStartTime,
++            @Param("breakEndTime") LocalTime breakEndTime,
++            @Param("slotDurationMinutes") Integer slotDurationMinutes,
++            @Param("updatedAt") LocalDateTime updatedAt
++    );
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalJpaRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalJpaRepository.java
+index 4697851..b28347f 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalJpaRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalJpaRepository.java
+@@ -2,9 +2,11 @@ package koh.portfolio.springapi.infrastructure.persistence.hospital;
+ 
+ import koh.portfolio.springapi.domain.hospital.model.HospitalStatus;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Modifying;
+ import org.springframework.data.jpa.repository.Query;
+ import org.springframework.data.repository.query.Param;
+ 
++import java.time.LocalDateTime;
+ import java.util.List;
+ import java.util.Optional;
+ 
+@@ -23,4 +25,23 @@ public interface HospitalJpaRepository extends JpaRepository<HospitalEntity, Lon
+             @Param("keyword") String keyword,
+             @Param("area") String area
+     );
++
++    @Modifying(clearAutomatically = true, flushAutomatically = true)
++    @Query("update HospitalEntity set name = :name, address = :address, phoneNumber = :phoneNumber, "
++            + "updatedAt = :updatedAt where id = :id and deletedAt is null")
++    int updateInfo(
++            @Param("id") Long id,
++            @Param("name") String name,
++            @Param("address") String address,
++            @Param("phoneNumber") String phoneNumber,
++            @Param("updatedAt") LocalDateTime updatedAt
++    );
++
++    @Modifying(clearAutomatically = true, flushAutomatically = true)
++    @Query("update HospitalEntity set status = :status, updatedAt = :updatedAt where id = :id and deletedAt is null")
++    int updateStatus(
++            @Param("id") Long id,
++            @Param("status") HospitalStatus status,
++            @Param("updatedAt") LocalDateTime updatedAt
++    );
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalPersistenceAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalPersistenceAdapter.java
+index c7d5865..f39f5a9 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalPersistenceAdapter.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalPersistenceAdapter.java
+@@ -6,6 +6,7 @@ import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
+ import lombok.RequiredArgsConstructor;
+ import org.springframework.stereotype.Repository;
+ 
++import java.time.LocalDateTime;
+ import java.util.List;
+ import java.util.Optional;
+ 
+@@ -40,4 +41,20 @@ public class HospitalPersistenceAdapter implements HospitalRepository {
+     public boolean existsById(Long id) {
+         return hospitalJpaRepository.existsById(id);
+     }
++
++    @Override
++    public boolean updateInfo(Hospital hospital) {
++        return hospitalJpaRepository.updateInfo(
++                hospital.getId(),
++                hospital.getName(),
++                hospital.getAddress(),
++                hospital.getPhoneNumber(),
++                hospital.getUpdatedAt()
++        ) == 1;
++    }
++
++    @Override
++    public boolean updateStatus(Long hospitalId, HospitalStatus status, LocalDateTime updatedAt) {
++        return hospitalJpaRepository.updateStatus(hospitalId, status, updatedAt) == 1;
++    }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationEntity.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationEntity.java
+new file mode 100644
+index 0000000..efe6201
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationEntity.java
+@@ -0,0 +1,30 @@
++package koh.portfolio.springapi.infrastructure.persistence.notification;
++
++import jakarta.persistence.*;
++import koh.portfolio.springapi.domain.notification.model.NotificationType;
++import lombok.*;
++
++import java.time.LocalDateTime;
++
++@Getter
++@Entity
++@Table(name = "notifications")
++@NoArgsConstructor(access = AccessLevel.PROTECTED)
++@AllArgsConstructor(access = AccessLevel.PRIVATE)
++@Builder
++public class NotificationEntity {
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++    private Long userId;
++    private Long reservationId;
++    private Long vaccinationId;
++    @Enumerated(EnumType.STRING)
++    private NotificationType notificationType;
++    private String title;
++    private String message;
++    @Column(name = "is_read")
++    private boolean read;
++    private LocalDateTime createdAt;
++    private LocalDateTime readAt;
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationJpaRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationJpaRepository.java
+new file mode 100644
+index 0000000..1cec698
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationJpaRepository.java
+@@ -0,0 +1,17 @@
++package koh.portfolio.springapi.infrastructure.persistence.notification;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Modifying;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
++
++import java.time.LocalDateTime;
++import java.util.List;
++
++public interface NotificationJpaRepository extends JpaRepository<NotificationEntity, Long> {
++    List<NotificationEntity> findAllByUserIdOrderByCreatedAtDesc(Long userId);
++
++    @Modifying(clearAutomatically = true, flushAutomatically = true)
++    @Query("update NotificationEntity set read = true, readAt = :readAt where id = :id and read = false")
++    int markAsRead(@Param("id") Long id, @Param("readAt") LocalDateTime readAt);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationMapper.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationMapper.java
+new file mode 100644
+index 0000000..2d42792
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationMapper.java
+@@ -0,0 +1,9 @@
++package koh.portfolio.springapi.infrastructure.persistence.notification;
++
++import koh.portfolio.springapi.domain.notification.model.Notification;
++import koh.portfolio.springapi.infrastructure.mapper.DomainEntityMapper;
++import org.mapstruct.Mapper;
++
++@Mapper
++public interface NotificationMapper extends DomainEntityMapper<Notification, NotificationEntity> {
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationPersistenceAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationPersistenceAdapter.java
+new file mode 100644
+index 0000000..c159eea
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationPersistenceAdapter.java
+@@ -0,0 +1,41 @@
++package koh.portfolio.springapi.infrastructure.persistence.notification;
++
++import koh.portfolio.springapi.domain.notification.model.Notification;
++import koh.portfolio.springapi.domain.notification.port.NotificationRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Repository;
++
++import java.time.LocalDateTime;
++import java.util.List;
++import java.util.Optional;
++
++@Repository
++@RequiredArgsConstructor
++public class NotificationPersistenceAdapter implements NotificationRepository {
++    private final NotificationJpaRepository notificationJpaRepository;
++    private final NotificationMapper notificationMapper;
++
++    @Override
++    public Notification save(Notification notification) {
++        NotificationEntity savedEntity = notificationJpaRepository.save(notificationMapper.toEntity(notification));
++
++        return notificationMapper.toDomain(savedEntity);
++    }
++
++    @Override
++    public Optional<Notification> findById(Long id) {
++        return notificationJpaRepository.findById(id)
++                .map(notificationMapper::toDomain);
++    }
++
++    @Override
++    public List<Notification> findAllByUserId(Long userId) {
++        return notificationJpaRepository.findAllByUserIdOrderByCreatedAtDesc(userId)
++                .stream().map(notificationMapper::toDomain).toList();
++    }
++
++    @Override
++    public boolean markAsRead(Long notificationId, LocalDateTime readAt) {
++        return notificationJpaRepository.markAsRead(notificationId, readAt) == 1;
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetJpaRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetJpaRepository.java
+index 1b7af47..5a26dba 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetJpaRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetJpaRepository.java
+@@ -1,9 +1,14 @@
+ package koh.portfolio.springapi.infrastructure.persistence.pet;
+ 
++import koh.portfolio.springapi.domain.pet.model.PetGender;
++import koh.portfolio.springapi.domain.pet.model.PetType;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Modifying;
+ import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
+ 
++import java.math.BigDecimal;
++import java.time.LocalDate;
+ import java.time.LocalDateTime;
+ import java.util.List;
+ import java.util.Optional;
+@@ -20,4 +25,17 @@ public interface PetJpaRepository extends JpaRepository<PetEntity, Long> {
+     @Modifying
+     @Query("UPDATE PetEntity SET deletedAt = ?2 WHERE id = ?1")
+     void softDeleteById(Long id, LocalDateTime deletedAt);
++
++    @Modifying(clearAutomatically = true, flushAutomatically = true)
++    @Query("update PetEntity set name = :name, petType = :petType, birthDate = :birthDate, gender = :gender, "
++            + "weight = :weight, updatedAt = :updatedAt where id = :id and deletedAt is null")
++    int updateProfile(
++            @Param("id") Long id,
++            @Param("name") String name,
++            @Param("petType") PetType petType,
++            @Param("birthDate") LocalDate birthDate,
++            @Param("gender") PetGender gender,
++            @Param("weight") BigDecimal weight,
++            @Param("updatedAt") LocalDateTime updatedAt
++    );
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapter.java
+index 09424e2..9a8c7a1 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapter.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapter.java
+@@ -53,4 +53,17 @@ public class PetPersistenceAdapter implements PetRepository {
+     public void softDelete(Long id, LocalDateTime deletedAt) {
+         petJpaRepository.softDeleteById(id, deletedAt);
+     }
++
++    @Override
++    public boolean updateProfile(Pet pet) {
++        return petJpaRepository.updateProfile(
++                pet.getId(),
++                pet.getName(),
++                pet.getPetType(),
++                pet.getBirthDate(),
++                pet.getGender(),
++                pet.getWeight(),
++                pet.getUpdatedAt()
++        ) == 1;
++    }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/presentation/healthrecord/HealthRecordController.java b/spring-api/src/main/java/koh/portfolio/springapi/presentation/healthrecord/HealthRecordController.java
+new file mode 100644
+index 0000000..e32b617
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/presentation/healthrecord/HealthRecordController.java
+@@ -0,0 +1,79 @@
++package koh.portfolio.springapi.presentation.healthrecord;
++
++import jakarta.validation.Valid;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.CreateHealthRecordRequest;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.CreateHealthRecordResponse;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.HealthRecordResponse;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.UpdateHealthRecordRequest;
++import koh.portfolio.springapi.application.healthrecord.usecase.CreateHealthRecordUseCase;
++import koh.portfolio.springapi.application.healthrecord.usecase.DeleteHealthRecordUseCase;
++import koh.portfolio.springapi.application.healthrecord.usecase.GetHealthRecordListUseCase;
++import koh.portfolio.springapi.application.healthrecord.usecase.UpdateHealthRecordUseCase;
++import koh.portfolio.springapi.common.response.ApiResponse;
++import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
++import lombok.RequiredArgsConstructor;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++import org.springframework.security.core.Authentication;
++import org.springframework.web.bind.annotation.*;
++
++import java.util.List;
++
++@RestController
++@RequestMapping("/api/v1")
++@RequiredArgsConstructor
++public class HealthRecordController {
++    private final CreateHealthRecordUseCase createHealthRecordUseCase;
++    private final GetHealthRecordListUseCase getHealthRecordListUseCase;
++    private final UpdateHealthRecordUseCase updateHealthRecordUseCase;
++    private final DeleteHealthRecordUseCase deleteHealthRecordUseCase;
++
++    @PostMapping("/pets/{petId}/health-records")
++    public ResponseEntity<ApiResponse<CreateHealthRecordResponse>> createHealthRecord(
++            Authentication authentication,
++            @PathVariable Long petId,
++            @Valid @RequestBody CreateHealthRecordRequest request
++    ) {
++        Long userId = extractUserId(authentication);
++        return ResponseEntity
++                .status(HttpStatus.CREATED)
++                .body(ApiResponse.success(createHealthRecordUseCase.execute(userId, petId, request)));
++    }
++
++    @GetMapping("/pets/{petId}/health-records")
++    public ResponseEntity<ApiResponse<List<HealthRecordResponse>>> getHealthRecordList(
++            Authentication authentication,
++            @PathVariable Long petId
++    ) {
++        Long userId = extractUserId(authentication);
++        return ResponseEntity.ok(ApiResponse.success(getHealthRecordListUseCase.execute(userId, petId)));
++    }
++
++    @PatchMapping("/health-records/{healthRecordId}")
++    public ResponseEntity<ApiResponse<Void>> updateHealthRecord(
++            Authentication authentication,
++            @PathVariable Long healthRecordId,
++            @Valid @RequestBody UpdateHealthRecordRequest request
++    ) {
++        Long userId = extractUserId(authentication);
++        updateHealthRecordUseCase.execute(userId, healthRecordId, request);
++        return ResponseEntity.ok(ApiResponse.success(null));
++    }
++
++    @DeleteMapping("/health-records/{healthRecordId}")
++    public ResponseEntity<ApiResponse<Void>> deleteHealthRecord(
++            Authentication authentication,
++            @PathVariable Long healthRecordId
++    ) {
++        Long userId = extractUserId(authentication);
++        deleteHealthRecordUseCase.execute(userId, healthRecordId);
++        return ResponseEntity.ok(ApiResponse.success(null));
++    }
++
++    private Long extractUserId(Authentication authentication) {
++        if (authentication == null || !(authentication.getPrincipal() instanceof Long userId)) {
++            throw AuthErrorCode.AUTH_FAILED.defaultException();
++        }
++        return userId;
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/presentation/notification/NotificationController.java b/spring-api/src/main/java/koh/portfolio/springapi/presentation/notification/NotificationController.java
+new file mode 100644
+index 0000000..61f89ed
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/presentation/notification/NotificationController.java
+@@ -0,0 +1,44 @@
++package koh.portfolio.springapi.presentation.notification;
++
++import koh.portfolio.springapi.application.notification.dto.NotificationDto.NotificationResponse;
++import koh.portfolio.springapi.application.notification.usecase.GetNotificationListUseCase;
++import koh.portfolio.springapi.application.notification.usecase.MarkNotificationAsReadUseCase;
++import koh.portfolio.springapi.common.response.ApiResponse;
++import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
++import lombok.RequiredArgsConstructor;
++import org.springframework.http.ResponseEntity;
++import org.springframework.security.core.Authentication;
++import org.springframework.web.bind.annotation.*;
++
++import java.util.List;
++
++@RestController
++@RequestMapping("/api/v1/notifications")
++@RequiredArgsConstructor
++public class NotificationController {
++    private final GetNotificationListUseCase getNotificationListUseCase;
++    private final MarkNotificationAsReadUseCase markNotificationAsReadUseCase;
++
++    @GetMapping
++    public ResponseEntity<ApiResponse<List<NotificationResponse>>> getNotificationList(Authentication authentication) {
++        Long userId = extractUserId(authentication);
++        return ResponseEntity.ok(ApiResponse.success(getNotificationListUseCase.execute(userId)));
++    }
++
++    @PatchMapping("/{notificationId}/read")
++    public ResponseEntity<ApiResponse<Void>> markNotificationAsRead(
++            Authentication authentication,
++            @PathVariable Long notificationId
++    ) {
++        Long userId = extractUserId(authentication);
++        markNotificationAsReadUseCase.execute(userId, notificationId);
++        return ResponseEntity.ok(ApiResponse.success(null));
++    }
++
++    private Long extractUserId(Authentication authentication) {
++        if (authentication == null || !(authentication.getPrincipal() instanceof Long userId)) {
++            throw AuthErrorCode.AUTH_FAILED.defaultException();
++        }
++        return userId;
++    }
++}
+diff --git a/spring-api/src/main/resources/db/migration/V10__create_notifications.sql b/spring-api/src/main/resources/db/migration/V10__create_notifications.sql
+new file mode 100644
+index 0000000..eb6ac53
+--- /dev/null
++++ b/spring-api/src/main/resources/db/migration/V10__create_notifications.sql
+@@ -0,0 +1,25 @@
++CREATE TABLE notifications (
++    id                BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    user_id           BIGINT       NOT NULL,
++    reservation_id    BIGINT       NULL,
++    vaccination_id    BIGINT       NULL,
++    notification_type VARCHAR(50)  NOT NULL,
++    title             VARCHAR(100) NOT NULL,
++    message           TEXT         NOT NULL,
++    is_read           BOOLEAN      NOT NULL DEFAULT FALSE,
++    created_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    read_at           TIMESTAMP    NULL,
++
++    CONSTRAINT fk_notifications_user
++        FOREIGN KEY (user_id)
++            REFERENCES users (id),
++    CONSTRAINT fk_notifications_reservation
++        FOREIGN KEY (reservation_id)
++            REFERENCES reservations (id)
++);
++
++-- vaccination_id は 06_ERD §15 どおり列だけ作成する。
++-- vaccinations テーブルが未作成のためFK制約は付けられない（Vaccination ドメイン実装時に追加する）
++
++CREATE INDEX idx_notifications_user_id ON notifications (user_id);
++CREATE INDEX idx_notifications_is_read ON notifications (is_read);
+diff --git a/spring-api/src/main/resources/db/migration/V9__create_health_records.sql b/spring-api/src/main/resources/db/migration/V9__create_health_records.sql
+new file mode 100644
+index 0000000..773caa9
+--- /dev/null
++++ b/spring-api/src/main/resources/db/migration/V9__create_health_records.sql
+@@ -0,0 +1,17 @@
++CREATE TABLE health_records (
++    id            BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    pet_id        BIGINT       NOT NULL,
++    weight        DECIMAL(5,2) NULL,
++    symptom       VARCHAR(255) NULL,
++    memo          TEXT         NULL,
++    recorded_date DATE         NOT NULL,
++    created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    deleted_at    TIMESTAMP    NULL,
++
++    CONSTRAINT fk_health_records_pet
++        FOREIGN KEY (pet_id)
++            REFERENCES pets (id)
++);
++
++CREATE INDEX idx_health_records_pet_id ON health_records (pet_id);
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/healthrecord/service/HealthRecordServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/healthrecord/service/HealthRecordServiceTest.java
+new file mode 100644
+index 0000000..aeec38e
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/healthrecord/service/HealthRecordServiceTest.java
+@@ -0,0 +1,333 @@
++package koh.portfolio.springapi.application.healthrecord.service;
++
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.CreateHealthRecordRequest;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.CreateHealthRecordResponse;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.HealthRecordResponse;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.UpdateHealthRecordRequest;
++import koh.portfolio.springapi.common.exception.CustomException;
++import koh.portfolio.springapi.domain.healthrecord.exception.HealthRecordErrorCode;
++import koh.portfolio.springapi.domain.healthrecord.model.HealthRecord;
++import koh.portfolio.springapi.domain.healthrecord.port.HealthRecordRepository;
++import koh.portfolio.springapi.domain.pet.model.Pet;
++import koh.portfolio.springapi.domain.pet.model.PetGender;
++import koh.portfolio.springapi.domain.pet.model.PetType;
++import koh.portfolio.springapi.domain.pet.port.PetRepository;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.mockito.ArgumentCaptor;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++import java.util.List;
++import java.util.Optional;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.anyLong;
++import static org.mockito.Mockito.*;
++
++class HealthRecordServiceTest {
++
++    private HealthRecordRepository healthRecordRepository;
++    private PetRepository petRepository;
++    private HealthRecordService healthRecordService;
++    private UpdateHealthRecordService updateHealthRecordService;
++    private DeleteHealthRecordService deleteHealthRecordService;
++
++    private final Long userId = 1L;
++    private final Long petId = 10L;
++    private final Long healthRecordId = 100L;
++
++    @BeforeEach
++    void setUp() {
++        healthRecordRepository = mock(HealthRecordRepository.class);
++        petRepository = mock(PetRepository.class);
++        healthRecordService = new HealthRecordService(healthRecordRepository, petRepository);
++        updateHealthRecordService = new UpdateHealthRecordService(healthRecordRepository, petRepository);
++        deleteHealthRecordService = new DeleteHealthRecordService(healthRecordRepository, petRepository);
++    }
++
++    private Pet pet(Long ownerId) {
++        LocalDateTime now = LocalDateTime.now();
++        return new Pet(petId, ownerId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE,
++                new BigDecimal("4.50"), now, now, null);
++    }
++
++    private HealthRecord healthRecord() {
++        LocalDateTime now = LocalDateTime.now();
++        return new HealthRecord(healthRecordId, petId, new BigDecimal("4.70"), "咳", "少し元気がない",
++                LocalDate.of(2026, 5, 20), now, now, null);
++    }
++
++    private void stubSaveEcho() {
++        when(healthRecordRepository.save(any(HealthRecord.class))).thenAnswer(invocation -> {
++            HealthRecord arg = invocation.getArgument(0);
++            return new HealthRecord(arg.getId() != null ? arg.getId() : healthRecordId, arg.getPetId(), arg.getWeight(),
++                    arg.getSymptom(), arg.getMemo(), arg.getRecordedDate(), arg.getCreatedAt(), arg.getUpdatedAt(), arg.getDeletedAt());
++        });
++    }
++
++    // ------------------------------------------------------------------ create
++
++    @Test
++    @DisplayName("HEALTH-T001: 健康記録登録成功時、healthRecordIdを返却する")
++    void create_health_record_success() {
++        // given
++        CreateHealthRecordRequest request = new CreateHealthRecordRequest(
++                new BigDecimal("4.70"), "咳, 食欲低下", "少し元気がない", LocalDate.of(2026, 5, 20));
++
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(userId)));
++        stubSaveEcho();
++
++        // when
++        CreateHealthRecordResponse response = healthRecordService.execute(userId, petId, request);
++
++        // then
++        assertThat(response.healthRecordId()).isEqualTo(healthRecordId);
++
++        ArgumentCaptor<HealthRecord> captor = ArgumentCaptor.forClass(HealthRecord.class);
++        verify(healthRecordRepository).save(captor.capture());
++        assertThat(captor.getValue().getPetId()).isEqualTo(petId);
++        assertThat(captor.getValue().getRecordedDate()).isEqualTo(LocalDate.of(2026, 5, 20));
++    }
++
++    @Test
++    @DisplayName("recordedDate省略時、当日の日付で登録する")
++    void create_health_record_defaults_recorded_date_to_today() {
++        // given
++        CreateHealthRecordRequest request = new CreateHealthRecordRequest(new BigDecimal("4.70"), null, null, null);
++
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(userId)));
++        stubSaveEcho();
++
++        // when
++        healthRecordService.execute(userId, petId, request);
++
++        // then
++        ArgumentCaptor<HealthRecord> captor = ArgumentCaptor.forClass(HealthRecord.class);
++        verify(healthRecordRepository).save(captor.capture());
++        assertThat(captor.getValue().getRecordedDate()).isEqualTo(LocalDate.now());
++    }
++
++    @Test
++    @DisplayName("HEALTH-T002: 他ユーザーのペットへの登録時、HEALTH-002例外が発生する")
++    void create_health_record_fail_when_not_pet_owner() {
++        // given
++        CreateHealthRecordRequest request = new CreateHealthRecordRequest(new BigDecimal("4.70"), null, null, null);
++
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(999L)));
++
++        // when & then
++        assertThatThrownBy(() -> healthRecordService.execute(userId, petId, request))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(HealthRecordErrorCode.NOT_PET_OWNER.code()));
++
++        verify(healthRecordRepository, never()).save(any(HealthRecord.class));
++    }
++
++    @Test
++    @DisplayName("存在しないペットへの登録時、HEALTH-002例外が発生する")
++    void create_health_record_fail_when_pet_not_found() {
++        // given
++        CreateHealthRecordRequest request = new CreateHealthRecordRequest(new BigDecimal("4.70"), null, null, null);
++
++        when(petRepository.findById(petId)).thenReturn(Optional.empty());
++
++        // when & then
++        assertThatThrownBy(() -> healthRecordService.execute(userId, petId, request))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(HealthRecordErrorCode.NOT_PET_OWNER.code()));
++    }
++
++    // ---------------------------------------------------------------- getList
++
++    @Test
++    @DisplayName("HEALTH-T004: 健康記録一覧取得成功時、登録済データを返却する")
++    void get_health_record_list_success() {
++        // given
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(userId)));
++        when(healthRecordRepository.findAllByPetId(petId)).thenReturn(List.of(healthRecord()));
++
++        // when
++        List<HealthRecordResponse> result = healthRecordService.execute(userId, petId);
++
++        // then
++        assertThat(result).hasSize(1);
++        assertThat(result.get(0).healthRecordId()).isEqualTo(healthRecordId);
++        assertThat(result.get(0).weight()).isEqualByComparingTo("4.70");
++        assertThat(result.get(0).symptom()).isEqualTo("咳");
++        assertThat(result.get(0).recordedDate()).isEqualTo(LocalDate.of(2026, 5, 20));
++    }
++
++    @Test
++    @DisplayName("他ユーザーのペットの一覧取得時、HEALTH-002例外が発生する")
++    void get_health_record_list_fail_when_not_pet_owner() {
++        // given
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(999L)));
++
++        // when & then
++        assertThatThrownBy(() -> healthRecordService.execute(userId, petId))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(HealthRecordErrorCode.NOT_PET_OWNER.code()));
++
++        verify(healthRecordRepository, never()).findAllByPetId(anyLong());
++    }
++
++    // ----------------------------------------------------------------- update
++
++    private HealthRecord patchAndCapture(UpdateHealthRecordRequest request) {
++        when(healthRecordRepository.findById(healthRecordId)).thenReturn(Optional.of(healthRecord()));
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(userId)));
++        when(healthRecordRepository.updateContent(any(HealthRecord.class))).thenReturn(true);
++
++        updateHealthRecordService.execute(userId, healthRecordId, request);
++
++        ArgumentCaptor<HealthRecord> captor = ArgumentCaptor.forClass(HealthRecord.class);
++        verify(healthRecordRepository).updateContent(captor.capture());
++        // 全体保存は deleted_at を古い値で上書きし得るため使わない
++        verify(healthRecordRepository, never()).save(any(HealthRecord.class));
++        return captor.getValue();
++    }
++
++    @Test
++    @DisplayName("健康記録更新成功時、指定した項目が反映される")
++    void update_health_record_success() {
++        // when
++        HealthRecord patched = patchAndCapture(new UpdateHealthRecordRequest(
++                new BigDecimal("5.10"), "食欲回復", "元気になった", LocalDate.of(2026, 5, 25)));
++
++        // then
++        assertThat(patched.getId()).isEqualTo(healthRecordId);
++        assertThat(patched.getWeight()).isEqualByComparingTo("5.10");
++        assertThat(patched.getSymptom()).isEqualTo("食欲回復");
++        assertThat(patched.getMemo()).isEqualTo("元気になった");
++        assertThat(patched.getRecordedDate()).isEqualTo(LocalDate.of(2026, 5, 25));
++    }
++
++    @Test
++    @DisplayName("memoだけを指定したPATCHでは、体重・症状・記録日が維持される（REVIEW-001 R-01）")
++    void update_health_record_keeps_omitted_fields() {
++        // when
++        HealthRecord patched = patchAndCapture(new UpdateHealthRecordRequest(null, null, "memo-only", null));
++
++        // then
++        assertThat(patched.getWeight()).isEqualByComparingTo("4.70");
++        assertThat(patched.getSymptom()).isEqualTo("咳");
++        assertThat(patched.getMemo()).isEqualTo("memo-only");
++        assertThat(patched.getRecordedDate()).isEqualTo(LocalDate.of(2026, 5, 20));
++    }
++
++    @Test
++    @DisplayName("空のPATCHでは、どの項目も変更されない")
++    void update_health_record_with_empty_body_changes_nothing() {
++        // when
++        HealthRecord patched = patchAndCapture(new UpdateHealthRecordRequest(null, null, null, null));
++
++        // then
++        assertThat(patched.getWeight()).isEqualByComparingTo("4.70");
++        assertThat(patched.getSymptom()).isEqualTo("咳");
++        assertThat(patched.getMemo()).isEqualTo("少し元気がない");
++        assertThat(patched.getRecordedDate()).isEqualTo(LocalDate.of(2026, 5, 20));
++    }
++
++    @Test
++    @DisplayName("symptom・memoに空文字を指定すると消去（NULL）される")
++    void update_health_record_clears_text_fields_with_blank() {
++        // when
++        HealthRecord patched = patchAndCapture(new UpdateHealthRecordRequest(null, "", " ", null));
++
++        // then
++        assertThat(patched.getSymptom()).isNull();
++        assertThat(patched.getMemo()).isNull();
++        assertThat(patched.getWeight()).isEqualByComparingTo("4.70");
++    }
++
++    @Test
++    @DisplayName("読み取り後に論理削除がcommitされていた場合、更新は0件となりHEALTH-001例外が発生する（REVIEW-001 R-02）")
++    void update_health_record_fail_when_deleted_after_read() {
++        // given
++        when(healthRecordRepository.findById(healthRecordId)).thenReturn(Optional.of(healthRecord()));
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(userId)));
++        when(healthRecordRepository.updateContent(any(HealthRecord.class))).thenReturn(false);
++
++        // when & then
++        assertThatThrownBy(() -> updateHealthRecordService.execute(userId, healthRecordId,
++                new UpdateHealthRecordRequest(new BigDecimal("5.20"), null, null, null)))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(HealthRecordErrorCode.HEALTH_RECORD_NOT_FOUND.code()));
++    }
++
++    @Test
++    @DisplayName("存在しない健康記録の更新時、HEALTH-001例外が発生する")
++    void update_health_record_fail_when_not_found() {
++        // given
++        UpdateHealthRecordRequest request = new UpdateHealthRecordRequest(new BigDecimal("5.10"), null, null, null);
++
++        when(healthRecordRepository.findById(healthRecordId)).thenReturn(Optional.empty());
++
++        // when & then
++        assertThatThrownBy(() -> updateHealthRecordService.execute(userId, healthRecordId, request))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(HealthRecordErrorCode.HEALTH_RECORD_NOT_FOUND.code()));
++
++        verify(healthRecordRepository, never()).updateContent(any(HealthRecord.class));
++    }
++
++    @Test
++    @DisplayName("他ユーザーのペットの記録更新時、HEALTH-002例外が発生する")
++    void update_health_record_fail_when_not_pet_owner() {
++        // given
++        UpdateHealthRecordRequest request = new UpdateHealthRecordRequest(new BigDecimal("5.10"), null, null, null);
++
++        when(healthRecordRepository.findById(healthRecordId)).thenReturn(Optional.of(healthRecord()));
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(999L)));
++
++        // when & then
++        assertThatThrownBy(() -> updateHealthRecordService.execute(userId, healthRecordId, request))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(HealthRecordErrorCode.NOT_PET_OWNER.code()));
++
++        verify(healthRecordRepository, never()).updateContent(any(HealthRecord.class));
++    }
++
++    // ----------------------------------------------------------------- delete
++
++    @Test
++    @DisplayName("HEALTH-T005: 健康記録削除時、deleted_atを設定する")
++    void delete_health_record_success() {
++        // given
++        when(healthRecordRepository.findById(healthRecordId)).thenReturn(Optional.of(healthRecord()));
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(userId)));
++
++        // when
++        deleteHealthRecordService.execute(userId, healthRecordId);
++
++        // then
++        verify(healthRecordRepository).softDelete(eq(healthRecordId), any(LocalDateTime.class));
++    }
++
++    @Test
++    @DisplayName("他ユーザーのペットの記録削除時、HEALTH-002例外が発生する")
++    void delete_health_record_fail_when_not_pet_owner() {
++        // given
++        when(healthRecordRepository.findById(healthRecordId)).thenReturn(Optional.of(healthRecord()));
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(999L)));
++
++        // when & then
++        assertThatThrownBy(() -> deleteHealthRecordService.execute(userId, healthRecordId))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(HealthRecordErrorCode.NOT_PET_OWNER.code()));
++
++        verify(healthRecordRepository, never()).softDelete(anyLong(), any(LocalDateTime.class));
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/hospital/service/HospitalBusinessHoursServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/hospital/service/HospitalBusinessHoursServiceTest.java
+index 3a4c7fb..76c33da 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/hospital/service/HospitalBusinessHoursServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/hospital/service/HospitalBusinessHoursServiceTest.java
+@@ -167,7 +167,7 @@ class HospitalBusinessHoursServiceTest {
+     // ----------------------------------------------------------------- update
+ 
+     @Test
+-    @DisplayName("営業時間更新成功時、変更内容が保存される")
++    @DisplayName("営業時間更新成功時、時間列だけを条件付きで更新する")
+     void update_hospital_business_hours_success() {
+         // given
+         Long hospitalId = 1L;
+@@ -180,18 +180,42 @@ class HospitalBusinessHoursServiceTest {
+         );
+ 
+         when(hospitalBusinessHoursRepository.findById(businessHoursId)).thenReturn(Optional.of(businessHours));
+-        when(hospitalBusinessHoursRepository.save(any(HospitalBusinessHours.class))).thenAnswer(invocation -> invocation.getArgument(0));
++        when(hospitalBusinessHoursRepository.updateHours(any(HospitalBusinessHours.class))).thenReturn(true);
+ 
+         // when
+         updateHospitalBusinessHoursService.execute(hospitalId, businessHoursId, request);
+ 
+         // then
+         ArgumentCaptor<HospitalBusinessHours> captor = ArgumentCaptor.forClass(HospitalBusinessHours.class);
+-        verify(hospitalBusinessHoursRepository).save(captor.capture());
++        verify(hospitalBusinessHoursRepository).updateHours(captor.capture());
+         assertThat(captor.getValue().getOpenTime()).isEqualTo(LocalTime.of(10, 0));
+         assertThat(captor.getValue().getCloseTime()).isEqualTo(LocalTime.of(19, 0));
+         assertThat(captor.getValue().getSlotDurationMinutes()).isEqualTo(20);
+         assertThat(captor.getValue().getDayOfWeek()).isEqualTo(DayOfWeek.MONDAY);
++
++        // mergeは削除済みの行を作り直し得るため使わない
++        verify(hospitalBusinessHoursRepository, never()).save(any(HospitalBusinessHours.class));
++    }
++
++    @Test
++    @DisplayName("読み取り後に営業時間が削除されていた場合、更新は0件となりHOSPITAL-003例外が発生する")
++    void update_hospital_business_hours_fail_when_deleted_after_read() {
++        // given
++        Long hospitalId = 1L;
++        Long businessHoursId = 10L;
++        LocalDateTime now = LocalDateTime.now();
++        HospitalBusinessHours businessHours = new HospitalBusinessHours(businessHoursId, hospitalId, DayOfWeek.MONDAY,
++                LocalTime.of(9, 0), LocalTime.of(18, 0), null, null, 30, now, now);
++
++        when(hospitalBusinessHoursRepository.findById(businessHoursId)).thenReturn(Optional.of(businessHours));
++        when(hospitalBusinessHoursRepository.updateHours(any(HospitalBusinessHours.class))).thenReturn(false);
++
++        // when & then
++        assertThatThrownBy(() -> updateHospitalBusinessHoursService.execute(hospitalId, businessHoursId,
++                new UpdateHospitalBusinessHoursRequest(LocalTime.of(10, 0), LocalTime.of(19, 0), null, null, 20)))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(HospitalErrorCode.HOSPITAL_BUSINESS_HOURS_NOT_FOUND.code()));
+     }
+ 
+     @Test
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/hospital/service/HospitalServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/hospital/service/HospitalServiceTest.java
+index a3dabf9..cfcb316 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/hospital/service/HospitalServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/hospital/service/HospitalServiceTest.java
+@@ -22,6 +22,8 @@ import java.util.Optional;
+ import static org.assertj.core.api.Assertions.assertThat;
+ import static org.assertj.core.api.Assertions.assertThatThrownBy;
+ import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.anyLong;
++import static org.mockito.ArgumentMatchers.eq;
+ import static org.mockito.Mockito.mock;
+ import static org.mockito.Mockito.never;
+ import static org.mockito.Mockito.verify;
+@@ -131,7 +133,7 @@ class HospitalServiceTest {
+     // ------------------------------------------------------------------ update
+ 
+     @Test
+-    @DisplayName("病院情報更新成功時、更新された内容で保存される")
++    @DisplayName("病院情報更新成功時、情報列だけを更新しstatusは書き込まない")
+     void update_hospital_success() {
+         // given
+         Long hospitalId = 1L;
+@@ -141,17 +143,41 @@ class HospitalServiceTest {
+         UpdateHospitalRequest request = new UpdateHospitalRequest("Tokyo Animal Hospital 2nd", "Tokyo, Shinjuku", "03-9999-9999");
+ 
+         when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(hospital));
+-        when(hospitalRepository.save(any(Hospital.class))).thenAnswer(invocation -> invocation.getArgument(0));
++        when(hospitalRepository.updateInfo(any(Hospital.class))).thenReturn(true);
+ 
+         // when
+         updateHospitalService.execute(hospitalId, request);
+ 
+         // then
+         ArgumentCaptor<Hospital> captor = ArgumentCaptor.forClass(Hospital.class);
+-        verify(hospitalRepository).save(captor.capture());
++        verify(hospitalRepository).updateInfo(captor.capture());
+         assertThat(captor.getValue().getName()).isEqualTo("Tokyo Animal Hospital 2nd");
+         assertThat(captor.getValue().getAddress()).isEqualTo("Tokyo, Shinjuku");
+         assertThat(captor.getValue().getPhoneNumber()).isEqualTo("03-9999-9999");
++
++        // 同時の停止を取り消さないよう、全体保存・status更新を使わない
++        verify(hospitalRepository, never()).save(any(Hospital.class));
++        verify(hospitalRepository, never()).updateStatus(anyLong(), any(HospitalStatus.class), any(LocalDateTime.class));
++    }
++
++    @Test
++    @DisplayName("読み取り後に病院が無くなっていた場合、情報更新は0件となりHOSPITAL-001例外が発生する")
++    void update_hospital_fail_when_row_gone_before_write() {
++        // given
++        Long hospitalId = 1L;
++        LocalDateTime now = LocalDateTime.now();
++        Hospital hospital = new Hospital(hospitalId, "Tokyo Animal Hospital", "Tokyo, Shibuya", "03-1234-5678",
++                HospitalStatus.ACTIVE, now, now, null);
++
++        when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(hospital));
++        when(hospitalRepository.updateInfo(any(Hospital.class))).thenReturn(false);
++
++        // when & then
++        assertThatThrownBy(() -> updateHospitalService.execute(hospitalId,
++                new UpdateHospitalRequest("Tokyo Animal Hospital 2nd", "Tokyo, Shinjuku", null)))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(HospitalErrorCode.HOSPITAL_NOT_FOUND.code()));
+     }
+ 
+     @Test
+@@ -176,7 +202,7 @@ class HospitalServiceTest {
+     // ----------------------------------------------------------------- suspend
+ 
+     @Test
+-    @DisplayName("病院停止成功時、statusがSUSPENDEDで保存される")
++    @DisplayName("病院停止成功時、status列だけをSUSPENDEDに更新し情報列は書き込まない")
+     void suspend_hospital_success() {
+         // given
+         Long hospitalId = 1L;
+@@ -185,15 +211,15 @@ class HospitalServiceTest {
+                 HospitalStatus.ACTIVE, now, now, null);
+ 
+         when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(hospital));
+-        when(hospitalRepository.save(any(Hospital.class))).thenAnswer(invocation -> invocation.getArgument(0));
++        when(hospitalRepository.updateStatus(anyLong(), any(HospitalStatus.class), any(LocalDateTime.class))).thenReturn(true);
+ 
+         // when
+         suspendHospitalService.execute(hospitalId);
+ 
+         // then
+-        ArgumentCaptor<Hospital> captor = ArgumentCaptor.forClass(Hospital.class);
+-        verify(hospitalRepository).save(captor.capture());
+-        assertThat(captor.getValue().getStatus()).isEqualTo(HospitalStatus.SUSPENDED);
++        verify(hospitalRepository).updateStatus(eq(hospitalId), eq(HospitalStatus.SUSPENDED), any(LocalDateTime.class));
++        verify(hospitalRepository, never()).save(any(Hospital.class));
++        verify(hospitalRepository, never()).updateInfo(any(Hospital.class));
+     }
+ 
+     @Test
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/notification/service/NotificationServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/notification/service/NotificationServiceTest.java
+new file mode 100644
+index 0000000..295c2f9
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/notification/service/NotificationServiceTest.java
+@@ -0,0 +1,156 @@
++package koh.portfolio.springapi.application.notification.service;
++
++import koh.portfolio.springapi.application.notification.dto.NotificationDto.NotificationResponse;
++import koh.portfolio.springapi.common.exception.CustomException;
++import koh.portfolio.springapi.domain.notification.exception.NotificationErrorCode;
++import koh.portfolio.springapi.domain.notification.model.Notification;
++import koh.portfolio.springapi.domain.notification.model.NotificationType;
++import koh.portfolio.springapi.domain.notification.port.NotificationRepository;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.CsvSource;
++import org.mockito.ArgumentCaptor;
++
++import java.time.LocalDateTime;
++import java.util.List;
++import java.util.Optional;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.anyLong;
++import static org.mockito.Mockito.*;
++
++class NotificationServiceTest {
++
++    private NotificationRepository notificationRepository;
++    private NotificationService notificationService;
++
++    private final Long userId = 1L;
++    private final Long notificationId = 100L;
++    private final Long reservationId = 10L;
++
++    @BeforeEach
++    void setUp() {
++        notificationRepository = mock(NotificationRepository.class);
++        notificationService = new NotificationService(notificationRepository);
++    }
++
++    private Notification notification(Long ownerId, boolean read) {
++        LocalDateTime now = LocalDateTime.now();
++        return new Notification(notificationId, ownerId, reservationId, null, NotificationType.RESERVATION_APPROVED,
++                NotificationType.RESERVATION_APPROVED.getTitle(), NotificationType.RESERVATION_APPROVED.getMessage(),
++                read, now, read ? now : null);
++    }
++
++    // -------------------------------------------------------------- getList
++
++    @Test
++    @DisplayName("NOTI-T004: 通知一覧取得時、ユーザー別の通知を返却する")
++    void get_notification_list_success() {
++        // given
++        when(notificationRepository.findAllByUserId(userId)).thenReturn(List.of(notification(userId, false)));
++
++        // when
++        List<NotificationResponse> result = notificationService.execute(userId);
++
++        // then
++        assertThat(result).hasSize(1);
++        assertThat(result.get(0).notificationId()).isEqualTo(notificationId);
++        assertThat(result.get(0).type()).isEqualTo(NotificationType.RESERVATION_APPROVED);
++        assertThat(result.get(0).title()).isEqualTo("予約が承認されました");
++        assertThat(result.get(0).isRead()).isFalse();
++    }
++
++    // ----------------------------------------------------------- markAsRead
++
++    @Test
++    @DisplayName("NOTI-T005: 通知既読処理時、is_readをtrueに更新する")
++    void mark_as_read_success() {
++        // given
++        when(notificationRepository.findById(notificationId)).thenReturn(Optional.of(notification(userId, false)));
++        when(notificationRepository.markAsRead(anyLong(), any(LocalDateTime.class))).thenReturn(true);
++
++        // when
++        notificationService.execute(userId, notificationId);
++
++        // then
++        verify(notificationRepository).markAsRead(eq(notificationId), any(LocalDateTime.class));
++    }
++
++    @Test
++    @DisplayName("既読済みの通知を再度既読にしても例外にしない（冪等）")
++    void mark_as_read_is_idempotent() {
++        // given
++        when(notificationRepository.findById(notificationId)).thenReturn(Optional.of(notification(userId, true)));
++        when(notificationRepository.markAsRead(anyLong(), any(LocalDateTime.class))).thenReturn(false);
++
++        // when & then
++        notificationService.execute(userId, notificationId);
++
++        verify(notificationRepository).markAsRead(eq(notificationId), any(LocalDateTime.class));
++    }
++
++    @Test
++    @DisplayName("存在しない通知の既読処理時、NOTIFICATION-001例外が発生する")
++    void mark_as_read_fail_when_not_found() {
++        // given
++        when(notificationRepository.findById(notificationId)).thenReturn(Optional.empty());
++
++        // when & then
++        assertThatThrownBy(() -> notificationService.execute(userId, notificationId))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(NotificationErrorCode.NOTIFICATION_NOT_FOUND.code()));
++
++        verify(notificationRepository, never()).markAsRead(anyLong(), any(LocalDateTime.class));
++    }
++
++    @Test
++    @DisplayName("他ユーザーの通知の既読処理時、NOTIFICATION-002例外が発生する")
++    void mark_as_read_fail_when_not_owner() {
++        // given
++        when(notificationRepository.findById(notificationId)).thenReturn(Optional.of(notification(999L, false)));
++
++        // when & then
++        assertThatThrownBy(() -> notificationService.execute(userId, notificationId))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(NotificationErrorCode.NOT_NOTIFICATION_OWNER.code()));
++
++        verify(notificationRepository, never()).markAsRead(anyLong(), any(LocalDateTime.class));
++    }
++
++    // ------------------------------------------------------ reservation hook
++
++    @ParameterizedTest
++    @CsvSource({
++            "RESERVATION_APPROVED, 予約が承認されました",
++            "RESERVATION_REJECTED, 予約が却下されました",
++            "TREATMENT_COMPLETED, 診療が完了しました"
++    })
++    @DisplayName("NOTI-T001〜T003: 予約イベント通知は種別に応じたタイトル・本文で未読として作成される")
++    void notify_reservation_event_creates_unread_notification(NotificationType type, String expectedTitle) {
++        // given
++        when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> invocation.getArgument(0));
++
++        // when
++        notificationService.execute(userId, reservationId, type);
++
++        // then
++        ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
++        verify(notificationRepository).save(captor.capture());
++
++        Notification saved = captor.getValue();
++        assertThat(saved.getUserId()).isEqualTo(userId);
++        assertThat(saved.getReservationId()).isEqualTo(reservationId);
++        assertThat(saved.getVaccinationId()).isNull();
++        assertThat(saved.getNotificationType()).isEqualTo(type);
++        assertThat(saved.getTitle()).isEqualTo(expectedTitle);
++        assertThat(saved.getMessage()).isEqualTo(type.getMessage());
++        assertThat(saved.isRead()).isFalse();
++        assertThat(saved.getReadAt()).isNull();
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/pet/service/PetServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/pet/service/PetServiceTest.java
+index 2ff7c67..80cc3ff 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/pet/service/PetServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/pet/service/PetServiceTest.java
+@@ -14,6 +14,7 @@ import koh.portfolio.springapi.domain.pet.port.PetRepository;
+ import org.junit.jupiter.api.BeforeEach;
+ import org.junit.jupiter.api.DisplayName;
+ import org.junit.jupiter.api.Test;
++import org.mockito.ArgumentCaptor;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+@@ -167,7 +168,7 @@ class PetServiceTest {
+     // ----------------------------------------------------------------- update
+ 
+     @Test
+-    @DisplayName("ペット情報更新成功時、petRepository.saveが呼ばれる")
++    @DisplayName("ペット情報更新成功時、プロフィール列だけを条件付きで更新する")
+     void update_pet_success() {
+         // given
+         Long userId = 1L;
+@@ -182,13 +183,41 @@ class PetServiceTest {
+         );
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+-        when(petRepository.save(any(Pet.class))).thenReturn(pet);
++        when(petRepository.updateProfile(any(Pet.class))).thenReturn(true);
+ 
+         // when
+         updatePetService.execute(userId, petId, request);
+ 
+         // then
+-        verify(petRepository).save(any(Pet.class));
++        ArgumentCaptor<Pet> captor = ArgumentCaptor.forClass(Pet.class);
++        verify(petRepository).updateProfile(captor.capture());
++        assertThat(captor.getValue().getName()).isEqualTo("MomoUpdated");
++        assertThat(captor.getValue().getWeight()).isEqualByComparingTo("5.0");
++
++        // 全体保存は使わない（読み取り後の論理削除を取り消さないため）
++        verify(petRepository, never()).save(any(Pet.class));
++    }
++
++    @Test
++    @DisplayName("読み取り後にペットが論理削除されていた場合、更新は0件となりPET-001例外が発生する")
++    void update_pet_fail_when_deleted_after_read() {
++        // given
++        Long userId = 1L;
++        Long petId = 1L;
++        LocalDateTime now = LocalDateTime.now();
++
++        Pet pet = new Pet(petId, userId, "Momo", PetType.CAT,
++                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), now, now, null);
++
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
++        when(petRepository.updateProfile(any(Pet.class))).thenReturn(false);
++
++        // when & then
++        assertThatThrownBy(() -> updatePetService.execute(userId, petId, new UpdatePetRequest(
++                "MomoUpdated", PetType.CAT, null, PetGender.FEMALE, null)))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(PetErrorCode.PET_NOT_FOUND.code()));
+     }
+ 
+     @Test
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/ReservationStateTransitionServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/ReservationStateTransitionServiceTest.java
+index 6fa9fec..209b1c4 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/ReservationStateTransitionServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/ReservationStateTransitionServiceTest.java
+@@ -1,6 +1,8 @@
+ package koh.portfolio.springapi.application.reservation.service;
+ 
++import koh.portfolio.springapi.application.notification.usecase.NotifyReservationEventUseCase;
+ import koh.portfolio.springapi.common.exception.CustomException;
++import koh.portfolio.springapi.domain.notification.model.NotificationType;
+ import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
+ import koh.portfolio.springapi.domain.reservation.model.Reservation;
+ import koh.portfolio.springapi.domain.reservation.model.ReservationStatus;
+@@ -20,6 +22,7 @@ import static org.mockito.Mockito.*;
+ class ReservationStateTransitionServiceTest {
+ 
+     private ReservationRepository reservationRepository;
++    private NotifyReservationEventUseCase notifyReservationEventUseCase;
+     private ApproveReservationService approveReservationService;
+     private CancelReservationService cancelReservationService;
+     private CompleteReservationService completeReservationService;
+@@ -31,10 +34,15 @@ class ReservationStateTransitionServiceTest {
+     @BeforeEach
+     void setUp() {
+         reservationRepository = mock(ReservationRepository.class);
+-        approveReservationService = new ApproveReservationService(reservationRepository);
++        notifyReservationEventUseCase = mock(NotifyReservationEventUseCase.class);
++        approveReservationService = new ApproveReservationService(reservationRepository, notifyReservationEventUseCase);
+         cancelReservationService = new CancelReservationService(reservationRepository);
+-        completeReservationService = new CompleteReservationService(reservationRepository);
+-        rejectReservationService = new RejectReservationService(reservationRepository);
++        completeReservationService = new CompleteReservationService(reservationRepository, notifyReservationEventUseCase);
++        rejectReservationService = new RejectReservationService(reservationRepository, notifyReservationEventUseCase);
++    }
++
++    private void verifyNoNotification() {
++        verify(notifyReservationEventUseCase, never()).execute(anyLong(), anyLong(), any(NotificationType.class));
+     }
+ 
+     private Reservation reservation(ReservationStatus status) {
+@@ -83,6 +91,9 @@ class ReservationStateTransitionServiceTest {
+ 
+         // then
+         verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.APPROVED);
++
++        // NOTI-T001
++        verify(notifyReservationEventUseCase).execute(userId, reservationId, NotificationType.RESERVATION_APPROVED);
+     }
+ 
+     @Test
+@@ -132,6 +143,9 @@ class ReservationStateTransitionServiceTest {
+         assertInvalidStateTransition(() -> approveReservationService.execute(reservationId));
+ 
+         verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.APPROVED);
++
++        // 遷移が成立しなかった場合は通知も作らない
++        verifyNoNotification();
+     }
+ 
+     @Test
+@@ -233,6 +247,9 @@ class ReservationStateTransitionServiceTest {
+ 
+         // then
+         verifyTransition(ReservationStatus.APPROVED, ReservationStatus.COMPLETED);
++
++        // NOTI-T003
++        verify(notifyReservationEventUseCase).execute(userId, reservationId, NotificationType.TREATMENT_COMPLETED);
+     }
+ 
+     @Test
+@@ -274,6 +291,9 @@ class ReservationStateTransitionServiceTest {
+ 
+         // then
+         verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.REJECTED);
++
++        // NOTI-T002
++        verify(notifyReservationEventUseCase).execute(userId, reservationId, NotificationType.RESERVATION_REJECTED);
+     }
+ 
+     @Test
+@@ -335,6 +355,8 @@ class ReservationStateTransitionServiceTest {
+         assertInvalidStateTransition(() -> rejectReservationService.execute(reservationId));
+ 
+         verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.REJECTED);
++
++        verifyNoNotification();
+     }
+ 
+     @Test
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordMapperTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordMapperTest.java
+new file mode 100644
+index 0000000..2787f19
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordMapperTest.java
+@@ -0,0 +1,64 @@
++package koh.portfolio.springapi.infrastructure.persistence.healthrecord;
++
++import koh.portfolio.springapi.domain.healthrecord.model.HealthRecord;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.mapstruct.factory.Mappers;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++class HealthRecordMapperTest {
++
++    private final HealthRecordMapper healthRecordMapper = Mappers.getMapper(HealthRecordMapper.class);
++
++    @Test
++    @DisplayName("DomainをEntityに変換できる")
++    void domain_to_entity() {
++        // given
++        LocalDateTime now = LocalDateTime.now();
++        HealthRecord domain = new HealthRecord(1L, 10L, new BigDecimal("4.70"), "咳", "少し元気がない",
++                LocalDate.of(2026, 5, 20), now, now, null);
++
++        // when
++        HealthRecordEntity entity = healthRecordMapper.toEntity(domain);
++
++        // then
++        assertThat(entity.getId()).isEqualTo(1L);
++        assertThat(entity.getPetId()).isEqualTo(10L);
++        assertThat(entity.getWeight()).isEqualByComparingTo("4.70");
++        assertThat(entity.getSymptom()).isEqualTo("咳");
++        assertThat(entity.getMemo()).isEqualTo("少し元気がない");
++        assertThat(entity.getRecordedDate()).isEqualTo(LocalDate.of(2026, 5, 20));
++        assertThat(entity.getDeletedAt()).isNull();
++    }
++
++    @Test
++    @DisplayName("EntityをDomainに変換できる")
++    void entity_to_domain() {
++        // given
++        LocalDateTime now = LocalDateTime.now();
++        HealthRecordEntity entity = HealthRecordEntity.builder()
++                .id(1L)
++                .petId(10L)
++                .weight(new BigDecimal("4.70"))
++                .symptom("咳")
++                .memo("少し元気がない")
++                .recordedDate(LocalDate.of(2026, 5, 20))
++                .createdAt(now)
++                .updatedAt(now)
++                .build();
++
++        // when
++        HealthRecord domain = healthRecordMapper.toDomain(entity);
++
++        // then
++        assertThat(domain.getId()).isEqualTo(1L);
++        assertThat(domain.getPetId()).isEqualTo(10L);
++        assertThat(domain.getWeight()).isEqualByComparingTo("4.70");
++        assertThat(domain.getRecordedDate()).isEqualTo(LocalDate.of(2026, 5, 20));
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordPersistenceAdapterTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordPersistenceAdapterTest.java
+new file mode 100644
+index 0000000..9cdeb54
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/healthrecord/HealthRecordPersistenceAdapterTest.java
+@@ -0,0 +1,85 @@
++package koh.portfolio.springapi.infrastructure.persistence.healthrecord;
++
++import koh.portfolio.springapi.domain.healthrecord.model.HealthRecord;
++import koh.portfolio.springapi.domain.healthrecord.port.HealthRecordRepository;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
++import org.springframework.context.annotation.Import;
++import org.springframework.test.context.ActiveProfiles;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++@DataJpaTest
++@ActiveProfiles("test")
++@Import({
++        HealthRecordPersistenceAdapter.class,
++        HealthRecordMapperImpl.class
++})
++class HealthRecordPersistenceAdapterTest {
++
++    @Autowired
++    private HealthRecordRepository healthRecordRepository;
++
++    @Autowired
++    private HealthRecordJpaRepository healthRecordJpaRepository;
++
++    private HealthRecordEntity persist(LocalDateTime deletedAt) {
++        LocalDateTime now = LocalDateTime.now();
++        return healthRecordJpaRepository.save(HealthRecordEntity.builder()
++                .petId(10L)
++                .weight(new BigDecimal("4.70"))
++                .symptom("cough")
++                .memo("original")
++                .recordedDate(LocalDate.of(2026, 5, 20))
++                .createdAt(now)
++                .updatedAt(now)
++                .deletedAt(deletedAt)
++                .build());
++    }
++
++    private HealthRecord patched(Long id) {
++        LocalDateTime now = LocalDateTime.now();
++        return new HealthRecord(id, 10L, new BigDecimal("5.20"), "better", "racing",
++                LocalDate.of(2026, 5, 21), now, now, null);
++    }
++
++    @Test
++    @DisplayName("論理削除されていない記録は内容列が更新される")
++    void update_content_writes_active_row() {
++        // given
++        HealthRecordEntity saved = persist(null);
++
++        // when
++        boolean updated = healthRecordRepository.updateContent(patched(saved.getId()));
++
++        // then
++        assertThat(updated).isTrue();
++        HealthRecordEntity reloaded = healthRecordJpaRepository.findById(saved.getId()).orElseThrow();
++        assertThat(reloaded.getWeight()).isEqualByComparingTo("5.20");
++        assertThat(reloaded.getMemo()).isEqualTo("racing");
++        assertThat(reloaded.getDeletedAt()).isNull();
++    }
++
++    @Test
++    @DisplayName("論理削除済みの記録は更新されず、deleted_atも維持される（REVIEW-001 R-02）")
++    void update_content_does_not_resurrect_deleted_row() {
++        // given
++        LocalDateTime deletedAt = LocalDateTime.of(2026, 10, 3, 12, 0);
++        HealthRecordEntity saved = persist(deletedAt);
++
++        // when: 削除前に読み取った（deleted_at=NULLの）内容で書き込もうとする
++        boolean updated = healthRecordRepository.updateContent(patched(saved.getId()));
++
++        // then
++        assertThat(updated).isFalse();
++        HealthRecordEntity reloaded = healthRecordJpaRepository.findById(saved.getId()).orElseThrow();
++        assertThat(reloaded.getDeletedAt()).isEqualTo(deletedAt);
++        assertThat(reloaded.getMemo()).isEqualTo("original");
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalBusinessHoursAdapterTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalBusinessHoursAdapterTest.java
+new file mode 100644
+index 0000000..1835722
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalBusinessHoursAdapterTest.java
+@@ -0,0 +1,97 @@
++package koh.portfolio.springapi.infrastructure.persistence.hospital;
++
++import koh.portfolio.springapi.domain.hospital.model.HospitalBusinessHours;
++import koh.portfolio.springapi.domain.hospital.port.HospitalBusinessHoursRepository;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
++import org.springframework.context.annotation.Import;
++import org.springframework.test.context.ActiveProfiles;
++
++import java.time.DayOfWeek;
++import java.time.LocalDateTime;
++import java.time.LocalTime;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++@DataJpaTest
++@ActiveProfiles("test")
++@Import({
++        HospitalBusinessHoursAdapter.class,
++        HospitalBusinessHoursMapperImpl.class
++})
++class HospitalBusinessHoursAdapterTest {
++
++    @Autowired
++    private HospitalBusinessHoursRepository hospitalBusinessHoursRepository;
++
++    @Autowired
++    private HospitalBusinessHoursJpaRepository hospitalBusinessHoursJpaRepository;
++
++    private HospitalBusinessHoursEntity persist() {
++        LocalDateTime now = LocalDateTime.now();
++        return hospitalBusinessHoursJpaRepository.save(HospitalBusinessHoursEntity.builder()
++                .hospitalId(1L)
++                .dayOfWeek(DayOfWeek.MONDAY)
++                .openTime(LocalTime.of(9, 0))
++                .closeTime(LocalTime.of(18, 0))
++                .slotDurationMinutes(30)
++                .createdAt(now)
++                .updatedAt(now)
++                .build());
++    }
++
++    private HospitalBusinessHours changed(Long id, Long hospitalId) {
++        LocalDateTime now = LocalDateTime.now();
++        return new HospitalBusinessHours(id, hospitalId, DayOfWeek.MONDAY, LocalTime.of(10, 0), LocalTime.of(19, 0),
++                null, null, 20, now, now);
++    }
++
++    @Test
++    @DisplayName("営業時間の時間列が更新される")
++    void update_hours_writes_row() {
++        // given
++        HospitalBusinessHoursEntity saved = persist();
++
++        // when
++        boolean updated = hospitalBusinessHoursRepository.updateHours(changed(saved.getId(), 1L));
++
++        // then
++        assertThat(updated).isTrue();
++        HospitalBusinessHoursEntity reloaded = hospitalBusinessHoursJpaRepository.findById(saved.getId()).orElseThrow();
++        assertThat(reloaded.getOpenTime()).isEqualTo(LocalTime.of(10, 0));
++        assertThat(reloaded.getSlotDurationMinutes()).isEqualTo(20);
++    }
++
++    @Test
++    @DisplayName("削除済みの営業時間は更新されず、行も作り直されない")
++    void update_hours_does_not_recreate_deleted_row() {
++        // given
++        HospitalBusinessHoursEntity saved = persist();
++        hospitalBusinessHoursJpaRepository.deleteById(saved.getId());
++        hospitalBusinessHoursJpaRepository.flush();
++
++        // when: 削除前に読み取った内容で書き込もうとする
++        boolean updated = hospitalBusinessHoursRepository.updateHours(changed(saved.getId(), 1L));
++
++        // then
++        assertThat(updated).isFalse();
++        assertThat(hospitalBusinessHoursJpaRepository.count()).isZero();
++    }
++
++    @Test
++    @DisplayName("別病院のhospitalIdを指定した更新は0件となる")
++    void update_hours_rejects_other_hospital() {
++        // given
++        HospitalBusinessHoursEntity saved = persist();
++
++        // when
++        boolean updated = hospitalBusinessHoursRepository.updateHours(changed(saved.getId(), 2L));
++
++        // then
++        assertThat(updated).isFalse();
++        assertThat(hospitalBusinessHoursJpaRepository.findById(saved.getId()).orElseThrow().getOpenTime())
++                .isEqualTo(LocalTime.of(9, 0));
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalPersistenceAdapterTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalPersistenceAdapterTest.java
+new file mode 100644
+index 0000000..67af109
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalPersistenceAdapterTest.java
+@@ -0,0 +1,90 @@
++package koh.portfolio.springapi.infrastructure.persistence.hospital;
++
++import koh.portfolio.springapi.domain.hospital.model.Hospital;
++import koh.portfolio.springapi.domain.hospital.model.HospitalStatus;
++import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
++import org.springframework.context.annotation.Import;
++import org.springframework.test.context.ActiveProfiles;
++
++import java.time.LocalDateTime;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++@DataJpaTest
++@ActiveProfiles("test")
++@Import({
++        HospitalPersistenceAdapter.class,
++        HospitalMapperImpl.class
++})
++class HospitalPersistenceAdapterTest {
++
++    @Autowired
++    private HospitalRepository hospitalRepository;
++
++    @Autowired
++    private HospitalJpaRepository hospitalJpaRepository;
++
++    private HospitalEntity persist(HospitalStatus status) {
++        LocalDateTime now = LocalDateTime.now();
++        return hospitalJpaRepository.save(HospitalEntity.builder()
++                .name("Tokyo Animal Hospital")
++                .address("Tokyo, Shibuya")
++                .phoneNumber("03-1234-5678")
++                .status(status)
++                .createdAt(now)
++                .updatedAt(now)
++                .build());
++    }
++
++    @Test
++    @DisplayName("情報更新はstatusを書き込まない。停止済みの病院がACTIVEに戻らない（REVIEW-001 R-03）")
++    void update_info_keeps_status() {
++        // given: 停止がcommitされた後の行
++        HospitalEntity saved = persist(HospitalStatus.SUSPENDED);
++        LocalDateTime now = LocalDateTime.now();
++
++        // when: 停止前に読み取った（ACTIVEの）病院で情報更新する
++        Hospital staleActive = new Hospital(saved.getId(), "Renamed Hospital", "Tokyo, Shinjuku", "03-9999-9999",
++                HospitalStatus.ACTIVE, now, now, null);
++        boolean updated = hospitalRepository.updateInfo(staleActive);
++
++        // then
++        assertThat(updated).isTrue();
++        HospitalEntity reloaded = hospitalJpaRepository.findById(saved.getId()).orElseThrow();
++        assertThat(reloaded.getStatus()).isEqualTo(HospitalStatus.SUSPENDED);
++        assertThat(reloaded.getName()).isEqualTo("Renamed Hospital");
++        assertThat(reloaded.getAddress()).isEqualTo("Tokyo, Shinjuku");
++    }
++
++    @Test
++    @DisplayName("停止はstatusだけを書き込み、同時に更新された情報を古い値で上書きしない")
++    void update_status_keeps_info() {
++        // given
++        HospitalEntity saved = persist(HospitalStatus.ACTIVE);
++        hospitalRepository.updateInfo(new Hospital(saved.getId(), "Renamed Hospital", "Tokyo, Shinjuku", null,
++                HospitalStatus.ACTIVE, saved.getCreatedAt(), LocalDateTime.now(), null));
++
++        // when
++        boolean updated = hospitalRepository.updateStatus(saved.getId(), HospitalStatus.SUSPENDED, LocalDateTime.now());
++
++        // then
++        assertThat(updated).isTrue();
++        HospitalEntity reloaded = hospitalJpaRepository.findById(saved.getId()).orElseThrow();
++        assertThat(reloaded.getStatus()).isEqualTo(HospitalStatus.SUSPENDED);
++        assertThat(reloaded.getName()).isEqualTo("Renamed Hospital");
++    }
++
++    @Test
++    @DisplayName("存在しない病院の更新は0件でfalseを返却する")
++    void updates_report_missing_row() {
++        LocalDateTime now = LocalDateTime.now();
++
++        assertThat(hospitalRepository.updateStatus(999_999L, HospitalStatus.SUSPENDED, now)).isFalse();
++        assertThat(hospitalRepository.updateInfo(new Hospital(999_999L, "x", "y", null,
++                HospitalStatus.ACTIVE, now, now, null))).isFalse();
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationMapperTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationMapperTest.java
+new file mode 100644
+index 0000000..e9c08d0
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/notification/NotificationMapperTest.java
+@@ -0,0 +1,66 @@
++package koh.portfolio.springapi.infrastructure.persistence.notification;
++
++import koh.portfolio.springapi.domain.notification.model.Notification;
++import koh.portfolio.springapi.domain.notification.model.NotificationType;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.mapstruct.factory.Mappers;
++
++import java.time.LocalDateTime;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++class NotificationMapperTest {
++
++    private final NotificationMapper notificationMapper = Mappers.getMapper(NotificationMapper.class);
++
++    @Test
++    @DisplayName("DomainをEntityに変換できる")
++    void domain_to_entity() {
++        // given
++        LocalDateTime now = LocalDateTime.now();
++        Notification domain = new Notification(1L, 10L, 100L, null, NotificationType.RESERVATION_APPROVED,
++                "予約が承認されました", "ご予約が承認されました。予約内容をご確認ください。", false, now, null);
++
++        // when
++        NotificationEntity entity = notificationMapper.toEntity(domain);
++
++        // then
++        assertThat(entity.getId()).isEqualTo(1L);
++        assertThat(entity.getUserId()).isEqualTo(10L);
++        assertThat(entity.getReservationId()).isEqualTo(100L);
++        assertThat(entity.getVaccinationId()).isNull();
++        assertThat(entity.getNotificationType()).isEqualTo(NotificationType.RESERVATION_APPROVED);
++        assertThat(entity.getTitle()).isEqualTo("予約が承認されました");
++        assertThat(entity.isRead()).isFalse();
++        assertThat(entity.getReadAt()).isNull();
++    }
++
++    @Test
++    @DisplayName("EntityをDomainに変換できる")
++    void entity_to_domain() {
++        // given
++        LocalDateTime now = LocalDateTime.now();
++        NotificationEntity entity = NotificationEntity.builder()
++                .id(1L)
++                .userId(10L)
++                .reservationId(100L)
++                .notificationType(NotificationType.TREATMENT_COMPLETED)
++                .title("診療が完了しました")
++                .message("診療が完了しました。健康記録の登録をおすすめします。")
++                .read(true)
++                .createdAt(now)
++                .readAt(now)
++                .build();
++
++        // when
++        Notification domain = notificationMapper.toDomain(entity);
++
++        // then
++        assertThat(domain.getId()).isEqualTo(1L);
++        assertThat(domain.getUserId()).isEqualTo(10L);
++        assertThat(domain.getNotificationType()).isEqualTo(NotificationType.TREATMENT_COMPLETED);
++        assertThat(domain.isRead()).isTrue();
++        assertThat(domain.getReadAt()).isEqualTo(now);
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapterTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapterTest.java
+new file mode 100644
+index 0000000..79353e0
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapterTest.java
+@@ -0,0 +1,85 @@
++package koh.portfolio.springapi.infrastructure.persistence.pet;
++
++import koh.portfolio.springapi.domain.pet.model.Pet;
++import koh.portfolio.springapi.domain.pet.model.PetGender;
++import koh.portfolio.springapi.domain.pet.model.PetType;
++import koh.portfolio.springapi.domain.pet.port.PetRepository;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
++import org.springframework.context.annotation.Import;
++import org.springframework.test.context.ActiveProfiles;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++@DataJpaTest
++@ActiveProfiles("test")
++@Import({
++        PetPersistenceAdapter.class,
++        PetMapperImpl.class
++})
++class PetPersistenceAdapterTest {
++
++    @Autowired
++    private PetRepository petRepository;
++
++    @Autowired
++    private PetJpaRepository petJpaRepository;
++
++    private PetEntity persist(LocalDateTime deletedAt) {
++        LocalDateTime now = LocalDateTime.now();
++        return petJpaRepository.save(PetEntity.builder()
++                .userId(1L)
++                .name("Momo")
++                .petType(PetType.CAT)
++                .birthDate(LocalDate.of(2023, 1, 1))
++                .gender(PetGender.FEMALE)
++                .weight(new BigDecimal("4.50"))
++                .createdAt(now)
++                .updatedAt(now)
++                .deletedAt(deletedAt)
++                .build());
++    }
++
++    private Pet renamed(Long id) {
++        LocalDateTime now = LocalDateTime.now();
++        return new Pet(id, 1L, "MomoUpdated", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE,
++                new BigDecimal("5.00"), now, now, null);
++    }
++
++    @Test
++    @DisplayName("論理削除されていないペットはプロフィール列が更新される")
++    void update_profile_writes_active_row() {
++        // given
++        PetEntity saved = persist(null);
++
++        // when
++        boolean updated = petRepository.updateProfile(renamed(saved.getId()));
++
++        // then
++        assertThat(updated).isTrue();
++        assertThat(petJpaRepository.findById(saved.getId()).orElseThrow().getName()).isEqualTo("MomoUpdated");
++    }
++
++    @Test
++    @DisplayName("論理削除済みのペットは更新されず、削除状態が維持される")
++    void update_profile_does_not_resurrect_deleted_row() {
++        // given
++        LocalDateTime deletedAt = LocalDateTime.of(2026, 10, 3, 12, 0);
++        PetEntity saved = persist(deletedAt);
++
++        // when
++        boolean updated = petRepository.updateProfile(renamed(saved.getId()));
++
++        // then
++        assertThat(updated).isFalse();
++        PetEntity reloaded = petJpaRepository.findById(saved.getId()).orElseThrow();
++        assertThat(reloaded.getDeletedAt()).isEqualTo(deletedAt);
++        assertThat(reloaded.getName()).isEqualTo("Momo");
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/presentation/healthrecord/HealthRecordControllerTest.java b/spring-api/src/test/java/koh/portfolio/springapi/presentation/healthrecord/HealthRecordControllerTest.java
+new file mode 100644
+index 0000000..54f3571
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/presentation/healthrecord/HealthRecordControllerTest.java
+@@ -0,0 +1,160 @@
++package koh.portfolio.springapi.presentation.healthrecord;
++
++import com.fasterxml.jackson.databind.ObjectMapper;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.CreateHealthRecordRequest;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.CreateHealthRecordResponse;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.HealthRecordResponse;
++import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.UpdateHealthRecordRequest;
++import koh.portfolio.springapi.application.healthrecord.usecase.CreateHealthRecordUseCase;
++import koh.portfolio.springapi.application.healthrecord.usecase.DeleteHealthRecordUseCase;
++import koh.portfolio.springapi.application.healthrecord.usecase.GetHealthRecordListUseCase;
++import koh.portfolio.springapi.application.healthrecord.usecase.UpdateHealthRecordUseCase;
++import koh.portfolio.springapi.common.exception.GlobalExceptionHandler;
++import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
++import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
++import org.springframework.boot.test.mock.mockito.MockBean;
++import org.springframework.context.annotation.ComponentScan;
++import org.springframework.context.annotation.FilterType;
++import org.springframework.context.annotation.Import;
++import org.springframework.http.MediaType;
++import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
++import org.springframework.test.web.servlet.MockMvc;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.eq;
++import static org.mockito.Mockito.verify;
++import static org.mockito.Mockito.when;
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
++
++@WebMvcTest(
++        controllers = HealthRecordController.class,
++        excludeFilters = @ComponentScan.Filter(
++                type = FilterType.ASSIGNABLE_TYPE,
++                classes = JwtAuthenticationFilter.class
++        )
++)
++@AutoConfigureMockMvc(addFilters = false)
++@Import(GlobalExceptionHandler.class)
++class HealthRecordControllerTest {
++
++    @Autowired
++    private MockMvc mockMvc;
++
++    @Autowired
++    private ObjectMapper objectMapper;
++
++    @MockBean
++    private CreateHealthRecordUseCase createHealthRecordUseCase;
++
++    @MockBean
++    private GetHealthRecordListUseCase getHealthRecordListUseCase;
++
++    @MockBean
++    private UpdateHealthRecordUseCase updateHealthRecordUseCase;
++
++    @MockBean
++    private DeleteHealthRecordUseCase deleteHealthRecordUseCase;
++
++    private UsernamePasswordAuthenticationToken auth(Long userId) {
++        return new UsernamePasswordAuthenticationToken(userId, null, List.of());
++    }
++
++    @Test
++    @DisplayName("POST /api/v1/pets/{petId}/health-records - 健康記録登録成功")
++    void create_health_record_success() throws Exception {
++        // given
++        CreateHealthRecordRequest request = new CreateHealthRecordRequest(
++                new BigDecimal("4.70"), "咳, 食欲低下", "少し元気がない", LocalDate.of(2026, 5, 20));
++
++        when(createHealthRecordUseCase.execute(eq(1L), eq(10L), any(CreateHealthRecordRequest.class)))
++                .thenReturn(CreateHealthRecordResponse.builder().healthRecordId(100L).build());
++
++        // when & then
++        mockMvc.perform(post("/api/v1/pets/10/health-records")
++                        .principal(auth(1L))
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content(objectMapper.writeValueAsString(request)))
++                .andExpect(status().isCreated())
++                .andExpect(jsonPath("$.success").value(true))
++                .andExpect(jsonPath("$.data.healthRecordId").value(100));
++    }
++
++    @Test
++    @DisplayName("HEALTH-T003: POST /api/v1/pets/{petId}/health-records - 体重が負数の場合Validation失敗")
++    void create_health_record_validation_fail_when_weight_negative() throws Exception {
++        // given
++        CreateHealthRecordRequest request = new CreateHealthRecordRequest(
++                new BigDecimal("-1.00"), null, null, null);
++
++        // when & then
++        mockMvc.perform(post("/api/v1/pets/10/health-records")
++                        .principal(auth(1L))
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content(objectMapper.writeValueAsString(request)))
++                .andExpect(status().isBadRequest())
++                .andExpect(jsonPath("$.success").value(false))
++                .andExpect(jsonPath("$.code").value("VALIDATION-001"));
++    }
++
++    @Test
++    @DisplayName("GET /api/v1/pets/{petId}/health-records - 健康記録一覧取得成功")
++    void get_health_record_list_success() throws Exception {
++        // given
++        when(getHealthRecordListUseCase.execute(1L, 10L)).thenReturn(List.of(
++                HealthRecordResponse.builder()
++                        .healthRecordId(100L)
++                        .weight(new BigDecimal("4.70"))
++                        .symptom("咳")
++                        .memo("少し元気がない")
++                        .recordedDate(LocalDate.of(2026, 5, 20))
++                        .build()
++        ));
++
++        // when & then
++        mockMvc.perform(get("/api/v1/pets/10/health-records").principal(auth(1L)))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.success").value(true))
++                .andExpect(jsonPath("$.data[0].healthRecordId").value(100))
++                .andExpect(jsonPath("$.data[0].symptom").value("咳"))
++                .andExpect(jsonPath("$.data[0].recordedDate").value("2026-05-20"));
++    }
++
++    @Test
++    @DisplayName("PATCH /api/v1/health-records/{healthRecordId} - 健康記録更新成功")
++    void update_health_record_success() throws Exception {
++        // given
++        UpdateHealthRecordRequest request = new UpdateHealthRecordRequest(
++                new BigDecimal("5.10"), "食欲回復", "元気になった", LocalDate.of(2026, 5, 25));
++
++        // when & then
++        mockMvc.perform(patch("/api/v1/health-records/100")
++                        .principal(auth(1L))
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content(objectMapper.writeValueAsString(request)))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.success").value(true));
++
++        verify(updateHealthRecordUseCase).execute(eq(1L), eq(100L), any(UpdateHealthRecordRequest.class));
++    }
++
++    @Test
++    @DisplayName("DELETE /api/v1/health-records/{healthRecordId} - 健康記録論理削除成功")
++    void delete_health_record_success() throws Exception {
++        // when & then
++        mockMvc.perform(delete("/api/v1/health-records/100").principal(auth(1L)))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.success").value(true));
++
++        verify(deleteHealthRecordUseCase).execute(1L, 100L);
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/presentation/notification/NotificationControllerTest.java b/spring-api/src/test/java/koh/portfolio/springapi/presentation/notification/NotificationControllerTest.java
+new file mode 100644
+index 0000000..ff9dd45
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/presentation/notification/NotificationControllerTest.java
+@@ -0,0 +1,90 @@
++package koh.portfolio.springapi.presentation.notification;
++
++import koh.portfolio.springapi.application.notification.dto.NotificationDto.NotificationResponse;
++import koh.portfolio.springapi.application.notification.usecase.GetNotificationListUseCase;
++import koh.portfolio.springapi.application.notification.usecase.MarkNotificationAsReadUseCase;
++import koh.portfolio.springapi.common.exception.GlobalExceptionHandler;
++import koh.portfolio.springapi.domain.notification.model.NotificationType;
++import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
++import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
++import org.springframework.boot.test.mock.mockito.MockBean;
++import org.springframework.context.annotation.ComponentScan;
++import org.springframework.context.annotation.FilterType;
++import org.springframework.context.annotation.Import;
++import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
++import org.springframework.test.web.servlet.MockMvc;
++
++import java.time.LocalDateTime;
++import java.util.List;
++
++import static org.mockito.Mockito.verify;
++import static org.mockito.Mockito.when;
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
++
++@WebMvcTest(
++        controllers = NotificationController.class,
++        excludeFilters = @ComponentScan.Filter(
++                type = FilterType.ASSIGNABLE_TYPE,
++                classes = JwtAuthenticationFilter.class
++        )
++)
++@AutoConfigureMockMvc(addFilters = false)
++@Import(GlobalExceptionHandler.class)
++class NotificationControllerTest {
++
++    @Autowired
++    private MockMvc mockMvc;
++
++    @MockBean
++    private GetNotificationListUseCase getNotificationListUseCase;
++
++    @MockBean
++    private MarkNotificationAsReadUseCase markNotificationAsReadUseCase;
++
++    private UsernamePasswordAuthenticationToken auth(Long userId) {
++        return new UsernamePasswordAuthenticationToken(userId, null, List.of());
++    }
++
++    @Test
++    @DisplayName("GET /api/v1/notifications - 通知一覧取得成功")
++    void get_notification_list_success() throws Exception {
++        // given
++        when(getNotificationListUseCase.execute(1L)).thenReturn(List.of(
++                NotificationResponse.builder()
++                        .notificationId(100L)
++                        .type(NotificationType.RESERVATION_APPROVED)
++                        .title("予約が承認されました")
++                        .message("ご予約が承認されました。予約内容をご確認ください。")
++                        .isRead(false)
++                        .createdAt(LocalDateTime.of(2026, 5, 20, 10, 0))
++                        .build()
++        ));
++
++        // when & then
++        mockMvc.perform(get("/api/v1/notifications").principal(auth(1L)))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.success").value(true))
++                .andExpect(jsonPath("$.data[0].notificationId").value(100))
++                .andExpect(jsonPath("$.data[0].type").value("RESERVATION_APPROVED"))
++                .andExpect(jsonPath("$.data[0].title").value("予約が承認されました"))
++                .andExpect(jsonPath("$.data[0].isRead").value(false));
++    }
++
++    @Test
++    @DisplayName("PATCH /api/v1/notifications/{notificationId}/read - 通知既読処理成功")
++    void mark_notification_as_read_success() throws Exception {
++        // when & then
++        mockMvc.perform(patch("/api/v1/notifications/100/read").principal(auth(1L)))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.success").value(true));
++
++        verify(markNotificationAsReadUseCase).execute(1L, 100L);
++    }
++}

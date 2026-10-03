@@ -31,6 +31,12 @@ public class PetPersistenceAdapter implements PetRepository {
     }
 
     @Override
+    public Optional<Pet> findByIdIncludingDeleted(Long id) {
+        return petJpaRepository.findById(id)
+                .map(petMapper::toDomain);
+    }
+
+    @Override
     public List<Pet> findAllByUserId(Long userId) {
         return petJpaRepository.findAllByUserIdAndDeletedAtIsNull(userId)
                 .stream().map(petMapper::toDomain).toList();
@@ -46,5 +52,18 @@ public class PetPersistenceAdapter implements PetRepository {
     @Override
     public void softDelete(Long id, LocalDateTime deletedAt) {
         petJpaRepository.softDeleteById(id, deletedAt);
+    }
+
+    @Override
+    public boolean updateProfile(Pet pet) {
+        return petJpaRepository.updateProfile(
+                pet.getId(),
+                pet.getName(),
+                pet.getPetType(),
+                pet.getBirthDate(),
+                pet.getGender(),
+                pet.getWeight(),
+                pet.getUpdatedAt()
+        ) == 1;
     }
 }

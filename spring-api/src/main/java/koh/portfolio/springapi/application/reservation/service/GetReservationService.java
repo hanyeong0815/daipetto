@@ -77,8 +77,11 @@ public class GetReservationService implements GetReservationListUseCase, GetRese
         return hospitalRepository.findById(hospitalId).orElseThrow(ReservationErrorCode.RESERVATION_SCHEDULE_NOT_FOUND::defaultException);
     }
 
+    // 予約は履歴であり、ペットを論理削除しても該当予約（および同一ユーザーの他の予約）が
+    // 表示できなくなってはいけないため、削除済みも含めて取得する
     private Pet findPet(Long petId) {
-        return petRepository.findById(petId).orElseThrow(ReservationErrorCode.NOT_PET_OWNER::defaultException);
+        return petRepository.findByIdIncludingDeleted(petId)
+                .orElseThrow(ReservationErrorCode.NOT_PET_OWNER::defaultException);
     }
 
     private HospitalSchedule findSchedule(Long scheduleId) {
