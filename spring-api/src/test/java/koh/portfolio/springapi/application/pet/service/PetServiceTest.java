@@ -14,6 +14,7 @@ import koh.portfolio.springapi.domain.pet.port.PetRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -167,7 +168,7 @@ class PetServiceTest {
     // ----------------------------------------------------------------- update
 
     @Test
-    @DisplayName("ペット情報更新成功時、petRepository.saveが呼ばれる")
+    @DisplayName("ペット情報更新成功時、プロフィール列だけを条件付きで更新する")
     void update_pet_success() {
         // given
         Long userId = 1L;
@@ -182,13 +183,41 @@ class PetServiceTest {
         );
 
         when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
-        when(petRepository.save(any(Pet.class))).thenReturn(pet);
+        when(petRepository.updateProfile(any(Pet.class))).thenReturn(true);
 
         // when
         updatePetService.execute(userId, petId, request);
 
         // then
-        verify(petRepository).save(any(Pet.class));
+        ArgumentCaptor<Pet> captor = ArgumentCaptor.forClass(Pet.class);
+        verify(petRepository).updateProfile(captor.capture());
+        assertThat(captor.getValue().getName()).isEqualTo("MomoUpdated");
+        assertThat(captor.getValue().getWeight()).isEqualByComparingTo("5.0");
+
+        // 全体保存は使わない（読み取り後の論理削除を取り消さないため）
+        verify(petRepository, never()).save(any(Pet.class));
+    }
+
+    @Test
+    @DisplayName("読み取り後にペットが論理削除されていた場合、更新は0件となりPET-001例外が発生する")
+    void update_pet_fail_when_deleted_after_read() {
+        // given
+        Long userId = 1L;
+        Long petId = 1L;
+        LocalDateTime now = LocalDateTime.now();
+
+        Pet pet = new Pet(petId, userId, "Momo", PetType.CAT,
+                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), now, now, null);
+
+        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+        when(petRepository.updateProfile(any(Pet.class))).thenReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> updatePetService.execute(userId, petId, new UpdatePetRequest(
+                "MomoUpdated", PetType.CAT, null, PetGender.FEMALE, null)))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                        .isEqualTo(PetErrorCode.PET_NOT_FOUND.code()));
     }
 
     @Test

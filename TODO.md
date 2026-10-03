@@ -1,6 +1,6 @@
 # Daipetto — 作業TODOリスト
 
-最終更新: 2026-08-09
+最終更新: 2026-10-03
 
 ---
 
@@ -18,6 +18,30 @@
 - [x] ユーザープロフィール取得 `GET /api/v1/users/me`
 - [x] ペット CRUD API (`POST / GET list / GET detail / PATCH / DELETE /api/v1/pets`)
   - owner チェックを `Preconditions.validate` パターンで統一済み
+- [x] Hospital・HospitalSchedule・HospitalBusinessHours CRUD API（2026-08-02〜08-09実装、詳細は本ファイル下部参照）
+- [x] Reservation API（2026-08-23実装、2026-09-13に予約却下`reject`追加で完成）
+  - `V7__create_reservations.sql`、`domain/reservation`・`application/reservation`・`infrastructure/persistence/reservation`・`presentation/reservation` 一式
+  - 実装: `POST /api/v1/reservations`（申請）・`GET /api/v1/reservations`（一覧）・`GET /api/v1/reservations/{id}`（詳細）・`PATCH /api/v1/reservations/{id}/cancel`（キャンセル）・`PATCH /api/v1/admin/reservations/{id}/approve`（承認）・`PATCH /api/v1/admin/reservations/{id}/complete`（診療完了）・`PATCH /api/v1/admin/reservations/{id}/reject`（却下、ユーザー実装＋Claude Codeレビュー）
+  - `ReservationErrorCode`: RESERVATION-001〜005（`docs/07_API_Design` §9-3準拠）に加え、実装時に006（予約が見つからない）・007（予約者本人ではない）・008（不正な状態遷移）を新規追加
+  - 状態遷移（承認・キャンセル・完了・却下）は `Reservation` ドメインモデル内のメソッドで制御（`Hospital.suspend()`と同じ不変オブジェクトパターン）
+  - テスト37件追加（Service 28件・Mapper 2件・Controller 7件）、`./gradlew clean test`で140件全green
+  - **reject実装レビューで発見・修正したバグ（2026-09-13, Claude Code）**: `Reservation.reject()`がREQUESTED/APPROVED/CANCELLEDの3状態から却下可能になっていた（`docs/07_API_Design` §9-6・`AGENTS.md` §6の「REQUESTED→REJECTEDのみ」に反する）。REQUESTED限定に修正し、APPROVED/CANCELLED/COMPLETED/REJECTED各状態からの却下を拒否する回帰テストを追加。`ReservationAdminControllerTest`の`reject_reservation_success`の`@DisplayName`が「診療完了成功」のコピペ違いだったのも修正
+  - 却下理由（`reason`）は実装せず: `reservations`にカラムが無く設計ギャップだったため、docsからRequest例を削除しスコープ外と明記
+
+- [x] Codexコードレビュー指摘（REVIEW-001、2026-09-13）の対応 — Claude Code
+  - R-01 Refresh Token消費の非原子性: 条件付き失効の**更新件数が1件**の呼び出しのみ後続発行を許可（0件はAUTH-003）。`RefreshTokenRepository.revokeByToken`をintに変更
+  - R-02 同一秒のRefresh Token重複: `jti`(UUID)を付与（`token`のUNIQUE制約違反による500を回避）
+  - R-03 二重予約: `V8__add_reservations_active_schedule_unique_index.sql`（部分UNIQUE）追加＋制約違反をRESERVATION-001に変換（`saveAndFlush`で検知）
+  - R-04 終了状態の上書き: 承認・却下・完了・キャンセルを「読み取り時点の状態」を条件にした条件付きUPDATEへ変更。0件更新はRESERVATION-008。`RejectReservationService`に`@Transactional`追加
+  - R-05 SUSPENDED病院への予約: `CreateReservationService`で病院状態を検証、`RESERVATION-009`新規追加
+  - R-06 論理削除ペットで予約一覧が壊れる: `PetRepository.findByIdIncludingDeleted`を追加し履歴表示に使用
+  - R-07 Refresh TokenをBearerに使うとフィルターで例外: `type` claimでAccess Token専用に検証（`validateAccessToken`）
+  - R-08 リフレッシュ失敗時に待機リクエストが未解決: キューに`reject`も保持して全waiterをsettle
+  - テスト17件追加（計157件green）。詳細は `.ai-collab/tasks/2026-09-13-implementation-review/HANDOFF-002.md`
+  - [ ] **残課題**: 実PostgreSQLでの同時実行テスト（R-01/R-03/R-04）は未実施。モックテストでは競合を検証できない（`docs/12` §3-11）
+  - [x] **R-01の残り（REVIEW-002指摘、2026-09-23対応）**: refreshとlogin/logoutの一括revokeが直列化されておらず、ログアウト後も後続Tokenが生き残る（＝セッションが残る）問題。login/refresh/logoutの3操作すべてでTokenを触る前に`UserRepository.lockForSessionUpdate`（ユーザー行の`SELECT ... FOR UPDATE`）を取得して直列化。保留していた同時ログインの残課題もこれで解消
+  - [x] REVIEW-002の非ブロッキング所見: `ReservationPersistenceAdapter`が全ての整合性違反をRESERVATION-001に変換していた点を、`uq_reservations_active_schedule`違反のみに限定（他はそのまま伝播）
+  - [ ] **残課題**: 実PostgreSQLでの同時実行検証（refresh×logout / refresh×login / 同時ログイン）は、Docker未起動のため2026-09-23時点で未実施。検証スクリプトは用意済み
 
 ### Frontend
 - [x] プロジェクト初期構築 (React 18 + TypeScript + Vite + Tailwind CSS)
@@ -50,26 +74,17 @@
 
 ## 🚧 未実装 — Spring API
 
-### Pet テーブル不足カラム追加
-> フロントは送信済みだが DB・Entity に存在しないため現在は無視されている
+### Pet テーブル不足カラム追加（実装済み・未マージ — branch: `feat/spring/pet-fields`）
+> 2026-07-05 実装済み。`breed` は自由入力文字列で確定（マスタテーブル無し）。**develop へのマージ待ち**
 
-- [ ] `V4__alter_pets_add_columns.sql` — `breed`, `neutered`, `microchip_number` カラム追加
-  ```sql
-  ALTER TABLE pets
-    ADD COLUMN breed            VARCHAR(100) NULL,
-    ADD COLUMN neutered         BOOLEAN      NOT NULL DEFAULT FALSE,
-    ADD COLUMN microchip_number VARCHAR(15)  NULL;
-  ```
-- [ ] `PetEntity` に `breed` / `neutered` / `microchipNumber` フィールド追加
-- [ ] `Pet` ドメインモデルに同フィールド追加
-- [ ] `PetMapper` の変換ロジック更新
-- [ ] 既存テストが通ることを確認（`PetServiceTest`）
-
-> Hospital API 追加後は V5 以降にずれるため、マイグレーションファイル番号に注意
+- [x] `V4__alter_pets_add_columns.sql` — `breed`, `neutered`, `microchip_number` カラム追加
+- [x] `PetEntity` / `Pet` ドメイン / `PetMapper` / DTO / Service 反映
+- [x] docs/06_ERD・07_API_Design 更新（同ブランチ内）
+- [ ] **マージ時の必須作業**: migration 番号衝突の解消 — 現ブランチの `V4` は hospitals が使用中のため、`V4__alter_pets_add_columns.sql` を V8 以降へリナンバーする
 
 ### Hospital API（branch: `feat/spring/hospital`）
 - [x] `Hospital` / `HospitalSchedule` ドメイン・エンティティ・テーブル作成
-  - 実際のマイグレーション番号: `V5__create_hospitals.sql` / `V6__create_hospital_schedules.sql`（Pet列追加がV4を使用したためズレ）
+  - 実際のマイグレーション番号: `V4__create_hospitals.sql` / `V6__create_hospital_schedules.sql`（Pet列追加が未マージのままV4を使用しているためズレ、V5はHospitalBusinessHoursが使用）
 - [x] `GET /api/v1/hospitals` — 病院一覧（keyword・area検索対応、ACTIVEのみ）
 - [x] `GET /api/v1/hospitals/{id}` — 病院詳細
 - [x] `POST /api/v1/admin/hospitals` — 病院登録（`docs/07_API_Design`のRole別権限表に合わせROLE_SYSTEM_ADMIN限定。パスはdocs通り`/admin`配下）
@@ -109,28 +124,58 @@
   - 休憩時間帯も同じ単位で分割し`BLOCKED`として生成（行を作らず空白にする方式は採らない — 画面上「休憩中」と表示できるようにするため）
   - 既に生成済みの期間は再生成しない（手動BLOCKEDの上書き防止）
 
-### Reservation API
-- [ ] `Reservation` ドメイン・エンティティ・テーブル作成 (`V5__create_reservations.sql`)
-- [ ] 予約ステータス設計: `PENDING → CONFIRMED → COMPLETED / CANCELLED`
-- [ ] `POST /api/v1/reservations` — 予約作成（USER）
-- [ ] `GET /api/v1/reservations` — 予約一覧（ユーザー別）
-- [ ] `GET /api/v1/reservations/{id}` — 予約詳細
-- [ ] `PATCH /api/v1/reservations/{id}/confirm` — 予約承認（HOSPITAL_ADMIN）
-- [ ] `PATCH /api/v1/reservations/{id}/cancel` — 予約キャンセル
-- [ ] `PATCH /api/v1/reservations/{id}/complete` — 診療完了
-- [ ] Reservation 関連テスト
+### Reservation API（2026-08-23実装、Claude Code）
+- [x] `Reservation` ドメイン・エンティティ・テーブル作成 (`V7__create_reservations.sql`。V5/V6はHospitalBusinessHours/HospitalScheduleが使用済みのためV7から)
+- [x] 予約ステータス設計: `REQUESTED → APPROVED → COMPLETED`／`REQUESTED → REJECTED`／`REQUESTED・APPROVED → CANCELLED`（`docs/06_ERD` §12・`docs/08_State_Design` §6・ルート`AGENTS.md` §6 準拠。旧記載の `PENDING → CONFIRMED` は誤りだったため修正）
+- [x] `POST /api/v1/reservations` — 予約申請（USER、docs/07_API_Design §9-3）
+- [x] `GET /api/v1/reservations` — 予約一覧（ユーザー別、§9-1）
+- [x] `GET /api/v1/reservations/{id}` — 予約詳細（§9-2）
+- [x] `PATCH /api/v1/reservations/{id}/cancel` — 予約キャンセル（USER、§9-4）
+- [x] `PATCH /api/v1/admin/reservations/{id}/approve` — 予約承認（HOSPITAL_ADMIN、§9-5）
+- [x] `PATCH /api/v1/admin/reservations/{id}/complete` — 診療完了（HOSPITAL_ADMIN、§9-7）
+- [x] RESERVATION-001〜008 ErrorCode 追加（001〜005はdocs/07_API_Design §9-3準拠、006〜008は実装時に新規追加。ルート`AGENTS.md` §5参照）
+- [x] `PATCH /api/v1/admin/reservations/{id}/reject` — 予約却下（HOSPITAL_ADMIN/SYSTEM_ADMIN、docs/07_API_Design §9-6。2026-09-13、ユーザー実装＋Claude Codeレビューで完成。詳細は上部の完了済みセクション参照）
+- [x] Reservation 関連テスト（Service 28件・Mapper 2件・Controller 7件、計37件）
 
-### Notification API
-- [ ] `Notification` ドメイン・エンティティ・テーブル作成
-- [ ] `GET /api/v1/notifications` — 通知一覧
-- [ ] `PATCH /api/v1/notifications/{id}/read` — 既読
-- [ ] 予約確定・リマインダー時の通知生成ロジック
-- [ ] 予防接種リマインダー Scheduler
+### Notification API（2026-10-03実装、Claude Code）
+- [x] `Notification` ドメイン・エンティティ・テーブル作成（`V10__create_notifications.sql`）
+  - `vaccination_id`は列のみ作成しFKは保留（`vaccinations`未作成。`docs/06_ERD` §15注記）
+- [x] `GET /api/v1/notifications` — 通知一覧（作成日時の降順、本人宛のみ）
+- [x] `PATCH /api/v1/notifications/{id}/read` — 既読（未読のみを対象にした条件付きUPDATEで冪等）
+- [x] 予約承認・却下・診療完了時の通知生成（`NotifyReservationEventUseCase`、`08_State_Design` §6-6）
+  - 状態遷移と同一トランザクション。遷移が成立しなかった場合は通知を作らない
+  - キャンセルは §6-6 に通知定義が無いため生成しない
+- [x] `NOTIFICATION-001`（存在しない通知）・`NOTIFICATION-002`（受信者本人でない）追加
+- [ ] 予防接種リマインダー Scheduler（`VACCINATION`種別。Vaccination ドメイン実装後）
 
-### Health Record API
-- [ ] `HealthRecord` エンティティ・テーブル作成
-- [ ] `POST /api/v1/pets/{petId}/health-records`
-- [ ] `GET /api/v1/pets/{petId}/health-records`
+### Health Record API（2026-10-03実装、Claude Code）
+- [x] `HealthRecord` ドメイン・エンティティ・テーブル作成（`V9__create_health_records.sql`）
+- [x] `POST /api/v1/pets/{petId}/health-records` — 登録（`recordedDate`省略時は当日）
+- [x] `GET /api/v1/pets/{petId}/health-records` — 一覧（記録日の降順、論理削除分を除く）
+- [x] `PATCH /api/v1/health-records/{id}` — 更新（docs 6-3のPUTはプロジェクト規約に合わせPATCHへ変更）
+- [x] `DELETE /api/v1/health-records/{id}` — 論理削除
+- [x] `HEALTH-001`（存在しない健康記録）・`HEALTH-002`（存在しない/他ユーザーのペット）追加
+  - 健康記録は`user_id`を持たないため所有者判定はペット経由
+
+> **この回は練習用ギャップを作っていない**（ユーザーの指示: 「이번엔 따로 안남겨도 돼」）。新ドメインに1〜2機能を残す方針（`AGENTS.md` §11-1）は次回以降も有効。
+
+**Codexレビュー（REVIEW-001、2026-10-03）への対応 — Claude Code**
+- [x] R-01 [P1] 健康記録のPATCHで未指定項目が消える → `HealthRecord.patch`で未指定（null）は既存値を維持、`symptom`/`memo`は空文字で消去
+- [x] R-02 [P2] PATCHが同時に論理削除された記録を復活させる → 内容列だけを`deleted_at IS NULL`の条件付きUPDATEで書き、0件ならHEALTH-001
+- [x] R-03 [P2・既存] 病院情報の更新が停止を取り消す → 情報更新（name/address/phone）と停止（status）を別UPDATEに分離（逆方向の上書きも防止）
+- [x] 同じ「読み取ったエンティティ全体を保存」パターンをペット更新（論理削除の復活）と営業時間更新（削除行の作り直し）でも修正。予約枠のBLOCKED切替はstatus1列のみの操作のため対象外
+- [x] D-01 文書の実装状況表記（ERDの`未作成`、AGENTS.md §6）を修正。あわせて`docs/11` HOSP-T002の期待値をRESERVATION-002→009に修正（2026-09-13のR-05対応時の同期漏れ）
+- 検証: `./gradlew clean test` 208件green。実PostgreSQLで決定的インターリーブ（SQLが競合更新を保持→HTTPがUPDATEで待機→commit）による受け入れ確認10件全通過。Codexの再現スクリプト（無改変）はR-01の欠陥アサーションで停止＝欠陥が再現しないことを確認
+
+**Codex再レビュー（REVIEW-002、2026-10-04）への対応 — Claude Code**
+- [x] R-04 [P2] 同時実行の部分PATCHが未指定項目を古い値で戻す → 健康記録の更新は行ロック付きで読み取り（`findByIdForUpdate`）、別PATCH・論理削除と直列化
+- [x] T-01 [P3] スモークの記録日アサーションがUTC日付と比較していた → サーバー時刻（Asia/Tokyo）で比較し、日付境界をまたぐ場合も許容
+- [x] 基準タイムゾーンをJST（Asia/Tokyo）に統一（ユーザー指示、日本向けサービスのため）: Spring APIは`main`でJVM既定を固定、`ServerTime`をAsia/SeoulからAsia/Tokyoへ、フロントの「今日」をUTC計算（`toISOString()`）からJSTへ（`docs/07` §2-7、`docs/12` §3-13）
+- [ ] **要判断（既存の文書・実装の食い違い）**: `docs/07` §2-7 の例はオフセット付き（`2026-05-17T10:00:00+09:00`）だが、APIは`LocalDateTime`をオフセットなし（`2026-05-17T10:00:00`）で返している。オフセットを付けるか、文書をオフセットなし（JST）に直すかはユーザー判断
+- 検証: `./gradlew clean test` 209件green。実PostgreSQLでR-04受け入れ3件（weightのみ・空のPATCH・別項目の2PATCH同時）、REVIEW-001受け入れ10件、スモーク14件（00:43 KST＝UTC日付が前日の時間帯）、通知チェック4件、認証/予約e2e 12件が全通過
+- [ ] **要判断（既存の文書・実装の食い違い）**: `docs/07_API_Design` §5-4 はペット更新を「部分更新」としているが、実装は`birthDate`/`weight`省略時にNULLで上書きする全体置換。フロントは常にフォーム全体を送るため実害は出ていない。実装を部分更新に揃えるか、文書を全体置換に直すかはユーザー判断（今回は変更していない）
+
+**検証（2026-10-03）**: テスト31件追加で`./gradlew clean test` 192件green。実PostgreSQL（捨てDB `daipetto_hn`）でV9/V10適用・`ddl-auto: validate`通過を確認し、API 14項目のスモークも全通過（`.ai-collab/tasks/2026-10-03-health-notification/scripts/smoke-health-notification.mjs`）
 
 ---
 
@@ -165,11 +210,12 @@
 - [x] プラットフォーム別APIベースURL — `Capacitor.getPlatform()`で実行時に自動判定（Web/Android/iOS）、`.env`の手動書き換えが不要に
 
 ### 実 API 接続が必要な画面（残り）
-- [ ] 予約 (`ReservationPage`) — Reservation API 連動（バックエンド未実装のため連動不可）
-- [ ] 予約履歴 (`ReservationHistoryPage`) — Reservation API 連動
-- [ ] 健康記録 (`HealthRecordPage`) — HealthRecord API 連動
-- [ ] 通知 (`NotificationsPage`) — Notification API 連動
-- [ ] 管理者画面 (`AdminReservationPage` / `AdminUserPage`) — 各API連動（バックエンド未実装のため連動不可）
+- [ ] 予約 (`ReservationPage`) — Reservation API 連動（バックエンド実装済み・連動可能）
+- [ ] 予約履歴 (`ReservationHistoryPage`) — Reservation API 連動（バックエンド実装済み・連動可能）
+- [ ] 健康記録 (`HealthRecordPage`) — HealthRecord API 連動（バックエンド実装済み・連動可能）
+- [ ] 通知 (`NotificationsPage`) — Notification API 連動（バックエンド実装済み・連動可能）
+- [ ] 管理者画面 `AdminReservationPage` — 予約承認/却下/完了API連動（バックエンド実装済み・連動可能）
+- [ ] 管理者画面 `AdminUserPage` — ユーザー管理API連動（バックエンド未実装のため連動不可）
 
 ### 状態管理追加
 - [ ] `reservationStore.ts` — 予約一覧・詳細
@@ -185,10 +231,7 @@
 
 ## 🔖 設計未決定事項（TODO）
 
-- [ ] **品種（breed）フィールドの管理方針**
-  - 案A: SYSTEM_ADMIN が品種マスタ管理 → ユーザーはドロップダウン選択
-  - 案B: 自由入力 + オートコンプリート、リスト未登録品種はユーザーが追加申請可能
-  - → 決定後、`GET /api/v1/breeds` API 実装要否も確定する
+- [x] **品種（breed）フィールドの管理方針** — 自由入力文字列で確定（2026-07-05、`feat/spring/pet-fields`）。マスタテーブルは導入せず、統計精度が必要になれば再検討
 
 - [ ] **画像アップロード方針**
   - ペット写真・病院写真の保存先（S3 / ローカルストレージ）

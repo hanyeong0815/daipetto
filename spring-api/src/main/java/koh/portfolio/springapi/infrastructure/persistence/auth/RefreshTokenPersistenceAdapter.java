@@ -27,12 +27,12 @@ public class RefreshTokenPersistenceAdapter implements RefreshTokenRepository {
     }
 
     @Override
-    public void revokeAllByUserId(Long userId) {
-        int updatedCount = refreshTokenJpaRepository.revokeAllActiveTokensByUserId(userId);
+    public int revokeAllByUserId(Long userId) {
+        return refreshTokenJpaRepository.revokeAllActiveTokensByUserId(userId);
     }
 
     @Override
-    public void revokeByToken(String token) {
-        refreshTokenJpaRepository.revokeByToken(token);
+    public int revokeByToken(String token) {
+        return refreshTokenJpaRepository.revokeByToken(token);
     }
 }

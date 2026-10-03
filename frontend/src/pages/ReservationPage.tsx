@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePetStore } from '../stores/petStore'
+import { todayInJapan } from '../utils/date'
 
 type Step = 1 | 2 | 3
 
@@ -95,7 +96,7 @@ export default function ReservationPage() {
         <div className="flex flex-col gap-lg">
           <section className="flex flex-col gap-sm">
             <h2 className="font-headline-md text-headline-md text-neutral-gray-900">日付を選択</h2>
-            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} min={new Date().toISOString().split('T')[0]}
+            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} min={todayInJapan()}
               className="w-full h-[52px] px-sm bg-neutral-gray-50 border border-neutral-gray-100 rounded-xl font-body-md text-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all" />
           </section>
 

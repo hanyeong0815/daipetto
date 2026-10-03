@@ -10,7 +10,7 @@
 | Document | System Architecture |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-08-02 |
+| Updated | 2026-08-23 |
 
 ---
 
@@ -542,7 +542,8 @@ Spring BootではGlobal Exception Handlerを利用する。
 ```json
 {
   "success": false,
-  "code": "RESERVE-001",
+  "data": null,
+  "code": "RESERVATION-001",
   "message": "既に予約済みです。"
 }
 ```

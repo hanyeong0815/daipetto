@@ -1,5 +1,6 @@
 package koh.portfolio.springapi.infrastructure.security.jwt;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import koh.portfolio.springapi.domain.user.model.Role;
@@ -11,9 +12,15 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtProvider {
+    private static final String TOKEN_TYPE_CLAIM = "type";
+    private static final String ACCESS_TOKEN_TYPE = "access";
+    private static final String REFRESH_TOKEN_TYPE = "refresh";
+    private static final String ROLE_CLAIM = "role";
+
     private final SecretKey secretKey;
     private final long accessTokenExpirationMinutes;
     private final long refreshTokenExpirationDays;
@@ -35,7 +42,8 @@ public class JwtProvider {
         return Jwts.builder()
                 .subject(String.valueOf(userId))
                 .claim("email", email)
-                .claim("role", role.name())
+                .claim(ROLE_CLAIM, role.name())
+                .claim(TOKEN_TYPE_CLAIM, ACCESS_TOKEN_TYPE)
                 .issuedAt(now)
                 .expiration(expiration)
                 .signWith(secretKey)
@@ -46,8 +54,12 @@ public class JwtProvider {
         Date now = new Date();
         Date expiration = new Date(now.getTime() + Duration.ofDays(refreshTokenExpirationDays).toMillis());
 
+        // jti が無いと iat/exp が秒単位のため、同一ユーザーの同一秒の再発行で
+        // 同じ署名文字列になり refresh_tokens.token の UNIQUE 制約に衝突する
         return Jwts.builder()
+                .id(UUID.randomUUID().toString())
                 .subject(String.valueOf(userId))
+                .claim(TOKEN_TYPE_CLAIM, REFRESH_TOKEN_TYPE)
                 .issuedAt(now)
                 .expiration(expiration)
                 .signWith(secretKey)
@@ -82,12 +94,33 @@ public class JwtProvider {
         }
     }
 
+    // 署名・有効期限に加え「Access Tokenとして発行されたか」まで確認する。
+    // Refresh Token は role claim を持たないため、認証フィルターで区別しないと
+    // SimpleGrantedAuthority(null) で IllegalArgumentException になる
+    public boolean validateAccessToken(String token) {
+        try {
+            Claims claims = Jwts.parser()
+                    .verifyWith(secretKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+
+            String role = claims.get(ROLE_CLAIM, String.class);
+
+            return ACCESS_TOKEN_TYPE.equals(claims.get(TOKEN_TYPE_CLAIM, String.class))
+                    && role != null
+                    && !role.isBlank();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public String getRole(String token) {
         return Jwts.parser()
                 .verifyWith(secretKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload()
-                .get("role", String.class);
+                .get(ROLE_CLAIM, String.class);
     }
 }

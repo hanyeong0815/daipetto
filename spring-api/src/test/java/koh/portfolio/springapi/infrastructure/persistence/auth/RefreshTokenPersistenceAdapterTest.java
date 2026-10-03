@@ -124,9 +124,11 @@ class RefreshTokenPersistenceAdapterTest {
                 .build());
 
         // when
-        refreshTokenRepository.revokeByToken("target-token");
+        int revokedCount = refreshTokenRepository.revokeByToken("target-token");
 
         // then
+        assertThat(revokedCount).isEqualTo(1);
+
         assertThat(refreshTokenJpaRepository.findByToken("target-token"))
                 .get()
                 .extracting(RefreshTokenEntity::isRevoked)
@@ -136,5 +138,28 @@ class RefreshTokenPersistenceAdapterTest {
                 .get()
                 .extracting(RefreshTokenEntity::isRevoked)
                 .isEqualTo(false);
+    }
+
+    @Test
+    @DisplayName("既に失効済みのRefresh Tokenを再度失効させると0件を返却する（rotationの単一消費）")
+    void revoke_by_token_returns_zero_when_already_revoked() {
+        // given
+        LocalDateTime now = LocalDateTime.now();
+
+        refreshTokenJpaRepository.save(RefreshTokenEntity.builder()
+                .userId(1L)
+                .token("rotation-token")
+                .expiresAt(now.plusDays(14))
+                .revoked(false)
+                .createdAt(now)
+                .build());
+
+        // when
+        int firstCall = refreshTokenRepository.revokeByToken("rotation-token");
+        int secondCall = refreshTokenRepository.revokeByToken("rotation-token");
+
+        // then
+        assertThat(firstCall).isEqualTo(1);
+        assertThat(secondCall).isZero();
     }
 }

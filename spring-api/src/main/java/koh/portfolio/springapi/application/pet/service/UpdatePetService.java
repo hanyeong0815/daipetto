@@ -30,6 +30,8 @@ public class UpdatePetService implements UpdatePetUseCase {
                 request.gender(),
                 request.weight()
         );
-        petRepository.save(updatedPet);
+
+        // 読み取り後に論理削除がcommitされていた場合は0件更新。削除を最終状態として維持する
+        Preconditions.validate(petRepository.updateProfile(updatedPet), PetErrorCode.PET_NOT_FOUND);
     }
 }

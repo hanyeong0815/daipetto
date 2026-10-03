@@ -9,10 +9,13 @@ import java.time.ZoneId;
 
 @Component
 public final class ServerTime {
+    // サービスの基準タイムゾーン（日本向けサービスのためJST）。SpringApiApplication.mainでJVMの既定にも設定する
+    public static final ZoneId ZONE_ID = ZoneId.of("Asia/Tokyo");
+
     public final ZoneId zoneId;
 
     public ServerTime() {
-        zoneId = ZoneId.of("Asia/Seoul");
+        zoneId = ZONE_ID;
     }
 
     public Instant nowInstant() {

@@ -31,6 +31,10 @@ public class UpdateHospitalBusinessHoursService implements UpdateHospitalBusines
                 request.slotDurationMinutes()
         );
 
-        hospitalBusinessHoursRepository.save(updatedBusinessHours);
+        // 読み取り後に削除されていた場合は0件更新（mergeで行を作り直さない）
+        Preconditions.validate(
+                hospitalBusinessHoursRepository.updateHours(updatedBusinessHours),
+                HospitalErrorCode.HOSPITAL_BUSINESS_HOURS_NOT_FOUND
+        );
     }
 }

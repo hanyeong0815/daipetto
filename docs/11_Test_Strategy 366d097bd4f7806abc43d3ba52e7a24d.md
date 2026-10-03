@@ -10,7 +10,7 @@
 | Document | Test Strategy |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-05-17 |
+| Updated | 2026-10-03 |
 
 ---
 
@@ -67,7 +67,7 @@
 | **項目** | **内容** |
 | --- | --- |
 | Frontend | React 18.3.1 |
-| Node.js | 20.20.2 LTS |
+| Node.js | 24.17.0 |
 | Spring Boot | 3.3.13 |
 | Java | 17 |
 | Python | 3.12.10 |
@@ -81,19 +81,11 @@
 
 | **項目** | **内容** |
 | --- | --- |
-| Unit Test | H2 In-Memory DB |
-| Integration Test | PostgreSQL Test Container |
+| Unit Test | DB不使用（Repository を Mockito でモック） |
+| Integration Test | 未導入（導入時は PostgreSQL Testcontainers を想定） |
 | Local Manual Test | Docker PostgreSQL |
 
----
-
-## **4-3. Test Profile**
-
-Spring Bootではテスト用Profileを利用する。
-
-```
-application-test.yml
-```
+> **注記:** Repository をモックする単体テストでは null 許容パラメータの `@Query` 不具合を検出できない（`12_Trouble_Shooting` §3-10 の実例参照）。null 許容パラメータを含む `@Query` には実DB接続の統合テスト追加が望ましい。
 
 ---
 
@@ -134,6 +126,12 @@ flowchart TB
 | AUTH-T005 | Refresh Token再発行 | 新Access Token発行 |
 | AUTH-T006 | 失効Refresh Token利用 | AUTH-003返却 |
 | AUTH-T007 | ログアウト | Refresh Token revoked=true |
+| AUTH-T008 | 同時リフレッシュ（既に消費済みToken） | 失効0件 → AUTH-003返却 |
+| AUTH-T009 | Refresh TokenをAuthorization Bearerに使用 | 認証情報を設定せず例外も発生しない（401 AUTH-001） |
+| AUTH-T010 | 同一ユーザー・同一秒のRefresh Token連続発行 | Token文字列が重複しない（`jti`） |
+| AUTH-T011 | 再発行の最中にログアウト | ログアウト後に有効なRefresh Tokenが残らない |
+| AUTH-T012 | 再発行の最中にログイン | 有効なRefresh Tokenはログイン発行分の1本のみ |
+| AUTH-T013 | 同時ログイン | 直列化され、有効なRefresh Tokenは1本のみ |
 
 ---
 
@@ -171,6 +169,12 @@ flowchart TB
 | HEALTH-T003 | 体重に負数入力 | Validation Error |
 | HEALTH-T004 | 健康記録一覧取得 | 登録済データ取得 |
 | HEALTH-T005 | 健康記録削除 | deleted_at設定 |
+| HEALTH-T006 | 一部項目のみのPATCH（例: memoのみ）・空のPATCH | 未指定項目は既存値を維持 |
+| HEALTH-T007 | symptom / memo に空文字を指定したPATCH | 該当項目のみNULLに消去 |
+| HEALTH-T008 | 論理削除のcommit後に書き込まれるPATCH | HEALTH-001、記録は削除状態のまま |
+| HEALTH-T009 | 別項目への更新がcommitされるまで待たされたPATCH（例: memo更新中のweightのみ・空のPATCH、別項目を変える2つのPATCHの同時実行） | 未指定項目は確定済みの最新値を維持し、双方の変更が残る |
+
+> HEALTH-T008・T009の同時実行は単体テスト（モック）とH2では再現できない。単体テストは行ロック付き読み取りを使うこと、`@DataJpaTest`はその読み取りが論理削除済みを除外することまでを確認し、インターリーブ自体は実PostgreSQLの受け入れスクリプト（`.ai-collab/tasks/2026-10-03-health-notification/scripts/`）で確認している。
 
 ---
 
@@ -179,7 +183,9 @@ flowchart TB
 | **Test ID** | **観点** | **期待結果** |
 | --- | --- | --- |
 | HOSP-T001 | 病院一覧取得 | ACTIVE病院のみ取得 |
-| HOSP-T002 | 停止病院への予約 | RESERVATION-002 |
+| HOSP-T002 | 停止病院への予約 | RESERVATION-009（2026-09-13 R-05対応で002から変更。RSV-T007と同一観点） |
+| HOSP-T003 | 停止の直前に読み取った内容での病院情報更新 | statusはSUSPENDEDのまま（情報列だけを更新） |
+| HOSP-T004 | 情報更新の直前に読み取った内容での病院停止 | 更新済みの情報を古い値で上書きしない |
 | SCH-T001 | AVAILABLE予約枠取得 | 取得成功 |
 | SCH-T002 | BLOCKED予約枠予約 | RESERVATION-003 |
 | SCH-T003 | 過去予約枠予約 | RESERVATION-005 |
@@ -196,6 +202,8 @@ flowchart TB
 | RSV-T004 | 予約キャンセル | CANCELLED更新 |
 | RSV-T005 | COMPLETED予約キャンセル | 状態遷移エラー |
 | RSV-T006 | 予約詳細取得 | 正常取得 |
+| RSV-T007 | SUSPENDED病院への予約申請 | RESERVATION-009 |
+| RSV-T008 | 論理削除済みペットを含む予約一覧取得 | 当該予約も他の予約も表示される |
 
 ---
 
@@ -211,6 +219,8 @@ flowchart TB
 | STATE-T006 | COMPLETED | 承認 | 不正遷移エラー |
 | STATE-T007 | REJECTED | 承認 | 不正遷移エラー |
 | STATE-T008 | CANCELLED | 承認 | 不正遷移エラー |
+| STATE-T009 | REQUESTED（直前に他の遷移が成立） | 承認 / 却下 | 条件付き更新0件 → RESERVATION-008 |
+| STATE-T010 | APPROVED（直前に他の遷移が成立） | 診療完了 / キャンセル | 条件付き更新0件 → RESERVATION-008 |
 
 ---
 

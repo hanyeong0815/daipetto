@@ -6,6 +6,7 @@ import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,5 +40,21 @@ public class HospitalPersistenceAdapter implements HospitalRepository {
     @Override
     public boolean existsById(Long id) {
         return hospitalJpaRepository.existsById(id);
+    }
+
+    @Override
+    public boolean updateInfo(Hospital hospital) {
+        return hospitalJpaRepository.updateInfo(
+                hospital.getId(),
+                hospital.getName(),
+                hospital.getAddress(),
+                hospital.getPhoneNumber(),
+                hospital.getUpdatedAt()
+        ) == 1;
+    }
+
+    @Override
+    public boolean updateStatus(Long hospitalId, HospitalStatus status, LocalDateTime updatedAt) {
+        return hospitalJpaRepository.updateStatus(hospitalId, status, updatedAt) == 1;
     }
 }

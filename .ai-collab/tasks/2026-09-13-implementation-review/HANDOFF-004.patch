@@ -1,0 +1,2238 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 3898ade..a3d7e02 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -60,7 +60,7 @@ Rules:
+ 6. Role checks via `@PreAuthorize("hasAuthority('ROLE_...')")`; SecurityConfig only guarantees `authenticated()`.
+ 7. Owner checks with the `Preconditions.validate` pattern (see `UpdatePetService`).
+ 8. Domain state transitions are methods returning a new immutable instance (see `Hospital.suspend()`, `Reservation.approve()`); Lombok on Domain: `@Getter`/constructors only, never `@Setter`/`@Data`.
+-9. Auth policy: access token 30 min / refresh token 14 days, refresh **rotation** (old token revoked on every use), max 1 active refresh token per user, stored in PostgreSQL (no Redis in MVP).
++9. Auth policy: access token 30 min / refresh token 14 days, refresh **rotation** (old token revoked on every use), max 1 active refresh token per user, stored in PostgreSQL (no Redis in MVP). Login, refresh and logout all take `SELECT ... FOR UPDATE` on the user row (`UserRepository.lockForSessionUpdate`) before touching tokens — without that per-user serialization the bulk revoke misses a successor token inserted by a concurrent refresh (docs/12 §3-11).
+ 
+ ## 4. API common spec
+ 
+@@ -95,7 +95,8 @@ Error messages in Japanese. New codes follow `{DOMAIN}-{seq}`; `{DOMAIN}-999` is
+ | RESERVATION-005 | 過去日時の枠 | 400 |
+ | RESERVATION-006 | 存在しない予約 | 404 |
+ | RESERVATION-007 | 予約者本人でない | 403 |
+-| RESERVATION-008 | 不正な状態遷移 | 409 |
++| RESERVATION-008 | 不正な状態遷移（同時実行で負けた側を含む） | 409 |
++| RESERVATION-009 | SUSPENDED病院への予約 | 409 |
+ | AUTH/USER/PET/HOSPITAL/RESERVATION-999 | domain default | 500 |
+ | VALIDATION-001 | `@Valid` failure (GlobalExceptionHandler) | 400 |
+ | SERVER-001 | unhandled exception fallback | 500 |
+@@ -126,8 +127,9 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
+ ## 7. DB / Flyway
+ 
+ - DB changes only via Flyway; logical delete (`deleted_at`) is the default.
+-- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations.
+-- ⚠ Unmerged `feat/spring/pet-fields` also uses **V4** (`V4__alter_pets_add_columns.sql` — breed/neutered/microchip_number). Renumber one side at merge. New migrations start at **V8**; check every branch for number collisions before numbering.
++- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile).
++- ⚠ Unmerged `feat/spring/pet-fields` also uses **V4** (`V4__alter_pets_add_columns.sql` — breed/neutered/microchip_number). Renumber one side at merge. New migrations start at **V9**; check every branch for number collisions before numbering.
++- ⚠ V8 fails on an existing database that already holds duplicate active reservations for one schedule; clean those rows before applying.
+ - Not created yet: health_records / vaccinations / notifications / hospital_admins (definitions in docs/06). Because `hospital_admins` is missing, admin APIs cannot verify "own hospital" — hospital-affiliation checks are intentionally skipped for now.
+ 
+ ## 8. Test rules
+@@ -136,8 +138,9 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
+ - Spring Boot 3.3.13 → use `@MockBean` (never `@MockitoBean`).
+ - Controller tests: `@WebMvcTest` + `@AutoConfigureMockMvc(addFilters = false)` + `@Import(GlobalExceptionHandler.class)`. If `JwtAuthenticationFilter` breaks context creation, exclude it via `excludeFilters`. Mock **every** UseCase the controller depends on.
+ - Principal is `Long`: use `new UsernamePasswordAuthenticationToken(1L, null, authorities)` — `.with(user(...))` fails.
+-- Unit tests mock repositories (no DB; H2/Testcontainers not introduced). Null-tolerant `@Query` bugs escape mock tests — see docs/12 §3-10.
+-- Verify: `./gradlew clean test` in `spring-api/` (133 green as of 2026-08-23).
++- Most unit tests mock repositories. H2 **is** available for `@DataJpaTest` (`application-test.yml`, `MODE=PostgreSQL`, `ddl-auto=create-drop`, Flyway disabled) — see `RefreshTokenPersistenceAdapterTest`; Testcontainers is not introduced.
++- Mocked repositories prove neither real SQL nor concurrency. Null-tolerant `@Query` bugs escape them (docs/12 §3-10) and so do races (docs/12 §3-11). No PostgreSQL concurrency test exists yet.
++- Verify: `./gradlew clean test` in `spring-api/` (161 green as of 2026-09-23).
+ 
+ ## 9. Environment
+ 
+@@ -152,16 +155,19 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
+ Start: `docker compose up -d` (postgres) → `./gradlew bootRun` / `npm run dev`.
+ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (`VITE_API_BASE_URL_WEB` / `_ANDROID` / `_IOS`).
+ 
+-## 10. Status (2026-08-23)
++## 10. Status (2026-09-13)
+ 
+-**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete) · Frontend all screens SC-001〜015 (auth·pet·hospital wired to real API) · ProtectedRoute + role guards · token restore on reload.
++**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · Frontend all screens SC-001〜015 (auth·pet·hospital wired to real API) · ProtectedRoute + role guards · token restore on reload.
+ 
+-**Practice gaps** (user implements these personally — do NOT implement unless explicitly asked; list in TODO.md is authoritative):
+-- Reservation reject: `PATCH /api/v1/admin/reservations/{id}/reject` (docs/07 §9-6 marked 未実装).
++**Practice gaps** (user implements these personally — do NOT implement unless explicitly asked; list in TODO.md is authoritative): none outstanding as of this date.
++
++**Review round 2 (Codex REVIEW-002, 2026-09-14)**: R-02〜R-08 accepted as resolved; R-01 stayed open because the conditional revoke did not serialize refresh against the per-user bulk revoke in login/logout. Fixed on 2026-09-23 by locking the user row in all three operations (see §3 rule 9); response in `HANDOFF-003.md`. That also closes the previously deferred concurrent-login residual.
++
++**Review round 2026-09-13** (Codex REVIEW-001 → fixes in `.ai-collab/tasks/2026-09-13-implementation-review/HANDOFF-002.md`): R-01〜R-08 addressed — refresh rotation now single-consumption (conditional revoke must affect exactly 1 row), refresh tokens carry `jti`, access/refresh separated by a `type` claim so a refresh token used as Bearer no longer throws inside the filter, reservations are protected by a DB-level partial unique index plus expected-status conditional updates, SUSPENDED hospitals reject new reservations (RESERVATION-009), deleted pets no longer break reservation history, and the frontend refresh queue settles every waiter on failure. **Still unverified**: real PostgreSQL concurrency runs for the race fixes.
+ 
+ **Not started**: HealthRecord / Vaccination / Notification APIs · schedule auto-generation Scheduler (from `hospital_business_hours`) · vaccine reminder Scheduler · django-api entirely · frontend wiring for reservation/health/notification/admin(reservation·user) screens.
+ 
+-**Unmerged branches**: `feat/spring/pet-fields` (pet columns + docs 06/07 updates), `fix/auth-session-issues` (current).
++**Unmerged branches**: `feat/spring/pet-fields` (pet columns + docs 06/07 updates); verify current unmerged set with `git branch --all` and `git log` before relying on this line — not re-audited in this update.
+ 
+ ## 11. Workflow rules
+ 
+diff --git a/TODO.md b/TODO.md
+index 00167b1..11c40f5 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -1,6 +1,6 @@
+ # Daipetto — 作業TODOリスト
+ 
+-最終更新: 2026-08-23
++最終更新: 2026-09-23
+ 
+ ---
+ 
+@@ -19,12 +19,29 @@
+ - [x] ペット CRUD API (`POST / GET list / GET detail / PATCH / DELETE /api/v1/pets`)
+   - owner チェックを `Preconditions.validate` パターンで統一済み
+ - [x] Hospital・HospitalSchedule・HospitalBusinessHours CRUD API（2026-08-02〜08-09実装、詳細は本ファイル下部参照）
+-- [x] Reservation API（2026-08-23実装。予約却下`reject`のみ練習用に未実装、下記参照）
++- [x] Reservation API（2026-08-23実装、2026-09-13に予約却下`reject`追加で完成）
+   - `V7__create_reservations.sql`、`domain/reservation`・`application/reservation`・`infrastructure/persistence/reservation`・`presentation/reservation` 一式
+-  - 実装: `POST /api/v1/reservations`（申請）・`GET /api/v1/reservations`（一覧）・`GET /api/v1/reservations/{id}`（詳細）・`PATCH /api/v1/reservations/{id}/cancel`（キャンセル）・`PATCH /api/v1/admin/reservations/{id}/approve`（承認）・`PATCH /api/v1/admin/reservations/{id}/complete`（診療完了）
++  - 実装: `POST /api/v1/reservations`（申請）・`GET /api/v1/reservations`（一覧）・`GET /api/v1/reservations/{id}`（詳細）・`PATCH /api/v1/reservations/{id}/cancel`（キャンセル）・`PATCH /api/v1/admin/reservations/{id}/approve`（承認）・`PATCH /api/v1/admin/reservations/{id}/complete`（診療完了）・`PATCH /api/v1/admin/reservations/{id}/reject`（却下、ユーザー実装＋Claude Codeレビュー）
+   - `ReservationErrorCode`: RESERVATION-001〜005（`docs/07_API_Design` §9-3準拠）に加え、実装時に006（予約が見つからない）・007（予約者本人ではない）・008（不正な状態遷移）を新規追加
+-  - 状態遷移（承認・キャンセル・完了）は `Reservation` ドメインモデル内のメソッドで制御（`Hospital.suspend()`と同じ不変オブジェクトパターン）
+-  - テスト31件追加（Service 22件・Mapper 2件・Controller 7件）、`./gradlew clean test`で133件全green
++  - 状態遷移（承認・キャンセル・完了・却下）は `Reservation` ドメインモデル内のメソッドで制御（`Hospital.suspend()`と同じ不変オブジェクトパターン）
++  - テスト37件追加（Service 28件・Mapper 2件・Controller 7件）、`./gradlew clean test`で140件全green
++  - **reject実装レビューで発見・修正したバグ（2026-09-13, Claude Code）**: `Reservation.reject()`がREQUESTED/APPROVED/CANCELLEDの3状態から却下可能になっていた（`docs/07_API_Design` §9-6・`AGENTS.md` §6の「REQUESTED→REJECTEDのみ」に反する）。REQUESTED限定に修正し、APPROVED/CANCELLED/COMPLETED/REJECTED各状態からの却下を拒否する回帰テストを追加。`ReservationAdminControllerTest`の`reject_reservation_success`の`@DisplayName`が「診療完了成功」のコピペ違いだったのも修正
++  - 却下理由（`reason`）は実装せず: `reservations`にカラムが無く設計ギャップだったため、docsからRequest例を削除しスコープ外と明記
++
++- [x] Codexコードレビュー指摘（REVIEW-001、2026-09-13）の対応 — Claude Code
++  - R-01 Refresh Token消費の非原子性: 条件付き失効の**更新件数が1件**の呼び出しのみ後続発行を許可（0件はAUTH-003）。`RefreshTokenRepository.revokeByToken`をintに変更
++  - R-02 同一秒のRefresh Token重複: `jti`(UUID)を付与（`token`のUNIQUE制約違反による500を回避）
++  - R-03 二重予約: `V8__add_reservations_active_schedule_unique_index.sql`（部分UNIQUE）追加＋制約違反をRESERVATION-001に変換（`saveAndFlush`で検知）
++  - R-04 終了状態の上書き: 承認・却下・完了・キャンセルを「読み取り時点の状態」を条件にした条件付きUPDATEへ変更。0件更新はRESERVATION-008。`RejectReservationService`に`@Transactional`追加
++  - R-05 SUSPENDED病院への予約: `CreateReservationService`で病院状態を検証、`RESERVATION-009`新規追加
++  - R-06 論理削除ペットで予約一覧が壊れる: `PetRepository.findByIdIncludingDeleted`を追加し履歴表示に使用
++  - R-07 Refresh TokenをBearerに使うとフィルターで例外: `type` claimでAccess Token専用に検証（`validateAccessToken`）
++  - R-08 リフレッシュ失敗時に待機リクエストが未解決: キューに`reject`も保持して全waiterをsettle
++  - テスト17件追加（計157件green）。詳細は `.ai-collab/tasks/2026-09-13-implementation-review/HANDOFF-002.md`
++  - [ ] **残課題**: 実PostgreSQLでの同時実行テスト（R-01/R-03/R-04）は未実施。モックテストでは競合を検証できない（`docs/12` §3-11）
++  - [x] **R-01の残り（REVIEW-002指摘、2026-09-23対応）**: refreshとlogin/logoutの一括revokeが直列化されておらず、ログアウト後も後続Tokenが生き残る（＝セッションが残る）問題。login/refresh/logoutの3操作すべてでTokenを触る前に`UserRepository.lockForSessionUpdate`（ユーザー行の`SELECT ... FOR UPDATE`）を取得して直列化。保留していた同時ログインの残課題もこれで解消
++  - [x] REVIEW-002の非ブロッキング所見: `ReservationPersistenceAdapter`が全ての整合性違反をRESERVATION-001に変換していた点を、`uq_reservations_active_schedule`違反のみに限定（他はそのまま伝播）
++  - [ ] **残課題**: 実PostgreSQLでの同時実行検証（refresh×logout / refresh×login / 同時ログイン）は、Docker未起動のため2026-09-23時点で未実施。検証スクリプトは用意済み
+ 
+ ### Frontend
+ - [x] プロジェクト初期構築 (React 18 + TypeScript + Vite + Tailwind CSS)
+@@ -117,12 +134,8 @@
+ - [x] `PATCH /api/v1/admin/reservations/{id}/approve` — 予約承認（HOSPITAL_ADMIN、§9-5）
+ - [x] `PATCH /api/v1/admin/reservations/{id}/complete` — 診療完了（HOSPITAL_ADMIN、§9-7）
+ - [x] RESERVATION-001〜008 ErrorCode 追加（001〜005はdocs/07_API_Design §9-3準拠、006〜008は実装時に新規追加。ルート`AGENTS.md` §5参照）
+-- [x] Reservation 関連テスト（Service 20件・Mapper 2件・Controller 7件、計29件）
+-
+-**あえて未実装のまま残した項目（練習用、ユーザーが実装予定）:**
+-- [ ] `PATCH /api/v1/admin/reservations/{id}/reject` — 予約却下（HOSPITAL_ADMIN、docs/07_API_Design §9-6に「（未実装）」表示済み）
+-  - 参考パターン: `ApproveReservationService`・`CancelReservationService`（`application/reservation/service/`）とほぼ同じ構造（findById → 状態チェック → save）。却下理由（`reason`）を永続化するかは設計判断が必要（現状`reservations`テーブルに保存先カラム無し。永続化するなら`docs/06_ERD`にカラム追加が必要）
+-  - `ReservationErrorCode.RESERVATION_NOT_FOUND`（RESERVATION-006）・`INVALID_STATE_TRANSITION`（RESERVATION-008）は実装済みのためそのまま使える
++- [x] `PATCH /api/v1/admin/reservations/{id}/reject` — 予約却下（HOSPITAL_ADMIN/SYSTEM_ADMIN、docs/07_API_Design §9-6。2026-09-13、ユーザー実装＋Claude Codeレビューで完成。詳細は上部の完了済みセクション参照）
++- [x] Reservation 関連テスト（Service 28件・Mapper 2件・Controller 7件、計37件）
+ 
+ ### Notification API
+ - [ ] `Notification` ドメイン・エンティティ・テーブル作成
+diff --git a/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md b/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md
+index 071a303..abd163a 100644
+--- a/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md	
++++ b/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md	
+@@ -10,7 +10,7 @@
+ | Document | ERD |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-08-23 |
++| Updated | 2026-09-13 |
+ 
+ ---
+ 
+@@ -383,7 +383,8 @@ Refresh Tokenを管理する。
+ 
+ | **制約** | **内容** |
+ | --- | --- |
+-| 重複予約防止 | 同一予約枠に対してREQUESTED / APPROVED状態の予約は1件のみ許可 |
++| 重複予約防止 | 同一予約枠に対してREQUESTED / APPROVED状態の予約は1件のみ許可（部分UNIQUE INDEX `uq_reservations_active_schedule` でDB側でも保証。§17参照） |
++| 予約不可病院 | SUSPENDED状態の病院には新規予約を作成できない（`08_State_Design` §4-3） |
+ | 過去日時禁止 | 現在時刻より過去の予約不可 |
+ | 状態遷移制御 | Service層で不正状態遷移を防止 |
+ 
+@@ -494,6 +495,7 @@ Refresh Tokenを管理する。
+ | reservations | user_id | ユーザー別予約検索 |
+ | reservations | hospital_id | 病院別予約検索 |
+ | reservations | schedule_id | 予約枠重複確認 |
++| reservations | schedule_id (部分UNIQUE: status IN ('REQUESTED','APPROVED') AND deleted_at IS NULL) | 同時リクエストによる二重予約の防止（`V8__add_reservations_active_schedule_unique_index.sql`） |
+ | health_records | pet_id | ペット別健康記録検索 |
+ | vaccinations | scheduled_date | Scheduler対象検索 |
+ | notifications | user_id | ユーザー別通知検索 |
+diff --git a/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md b/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md
+index ab93795..619e1b5 100644
+--- a/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md	
++++ b/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md	
+@@ -10,7 +10,7 @@
+ | Document | API Design |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-08-23 |
++| Updated | 2026-09-13 |
+ 
+ ---
+ 
+@@ -1054,6 +1054,9 @@ POST /api/v1/reservations
+ | RESERVATION-003 | BLOCKED状態の予約枠 |
+ | RESERVATION-004 | 存在しないペット、または他人のペット |
+ | RESERVATION-005 | 過去日時の予約枠 |
++| RESERVATION-009 | SUSPENDED状態の病院への予約（`08_State_Design` §4-3） |
++
++> **注記:** RESERVATION-001は同時リクエストでも成立する。アプリ側の重複確認に加え、部分UNIQUE INDEX `uq_reservations_active_schedule`（`06_ERD` §17）違反を同じエラーコードに変換している。
+ 
+ ---
+ 
+@@ -1085,7 +1088,7 @@ ROLE_USER（予約者本人のみ）
+ | --- | --- |
+ | RESERVATION-006 | 存在しない予約 |
+ | RESERVATION-007 | 本人以外の予約 |
+-| RESERVATION-008 | 不正な状態遷移（COMPLETED等からのキャンセル） |
++| RESERVATION-008 | 不正な状態遷移（COMPLETED等からのキャンセル、または同時実行で他の遷移が先に成立） |
+ 
+ ---
+ 
+@@ -1119,11 +1122,11 @@ PATCH /api/v1/admin/reservations/{reservationId}/approve
+ | **Code** | **内容** |
+ | --- | --- |
+ | RESERVATION-006 | 存在しない予約 |
+-| RESERVATION-008 | 不正な状態遷移（REQUESTED以外からの承認） |
++| RESERVATION-008 | 不正な状態遷移（REQUESTED以外からの承認、または同時実行で他の遷移が先に成立） |
+ 
+ ---
+ 
+-# **9-6. 予約却下（未実装）**
++# **9-6. 予約却下**
+ 
+ ## **Endpoint**
+ 
+@@ -1133,19 +1136,40 @@ PATCH /api/v1/admin/reservations/{reservationId}/reject
+ 
+ ---
+ 
+-## **Request**
++## **権限**
++
++| **Role** |
++| --- |
++| ROLE_HOSPITAL_ADMIN |
++| ROLE_SYSTEM_ADMIN |
++
++---
++
++## **説明**
++
++予約状態をREQUESTED→REJECTEDへ変更する。リクエストボディなし。`hospital_admins`未実装のため、病院への所属チェックは行わない（9-5 承認と同様の暫定仕様）。
++
++却下理由（`reason`）は実装しない: `reservations`テーブルに理由を保存するカラムが無く、永続化するなら`06_ERD`にカラム追加が必要な設計ギャップだったため、現状はスコープ外とした（`AGENTS.md` §10参照）。
++
++---
++
++## **Response**
+ 
+ ```json
+ {
+-  "reason": "営業時間外です"
++  "success": true,
++  "data": null
+ }
+ ```
+ 
+ ---
+ 
+-## **説明**
++## **異常系**
+ 
+-予約状態をREQUESTED→REJECTEDへ変更する。権限は9-5と同様。**あえて未実装のまま残している（練習用、`TODO.md`参照）。** 実装時の注意: `reservations`テーブルに却下理由を保存するカラムが無いため、`reason`を永続化するかは実装時に設計判断が必要（永続化する場合は`06_ERD`にカラム追加が要る設計ギャップ）。
++| **Code** | **内容** |
++| --- | --- |
++| RESERVATION-006 | 存在しない予約 |
++| RESERVATION-008 | 不正な状態遷移（REQUESTED以外からの却下、または同時実行で他の遷移が先に成立） |
+ 
+ ---
+ 
+@@ -1179,7 +1203,9 @@ PATCH /api/v1/admin/reservations/{reservationId}/complete
+ | **Code** | **内容** |
+ | --- | --- |
+ | RESERVATION-006 | 存在しない予約 |
+-| RESERVATION-008 | 不正な状態遷移（APPROVED以外からの完了） |
++| RESERVATION-008 | 不正な状態遷移（APPROVED以外からの完了、または同時実行で他の遷移が先に成立） |
++
++> **注記:** 状態変更は「読み取った時点の状態」を条件に含めた条件付きUPDATEで行う。承認と却下、診療完了とキャンセルが同時に実行されても、後から届いた側は0件更新となりRESERVATION-008を返す（終了状態を上書きしない）。
+ 
+ ---
+ 
+diff --git a/docs/09_Security_Design 366d097bd4f78074af53e3854d02bdc6.md b/docs/09_Security_Design 366d097bd4f78074af53e3854d02bdc6.md
+index 315090e..d20cc9c 100644
+--- a/docs/09_Security_Design 366d097bd4f78074af53e3854d02bdc6.md	
++++ b/docs/09_Security_Design 366d097bd4f78074af53e3854d02bdc6.md	
+@@ -10,7 +10,7 @@
+ | Document | Security Design |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-08-23 |
++| Updated | 2026-09-13 |
+ 
+ ---
+ 
+@@ -94,6 +94,17 @@ Authorization: Bearer {access_token}
+ 
+ > **注記（MVP方針）:** Refresh TokenはMVP段階ではRequest Body方式で実装する。セキュリティ強化フェーズでHttpOnly Cookie方式への移行を検討する。
+ 
++## **Claim構成**
++
++| **Token** | **Claim** |
++| --- | --- |
++| Access Token | `sub`（userId） / `email` / `role` / `type=access` / `iat` / `exp` |
++| Refresh Token | `jti`（発行ごとのUUID） / `sub`（userId） / `type=refresh` / `iat` / `exp` |
++
++`type` claimでTokenの用途を区別する。`JwtAuthenticationFilter`は`type=access`かつ`role`を持つTokenのみ認証情報を設定し、それ以外（Refresh Tokenを含む）は認証せずに次のフィルターへ進める（結果として401 AUTH-001）。
++
++`jti`が無いと`iat`/`exp`が秒単位のため、同一ユーザーが同一秒に再発行したRefresh Tokenが同一文字列となり`refresh_tokens.token`のUNIQUE制約に衝突する。発行ごとにUUIDを付与して回避する。
++
+ ---
+ 
+ # **3-3. Token有効期限**
+@@ -125,6 +136,10 @@ refresh_tokens
+ | Token再発行 | 旧Token失効 |
+ | 有効期限超過 | 使用不可 |
+ 
++再発行時の失効は`UPDATE ... WHERE token = ? AND revoked = false`の条件付きUPDATEで行い、**更新件数が1件の呼び出しのみ**が後続Tokenを発行できる。同時リフレッシュやログアウト後の再利用は0件更新となりAUTH-003を返す（rotationの単一消費）。
++
++さらに、ログイン・再発行・ログアウトはいずれも**対象ユーザー行を`SELECT ... FOR UPDATE`で排他取得してから**Tokenを操作する。これが無いと、再発行が旧Tokenを失効させて後続Tokenをinsertする間に、ログイン／ログアウトの一括revoke（`WHERE user_id = ? AND revoked = false`）が走り、後続Tokenをスナップショットから取りこぼす。結果としてログアウト成功後もセッションが生き残る、あるいは有効なRefresh Tokenが2本残る（`docs/12` §3-11）。ユーザー単位の直列化により「有効なRefresh Tokenは1ユーザー1本」の不変条件が3操作すべてで保たれる。
++
+ ---
+ 
+ # **3-6. 認証フロー**
+diff --git a/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md b/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md
+index 3d58b9c..d5fd92f 100644
+--- a/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md	
++++ b/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md	
+@@ -10,7 +10,7 @@
+ | Document | Test Strategy |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-08-23 |
++| Updated | 2026-09-13 |
+ 
+ ---
+ 
+@@ -126,6 +126,12 @@ flowchart TB
+ | AUTH-T005 | Refresh Token再発行 | 新Access Token発行 |
+ | AUTH-T006 | 失効Refresh Token利用 | AUTH-003返却 |
+ | AUTH-T007 | ログアウト | Refresh Token revoked=true |
++| AUTH-T008 | 同時リフレッシュ（既に消費済みToken） | 失効0件 → AUTH-003返却 |
++| AUTH-T009 | Refresh TokenをAuthorization Bearerに使用 | 認証情報を設定せず例外も発生しない（401 AUTH-001） |
++| AUTH-T010 | 同一ユーザー・同一秒のRefresh Token連続発行 | Token文字列が重複しない（`jti`） |
++| AUTH-T011 | 再発行の最中にログアウト | ログアウト後に有効なRefresh Tokenが残らない |
++| AUTH-T012 | 再発行の最中にログイン | 有効なRefresh Tokenはログイン発行分の1本のみ |
++| AUTH-T013 | 同時ログイン | 直列化され、有効なRefresh Tokenは1本のみ |
+ 
+ ---
+ 
+@@ -188,6 +194,8 @@ flowchart TB
+ | RSV-T004 | 予約キャンセル | CANCELLED更新 |
+ | RSV-T005 | COMPLETED予約キャンセル | 状態遷移エラー |
+ | RSV-T006 | 予約詳細取得 | 正常取得 |
++| RSV-T007 | SUSPENDED病院への予約申請 | RESERVATION-009 |
++| RSV-T008 | 論理削除済みペットを含む予約一覧取得 | 当該予約も他の予約も表示される |
+ 
+ ---
+ 
+@@ -203,6 +211,8 @@ flowchart TB
+ | STATE-T006 | COMPLETED | 承認 | 不正遷移エラー |
+ | STATE-T007 | REJECTED | 承認 | 不正遷移エラー |
+ | STATE-T008 | CANCELLED | 承認 | 不正遷移エラー |
++| STATE-T009 | REQUESTED（直前に他の遷移が成立） | 承認 / 却下 | 条件付き更新0件 → RESERVATION-008 |
++| STATE-T010 | APPROVED（直前に他の遷移が成立） | 診療完了 / キャンセル | 条件付き更新0件 → RESERVATION-008 |
+ 
+ ---
+ 
+diff --git a/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md b/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md
+index ba44c90..9b971d5 100644
+--- a/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md	
++++ b/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md	
+@@ -10,7 +10,7 @@
+ | Document | Trouble Shooting |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-08-23 |
++| Updated | 2026-09-13 |
+ 
+ ---
+ 
+@@ -501,6 +501,48 @@ Service層のモックテストだけでは検出できないため、null許容
+ 
+ ---
+ 
++# **3-11. モックテストを通過する競合状態（2026-09-13 コードレビュー指摘）**
++
++## **症状**
++
++単体テストは全件green、手動操作でも再現しないが、同時リクエストで以下が成立してしまう。
++
++| 事象 | 内容 |
++| --- | --- |
++| Refresh Token二重使用 | 2つのリクエストが同じ未失効Tokenを読み、両方が後続Tokenを発行できる |
++| ログアウトしてもセッションが残る | 再発行が旧Tokenを失効させてから後続Tokenをinsertする間にログアウトの一括revokeが走ると、後続Tokenがログアウトのスナップショットに入らず失効対象から漏れる（同様にログインと競合すると有効Tokenが2本残る） |
++| Refresh Token重複 | 同一ユーザー・同一秒の再発行で同じ署名文字列となり、`token`のUNIQUE制約違反で500 |
++| 二重予約 | 両方が`existsActiveByScheduleId=false`を観測し、同一予約枠に2件のREQUESTEDが作成される |
++| 終了状態の上書き | 承認と却下が同時に走ると、後から保存した側がREJECTEDをAPPROVEDで上書きする |
++
++---
++
++## **原因**
++
++「読み取り → アプリ側で判定 → 保存」の3ステップが原子的でない。トランザクション境界（`@Transactional`）はステップ全体の排他を保証しない。また、条件付きUPDATEの戻り値（更新件数）を捨てていたため、0件更新でも処理が続行していた。
++
++---
++
++## **対応方法**
++
++判定をDB側の1文に寄せ、更新件数で勝敗を判定する。
++
++| 対象 | 対応 |
++| --- | --- |
++| Refresh Token消費 | `UPDATE ... WHERE token=? AND revoked=false`の更新件数が1件の呼び出しのみ後続発行を許可（0件はAUTH-003） |
++| ログイン／再発行／ログアウトの競合 | 3操作ともTokenを触る前に対象ユーザー行を`SELECT ... FOR UPDATE`で排他取得し、ユーザー単位で直列化する（`09_Security_Design` §3-5） |
++| Refresh Token重複 | 発行ごとに`jti`（UUID）を付与 |
++| 二重予約 | 部分UNIQUE INDEX `uq_reservations_active_schedule`（`06_ERD` §17）を追加し、制約違反をRESERVATION-001に変換 |
++| 状態遷移 | `UPDATE ... WHERE id=? AND status=<読み取り時点の状態>`の条件付き更新。0件はRESERVATION-008 |
++
++---
++
++## **教訓**
++
++Repositoryをモックした単体テストは「同時実行」を一切検証しない。`docs/12` §3-10（実DB接続でしか出ないSQLの問題）と同種で、モックが通ることは正しさの根拠にならない。一意制約・条件付きUPDATEの更新件数など、**DBが保証する不変条件**として表現できるものはDB側に寄せる。なお本項の修正後も、実PostgreSQLでの同時実行テストは未実施（残課題）。
++
++---
++
+ # **4. Django関連**
+ 
+ # **4-1. Python Version不一致**
+diff --git a/frontend/src/api/client.ts b/frontend/src/api/client.ts
+index 17cc2fd..25bc037 100644
+--- a/frontend/src/api/client.ts
++++ b/frontend/src/api/client.ts
+@@ -36,8 +36,27 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+ })
+ 
+ // レスポンスインターセプター: 401時にトークンリフレッシュ
++// リフレッシュ失敗時も待機中のリクエストを必ず解決させるため、rejectも保持する
++type PendingRequest = {
++  resolve: (token: string) => void
++  reject: (reason: unknown) => void
++}
++
+ let isRefreshing = false
+-let pendingRequests: Array<(token: string) => void> = []
++let pendingRequests: PendingRequest[] = []
++
++function settlePendingRequests(token: string | null, error?: unknown) {
++  const waiting = pendingRequests
++  pendingRequests = []
++
++  waiting.forEach(({ resolve, reject }) => {
++    if (token) {
++      resolve(token)
++    } else {
++      reject(error)
++    }
++  })
++}
+ 
+ apiClient.interceptors.response.use(
+   (response) => response,
+@@ -55,9 +74,11 @@ apiClient.interceptors.response.use(
+     }
+ 
+     if (isRefreshing) {
+-      return new Promise<string>((resolve) => {
+-        pendingRequests.push(resolve)
++      return new Promise<string>((resolve, reject) => {
++        pendingRequests.push({ resolve, reject })
+       }).then((newToken) => {
++        // 再試行後にもう一度401になった場合、この分岐に戻らず即座に失敗させる
++        originalRequest._retry = true
+         if (originalRequest.headers) {
+           originalRequest.headers.Authorization = `Bearer ${newToken}`
+         }
+@@ -76,16 +97,15 @@ apiClient.interceptors.response.use(
+       const { accessToken, refreshToken: newRefreshToken } = data.data
+       setTokens(accessToken, newRefreshToken)
+ 
+-      pendingRequests.forEach((resolve) => resolve(accessToken))
+-      pendingRequests = []
++      settlePendingRequests(accessToken)
+ 
+       if (originalRequest.headers) {
+         originalRequest.headers.Authorization = `Bearer ${accessToken}`
+       }
+       return apiClient(originalRequest)
+-    } catch {
++    } catch (refreshError) {
+       clearAuth()
+-      pendingRequests = []
++      settlePendingRequests(null, refreshError)
+       return Promise.reject(error)
+     } finally {
+       isRefreshing = false
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/auth/service/LoginService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/auth/service/LoginService.java
+index c0ddcb7..e39de7f 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/auth/service/LoginService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/auth/service/LoginService.java
+@@ -48,6 +48,9 @@ public class LoginService implements LoginUseCase {
+ 
+         String refreshTokenValue = jwtProvider.createRefreshToken(user.getId());
+ 
++        // 同一ユーザーのrefresh / logoutと直列化してから失効させる（REVIEW-002 R-01）
++        userRepository.lockForSessionUpdate(user.getId());
++
+         refreshTokenRepository.revokeAllByUserId(user.getId());
+ 
+         RefreshToken refreshToken = RefreshToken.issue(
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/auth/service/LogoutService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/auth/service/LogoutService.java
+index 05f9ebf..0dd1663 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/auth/service/LogoutService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/auth/service/LogoutService.java
+@@ -3,6 +3,7 @@ package koh.portfolio.springapi.application.auth.service;
+ import koh.portfolio.springapi.application.auth.dto.LogoutDto.LogoutResponse;
+ import koh.portfolio.springapi.application.auth.usecase.LogoutUseCase;
+ import koh.portfolio.springapi.domain.auth.port.RefreshTokenRepository;
++import koh.portfolio.springapi.domain.user.port.UserRepository;
+ import lombok.RequiredArgsConstructor;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -11,10 +12,15 @@ import org.springframework.transaction.annotation.Transactional;
+ @RequiredArgsConstructor
+ public class LogoutService implements LogoutUseCase {
+     private final RefreshTokenRepository refreshTokenRepository;
++    private final UserRepository userRepository;
+ 
+     @Override
+     @Transactional
+     public LogoutResponse execute(Long userId) {
++        // 同時実行中のrefreshが発行する後続Tokenを取りこぼさないよう、
++        // 一括revokeの前にユーザー行を排他取得する（REVIEW-002 R-01）
++        userRepository.lockForSessionUpdate(userId);
++
+         refreshTokenRepository.revokeAllByUserId(userId);
+ 
+         return LogoutResponse.builder()
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/auth/service/RefreshTokenService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/auth/service/RefreshTokenService.java
+index c121a1a..2d59e3b 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/auth/service/RefreshTokenService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/auth/service/RefreshTokenService.java
+@@ -59,8 +59,17 @@ public class RefreshTokenService implements RefreshTokenUseCase {
+                 AuthErrorCode.SUSPENDED_ACCOUNT
+         );
+ 
+-        // 既存のrefreshToken無効化
+-        refreshTokenRepository.revokeByToken(requestRefreshToken);
++        // login / logout の一括revokeと直列化する（REVIEW-002 R-01）。
++        // 先に取らないと、ここで発行する後続Tokenが同時実行のlogout/loginから見えず生き残る
++        userRepository.lockForSessionUpdate(userId);
++
++        // 既存のrefreshToken無効化。
++        // 条件付きUPDATEが1件を更新できた呼び出しだけが後続を発行できる（rotationの単一消費）。
++        // 同時リフレッシュやログアウト後の再利用は0件となりAUTH-003で弾く
++        validate(
++                refreshTokenRepository.revokeByToken(requestRefreshToken) == 1,
++                AuthErrorCode.INVALID_REFRESH_TOKEN
++        );
+ 
+         // 新たなaccessToken生成
+         String newAccessToken = jwtProvider.createAccessToken(
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/ApproveReservationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/ApproveReservationService.java
+index 740f580..f3989a8 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/ApproveReservationService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/ApproveReservationService.java
+@@ -1,6 +1,7 @@
+ package koh.portfolio.springapi.application.reservation.service;
+ 
+ import koh.portfolio.springapi.application.reservation.usecase.ApproveReservationUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
+ import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
+ import koh.portfolio.springapi.domain.reservation.model.Reservation;
+ import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
+@@ -19,6 +20,14 @@ public class ApproveReservationService implements ApproveReservationUseCase {
+         Reservation reservation = reservationRepository.findById(reservationId)
+                 .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::defaultException);
+ 
+-        reservationRepository.save(reservation.approve());
++        Reservation approved = reservation.approve();
++
++        // 読み取り時点の状態を条件に含めることで、却下・キャンセルと同時実行しても
++        // 先に成立した終了状態を上書きしない（負けた側はRESERVATION-008）
++        Preconditions.validate(
++                reservationRepository.updateStatus(
++                        reservation.getId(), reservation.getStatus(), approved.getStatus(), approved.getUpdatedAt()),
++                ReservationErrorCode.INVALID_STATE_TRANSITION
++        );
+     }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CancelReservationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CancelReservationService.java
+index e421560..f0a77c4 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CancelReservationService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CancelReservationService.java
+@@ -22,6 +22,12 @@ public class CancelReservationService implements CancelReservationUseCase {
+ 
+         Preconditions.validate(reservation.getUserId().equals(userId), ReservationErrorCode.NOT_RESERVATION_OWNER);
+ 
+-        reservationRepository.save(reservation.cancel());
++        Reservation cancelled = reservation.cancel();
++
++        Preconditions.validate(
++                reservationRepository.updateStatus(
++                        reservation.getId(), reservation.getStatus(), cancelled.getStatus(), cancelled.getUpdatedAt()),
++                ReservationErrorCode.INVALID_STATE_TRANSITION
++        );
+     }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CompleteReservationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CompleteReservationService.java
+index 713d579..e664a24 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CompleteReservationService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CompleteReservationService.java
+@@ -1,6 +1,7 @@
+ package koh.portfolio.springapi.application.reservation.service;
+ 
+ import koh.portfolio.springapi.application.reservation.usecase.CompleteReservationUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
+ import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
+ import koh.portfolio.springapi.domain.reservation.model.Reservation;
+ import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
+@@ -19,6 +20,12 @@ public class CompleteReservationService implements CompleteReservationUseCase {
+         Reservation reservation = reservationRepository.findById(reservationId)
+                 .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::defaultException);
+ 
+-        reservationRepository.save(reservation.complete());
++        Reservation completed = reservation.complete();
++
++        Preconditions.validate(
++                reservationRepository.updateStatus(
++                        reservation.getId(), reservation.getStatus(), completed.getStatus(), completed.getUpdatedAt()),
++                ReservationErrorCode.INVALID_STATE_TRANSITION
++        );
+     }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CreateReservationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CreateReservationService.java
+index ed96208..4326278 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CreateReservationService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/CreateReservationService.java
+@@ -4,8 +4,11 @@ import koh.portfolio.springapi.application.reservation.dto.ReservationDto.Create
+ import koh.portfolio.springapi.application.reservation.dto.ReservationDto.CreateReservationResponse;
+ import koh.portfolio.springapi.application.reservation.usecase.CreateReservationUseCase;
+ import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.hospital.model.Hospital;
+ import koh.portfolio.springapi.domain.hospital.model.HospitalSchedule;
+ import koh.portfolio.springapi.domain.hospital.model.HospitalScheduleStatus;
++import koh.portfolio.springapi.domain.hospital.model.HospitalStatus;
++import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
+ import koh.portfolio.springapi.domain.hospital.port.HospitalScheduleRepository;
+ import koh.portfolio.springapi.domain.pet.model.Pet;
+ import koh.portfolio.springapi.domain.pet.port.PetRepository;
+@@ -22,6 +25,7 @@ import java.time.LocalDateTime;
+ @RequiredArgsConstructor
+ public class CreateReservationService implements CreateReservationUseCase {
+     private final PetRepository petRepository;
++    private final HospitalRepository hospitalRepository;
+     private final HospitalScheduleRepository hospitalScheduleRepository;
+     private final ReservationRepository reservationRepository;
+ 
+@@ -37,6 +41,14 @@ public class CreateReservationService implements CreateReservationUseCase {
+                 ReservationErrorCode.RESERVATION_SCHEDULE_NOT_FOUND
+         );
+ 
++        // SUSPENDED病院は新規予約不可（08_State_Design §4-3）。
++        // 検索一覧から除外されるだけではAPI境界で防げない
++        Hospital hospital = hospitalRepository.findById(request.hospitalId()).orElse(null);
++        Preconditions.validate(
++                hospital != null && hospital.getStatus() == HospitalStatus.ACTIVE,
++                ReservationErrorCode.HOSPITAL_NOT_AVAILABLE
++        );
++
+         Preconditions.validate(schedule.getStatus() != HospitalScheduleStatus.BLOCKED, ReservationErrorCode.RESERVATION_SCHEDULE_BLOCKED);
+ 
+         LocalDateTime reservationDatetime = LocalDateTime.of(schedule.getAvailableDate(), schedule.getStartTime());
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/GetReservationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/GetReservationService.java
+index bafda41..cf7aa49 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/GetReservationService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/GetReservationService.java
+@@ -77,8 +77,11 @@ public class GetReservationService implements GetReservationListUseCase, GetRese
+         return hospitalRepository.findById(hospitalId).orElseThrow(ReservationErrorCode.RESERVATION_SCHEDULE_NOT_FOUND::defaultException);
+     }
+ 
++    // 予約は履歴であり、ペットを論理削除しても該当予約（および同一ユーザーの他の予約）が
++    // 表示できなくなってはいけないため、削除済みも含めて取得する
+     private Pet findPet(Long petId) {
+-        return petRepository.findById(petId).orElseThrow(ReservationErrorCode.NOT_PET_OWNER::defaultException);
++        return petRepository.findByIdIncludingDeleted(petId)
++                .orElseThrow(ReservationErrorCode.NOT_PET_OWNER::defaultException);
+     }
+ 
+     private HospitalSchedule findSchedule(Long scheduleId) {
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/RejectReservationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/RejectReservationService.java
+new file mode 100644
+index 0000000..73b5c7a
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/RejectReservationService.java
+@@ -0,0 +1,31 @@
++package koh.portfolio.springapi.application.reservation.service;
++
++import koh.portfolio.springapi.application.reservation.usecase.RejectReservationUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
++import koh.portfolio.springapi.domain.reservation.model.Reservation;
++import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++@Service
++@RequiredArgsConstructor
++public class RejectReservationService implements RejectReservationUseCase {
++    private final ReservationRepository reservationRepository;
++
++    @Override
++    @Transactional
++    public void execute(Long reservationId) {
++        Reservation reservation = reservationRepository.findById(reservationId)
++                .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::defaultException);
++
++        Reservation rejected = reservation.reject();
++
++        Preconditions.validate(
++                reservationRepository.updateStatus(
++                        reservation.getId(), reservation.getStatus(), rejected.getStatus(), rejected.getUpdatedAt()),
++                ReservationErrorCode.INVALID_STATE_TRANSITION
++        );
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/usecase/RejectReservationUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/usecase/RejectReservationUseCase.java
+new file mode 100644
+index 0000000..99d4026
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/usecase/RejectReservationUseCase.java
+@@ -0,0 +1,5 @@
++package koh.portfolio.springapi.application.reservation.usecase;
++
++public interface RejectReservationUseCase {
++    void execute(Long reservationId);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/auth/port/RefreshTokenRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/auth/port/RefreshTokenRepository.java
+index 038fcf8..7e6ff24 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/auth/port/RefreshTokenRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/auth/port/RefreshTokenRepository.java
+@@ -7,6 +7,7 @@ import java.util.Optional;
+ public interface RefreshTokenRepository {
+     RefreshToken save(RefreshToken refreshToken);
+     Optional<RefreshToken> findByToken(String token);
+-    void revokeAllByUserId(Long userId);
+-    void revokeByToken(String token);
++    int revokeAllByUserId(Long userId);
++    // 失効できた件数を返す。Refresh Token rotation の単一消費を保証するために呼び出し側で1件を要求する
++    int revokeByToken(String token);
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/pet/port/PetRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/pet/port/PetRepository.java
+index f4cd771..e19446d 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/pet/port/PetRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/pet/port/PetRepository.java
+@@ -9,6 +9,8 @@ import java.util.Optional;
+ public interface PetRepository {
+     Pet save(Pet pet);
+     Optional<Pet> findById(Long id);
++    // 論理削除済みも含めて取得する。予約履歴など、削除後も過去の関連を表示する用途に限る
++    Optional<Pet> findByIdIncludingDeleted(Long id);
+     List<Pet> findAllByUserId(Long userId);
+     Optional<Pet> findByUserIdAndName(Long userId, String name);
+     void softDelete(Long id, LocalDateTime deletedAt);
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/exception/ReservationErrorCode.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/exception/ReservationErrorCode.java
+index 29e0797..10d213a 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/exception/ReservationErrorCode.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/exception/ReservationErrorCode.java
+@@ -14,6 +14,7 @@ public enum ReservationErrorCode implements ErrorCode {
+     RESERVATION_NOT_FOUND("RESERVATION-006", "存在しない予約です。", HttpStatus.NOT_FOUND),
+     NOT_RESERVATION_OWNER("RESERVATION-007", "予約者本人ではありません。", HttpStatus.FORBIDDEN),
+     INVALID_STATE_TRANSITION("RESERVATION-008", "現在の状態からは変更できません。", HttpStatus.CONFLICT),
++    HOSPITAL_NOT_AVAILABLE("RESERVATION-009", "利用停止中の病院です。", HttpStatus.CONFLICT),
+     DEFAULT("RESERVATION-999", "予約関連エラーです。", HttpStatus.INTERNAL_SERVER_ERROR);
+ 
+     private final String code;
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/model/Reservation.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/model/Reservation.java
+index 53dcd77..5cfcdf6 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/model/Reservation.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/model/Reservation.java
+@@ -53,4 +53,11 @@ public class Reservation {
+         return new Reservation(this.id, this.userId, this.petId, this.hospitalId, this.scheduleId,
+                 this.reservationDatetime, ReservationStatus.COMPLETED, this.memo, this.createdAt, LocalDateTime.now(), this.deletedAt);
+     }
++
++    public Reservation reject() {
++        Preconditions.validate(this.status == ReservationStatus.REQUESTED, ReservationErrorCode.INVALID_STATE_TRANSITION);
++
++        return new Reservation(this.id, this.userId, this.petId, this.hospitalId, this.scheduleId,
++                this.reservationDatetime, ReservationStatus.REJECTED, this.memo, this.createdAt, LocalDateTime.now(), this.deletedAt);
++    }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/port/ReservationRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/port/ReservationRepository.java
+index bd2646e..3c21145 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/port/ReservationRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/port/ReservationRepository.java
+@@ -1,7 +1,9 @@
+ package koh.portfolio.springapi.domain.reservation.port;
+ 
+ import koh.portfolio.springapi.domain.reservation.model.Reservation;
++import koh.portfolio.springapi.domain.reservation.model.ReservationStatus;
+ 
++import java.time.LocalDateTime;
+ import java.util.List;
+ import java.util.Optional;
+ 
+@@ -10,4 +12,8 @@ public interface ReservationRepository {
+     Optional<Reservation> findById(Long id);
+     List<Reservation> findAllByUserId(Long userId);
+     boolean existsActiveByScheduleId(Long scheduleId);
++
++    // expectedStatus と一致する行だけを更新し、更新できたかを返す。
++    // 同時に別の遷移が成立していた場合は false となり、終了状態の上書きを防ぐ
++    boolean updateStatus(Long reservationId, ReservationStatus expectedStatus, ReservationStatus newStatus, LocalDateTime updatedAt);
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/user/port/UserRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/user/port/UserRepository.java
+index ccb10b9..0e2cf55 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/user/port/UserRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/user/port/UserRepository.java
+@@ -9,4 +9,9 @@ public interface UserRepository {
+     User save(User user);
+     Optional<User> findByEmail(String email);
+     Optional<User> findById(Long id);
++
++    // ログイン・再発行・ログアウトをユーザー単位で直列化するための排他取得。
++    // これが無いと、refreshが旧Tokenを失効させて後続Tokenをinsertする間に
++    // login/logoutの一括revoke（user_id条件）が走り、後続Tokenを取りこぼす
++    void lockForSessionUpdate(Long userId);
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/auth/RefreshTokenJpaRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/auth/RefreshTokenJpaRepository.java
+index dd2fac3..a990e59 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/auth/RefreshTokenJpaRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/auth/RefreshTokenJpaRepository.java
+@@ -21,5 +21,5 @@ public interface RefreshTokenJpaRepository extends JpaRepository<RefreshTokenEnt
+     @Query(
+             "update RefreshTokenEntity set revoked = true where token = ?1 and revoked = false"
+     )
+-    void revokeByToken(String token);
++    int revokeByToken(String token);
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/auth/RefreshTokenPersistenceAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/auth/RefreshTokenPersistenceAdapter.java
+index 7d87a70..47f133c 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/auth/RefreshTokenPersistenceAdapter.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/auth/RefreshTokenPersistenceAdapter.java
+@@ -27,12 +27,12 @@ public class RefreshTokenPersistenceAdapter implements RefreshTokenRepository {
+     }
+ 
+     @Override
+-    public void revokeAllByUserId(Long userId) {
+-        int updatedCount = refreshTokenJpaRepository.revokeAllActiveTokensByUserId(userId);
++    public int revokeAllByUserId(Long userId) {
++        return refreshTokenJpaRepository.revokeAllActiveTokensByUserId(userId);
+     }
+ 
+     @Override
+-    public void revokeByToken(String token) {
+-        refreshTokenJpaRepository.revokeByToken(token);
++    public int revokeByToken(String token) {
++        return refreshTokenJpaRepository.revokeByToken(token);
+     }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapter.java
+index 27c28f3..09424e2 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapter.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapter.java
+@@ -30,6 +30,12 @@ public class PetPersistenceAdapter implements PetRepository {
+                 .map(petMapper::toDomain);
+     }
+ 
++    @Override
++    public Optional<Pet> findByIdIncludingDeleted(Long id) {
++        return petJpaRepository.findById(id)
++                .map(petMapper::toDomain);
++    }
++
+     @Override
+     public List<Pet> findAllByUserId(Long userId) {
+         return petJpaRepository.findAllByUserIdAndDeletedAtIsNull(userId)
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/reservation/ReservationJpaRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/reservation/ReservationJpaRepository.java
+index 64171bd..5ca86f2 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/reservation/ReservationJpaRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/reservation/ReservationJpaRepository.java
+@@ -2,7 +2,11 @@ package koh.portfolio.springapi.infrastructure.persistence.reservation;
+ 
+ import koh.portfolio.springapi.domain.reservation.model.ReservationStatus;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Modifying;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
+ 
++import java.time.LocalDateTime;
+ import java.util.List;
+ import java.util.Optional;
+ 
+@@ -12,4 +16,14 @@ public interface ReservationJpaRepository extends JpaRepository<ReservationEntit
+     List<ReservationEntity> findAllByUserIdAndDeletedAtIsNull(Long userId);
+ 
+     boolean existsByScheduleIdAndStatusInAndDeletedAtIsNull(Long scheduleId, List<ReservationStatus> statuses);
++
++    @Modifying(clearAutomatically = true, flushAutomatically = true)
++    @Query("update ReservationEntity set status = :newStatus, updatedAt = :updatedAt "
++            + "where id = :id and status = :expectedStatus and deletedAt is null")
++    int updateStatus(
++            @Param("id") Long id,
++            @Param("expectedStatus") ReservationStatus expectedStatus,
++            @Param("newStatus") ReservationStatus newStatus,
++            @Param("updatedAt") LocalDateTime updatedAt
++    );
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/reservation/ReservationPersistenceAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/reservation/ReservationPersistenceAdapter.java
+index 94a197c..ec0cdfe 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/reservation/ReservationPersistenceAdapter.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/reservation/ReservationPersistenceAdapter.java
+@@ -1,17 +1,23 @@
+ package koh.portfolio.springapi.infrastructure.persistence.reservation;
+ 
++import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
+ import koh.portfolio.springapi.domain.reservation.model.Reservation;
+ import koh.portfolio.springapi.domain.reservation.model.ReservationStatus;
+ import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
+ import lombok.RequiredArgsConstructor;
++import org.hibernate.exception.ConstraintViolationException;
++import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.stereotype.Repository;
+ 
++import java.time.LocalDateTime;
+ import java.util.List;
+ import java.util.Optional;
+ 
+ @Repository
+ @RequiredArgsConstructor
+ public class ReservationPersistenceAdapter implements ReservationRepository {
++    private static final String ACTIVE_SCHEDULE_CONSTRAINT = "uq_reservations_active_schedule";
++
+     private final ReservationJpaRepository reservationJpaRepository;
+     private final ReservationMapper reservationMapper;
+ 
+@@ -19,9 +25,37 @@ public class ReservationPersistenceAdapter implements ReservationRepository {
+     public Reservation save(Reservation reservation) {
+         ReservationEntity reservationEntity = reservationMapper.toEntity(reservation);
+ 
+-        ReservationEntity savedEntity = reservationJpaRepository.save(reservationEntity);
++        try {
++            // uq_reservations_active_schedule（V8）違反をここで検知するためflushまで行う。
++            // commit時まで遅延させるとSERVER-001として外に出てしまう
++            ReservationEntity savedEntity = reservationJpaRepository.saveAndFlush(reservationEntity);
++
++            return reservationMapper.toDomain(savedEntity);
++        } catch (DataIntegrityViolationException e) {
++            // 予約枠の一意制約だけをRESERVATION-001に変換する。
++            // 他の整合性違反まで「重複予約」に見せると原因を隠してしまう
++            if (!isActiveScheduleViolation(e)) {
++                throw e;
++            }
++
++            throw ReservationErrorCode.RESERVATION_DUPLICATED.defaultException(e);
++        }
++    }
++
++    private boolean isActiveScheduleViolation(DataIntegrityViolationException e) {
++        if (e.getCause() instanceof ConstraintViolationException violation
++                && ACTIVE_SCHEDULE_CONSTRAINT.equalsIgnoreCase(violation.getConstraintName())) {
++            return true;
++        }
+ 
+-        return reservationMapper.toDomain(savedEntity);
++        String message = e.getMostSpecificCause().getMessage();
++
++        return message != null && message.toLowerCase().contains(ACTIVE_SCHEDULE_CONSTRAINT);
++    }
++
++    @Override
++    public boolean updateStatus(Long reservationId, ReservationStatus expectedStatus, ReservationStatus newStatus, LocalDateTime updatedAt) {
++        return reservationJpaRepository.updateStatus(reservationId, expectedStatus, newStatus, updatedAt) == 1;
+     }
+ 
+     @Override
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserJpaRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserJpaRepository.java
+index eda2fb9..8491ad4 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserJpaRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserJpaRepository.java
+@@ -1,10 +1,18 @@
+ package koh.portfolio.springapi.infrastructure.persistence.user;
+ 
++import jakarta.persistence.LockModeType;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Lock;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
+ 
+ import java.util.Optional;
+ 
+ public interface UserJpaRepository extends JpaRepository<UserEntity, Long> {
+     boolean existsByEmail(String email);
+     Optional<UserEntity> findByEmail(String email);
++
++    @Lock(LockModeType.PESSIMISTIC_WRITE)
++    @Query("select u from UserEntity u where u.id = :id")
++    Optional<UserEntity> findByIdForUpdate(@Param("id") Long id);
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapter.java
+index 313301e..71c1dc6 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapter.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapter.java
+@@ -37,4 +37,9 @@ public class UserPersistenceAdapter implements UserRepository {
+         return userJpaRepository.findById(id)
+                 .map(userMapper::toDomain);
+     }
++
++    @Override
++    public void lockForSessionUpdate(Long userId) {
++        userJpaRepository.findByIdForUpdate(userId);
++    }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/security/jwt/JwtAuthenticationFilter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/security/jwt/JwtAuthenticationFilter.java
+index 40e444a..ad03b9b 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/security/jwt/JwtAuthenticationFilter.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/security/jwt/JwtAuthenticationFilter.java
+@@ -31,7 +31,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
+     ) throws ServletException, IOException {
+         String token = resolveToken(request);
+ 
+-        if (token != null && jwtProvider.validateToken(token)) {
++        if (token != null && jwtProvider.validateAccessToken(token)) {
+             Long userId = jwtProvider.getUserId(token);
+             String role = jwtProvider.getRole(token);
+ 
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/security/jwt/JwtProvider.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/security/jwt/JwtProvider.java
+index 37523ab..7a73b29 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/security/jwt/JwtProvider.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/security/jwt/JwtProvider.java
+@@ -1,5 +1,6 @@
+ package koh.portfolio.springapi.infrastructure.security.jwt;
+ 
++import io.jsonwebtoken.Claims;
+ import io.jsonwebtoken.Jwts;
+ import io.jsonwebtoken.security.Keys;
+ import koh.portfolio.springapi.domain.user.model.Role;
+@@ -11,9 +12,15 @@ import java.nio.charset.StandardCharsets;
+ import java.time.Duration;
+ import java.time.LocalDateTime;
+ import java.util.Date;
++import java.util.UUID;
+ 
+ @Component
+ public class JwtProvider {
++    private static final String TOKEN_TYPE_CLAIM = "type";
++    private static final String ACCESS_TOKEN_TYPE = "access";
++    private static final String REFRESH_TOKEN_TYPE = "refresh";
++    private static final String ROLE_CLAIM = "role";
++
+     private final SecretKey secretKey;
+     private final long accessTokenExpirationMinutes;
+     private final long refreshTokenExpirationDays;
+@@ -35,7 +42,8 @@ public class JwtProvider {
+         return Jwts.builder()
+                 .subject(String.valueOf(userId))
+                 .claim("email", email)
+-                .claim("role", role.name())
++                .claim(ROLE_CLAIM, role.name())
++                .claim(TOKEN_TYPE_CLAIM, ACCESS_TOKEN_TYPE)
+                 .issuedAt(now)
+                 .expiration(expiration)
+                 .signWith(secretKey)
+@@ -46,8 +54,12 @@ public class JwtProvider {
+         Date now = new Date();
+         Date expiration = new Date(now.getTime() + Duration.ofDays(refreshTokenExpirationDays).toMillis());
+ 
++        // jti が無いと iat/exp が秒単位のため、同一ユーザーの同一秒の再発行で
++        // 同じ署名文字列になり refresh_tokens.token の UNIQUE 制約に衝突する
+         return Jwts.builder()
++                .id(UUID.randomUUID().toString())
+                 .subject(String.valueOf(userId))
++                .claim(TOKEN_TYPE_CLAIM, REFRESH_TOKEN_TYPE)
+                 .issuedAt(now)
+                 .expiration(expiration)
+                 .signWith(secretKey)
+@@ -82,12 +94,33 @@ public class JwtProvider {
+         }
+     }
+ 
++    // 署名・有効期限に加え「Access Tokenとして発行されたか」まで確認する。
++    // Refresh Token は role claim を持たないため、認証フィルターで区別しないと
++    // SimpleGrantedAuthority(null) で IllegalArgumentException になる
++    public boolean validateAccessToken(String token) {
++        try {
++            Claims claims = Jwts.parser()
++                    .verifyWith(secretKey)
++                    .build()
++                    .parseSignedClaims(token)
++                    .getPayload();
++
++            String role = claims.get(ROLE_CLAIM, String.class);
++
++            return ACCESS_TOKEN_TYPE.equals(claims.get(TOKEN_TYPE_CLAIM, String.class))
++                    && role != null
++                    && !role.isBlank();
++        } catch (Exception e) {
++            return false;
++        }
++    }
++
+     public String getRole(String token) {
+         return Jwts.parser()
+                 .verifyWith(secretKey)
+                 .build()
+                 .parseSignedClaims(token)
+                 .getPayload()
+-                .get("role", String.class);
++                .get(ROLE_CLAIM, String.class);
+     }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminController.java b/spring-api/src/main/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminController.java
+index 6cc209c..23bb2d5 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminController.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminController.java
+@@ -2,11 +2,15 @@ package koh.portfolio.springapi.presentation.reservation;
+ 
+ import koh.portfolio.springapi.application.reservation.usecase.ApproveReservationUseCase;
+ import koh.portfolio.springapi.application.reservation.usecase.CompleteReservationUseCase;
++import koh.portfolio.springapi.application.reservation.usecase.RejectReservationUseCase;
+ import koh.portfolio.springapi.common.response.ApiResponse;
+ import lombok.RequiredArgsConstructor;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.security.access.prepost.PreAuthorize;
+-import org.springframework.web.bind.annotation.*;
++import org.springframework.web.bind.annotation.PatchMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
+ 
+ @RestController
+ @RequestMapping("/api/v1/admin/reservations")
+@@ -14,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
+ public class ReservationAdminController {
+     private final ApproveReservationUseCase approveReservationUseCase;
+     private final CompleteReservationUseCase completeReservationUseCase;
++    private final RejectReservationUseCase rejectReservationUseCase;
+ 
+     @PatchMapping("/{reservationId}/approve")
+     @PreAuthorize("hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')")
+@@ -28,4 +33,11 @@ public class ReservationAdminController {
+         completeReservationUseCase.execute(reservationId);
+         return ResponseEntity.ok(ApiResponse.success(null));
+     }
++
++    @PatchMapping("{reservationId}/reject")
++    @PreAuthorize("hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')")
++    public ResponseEntity<ApiResponse<Void>> rejectReservation(@PathVariable Long reservationId) {
++        rejectReservationUseCase.execute(reservationId);
++        return ResponseEntity.ok(ApiResponse.success(null));
++    }
+ }
+diff --git a/spring-api/src/main/resources/db/migration/V8__add_reservations_active_schedule_unique_index.sql b/spring-api/src/main/resources/db/migration/V8__add_reservations_active_schedule_unique_index.sql
+new file mode 100644
+index 0000000..331e1ee
+--- /dev/null
++++ b/spring-api/src/main/resources/db/migration/V8__add_reservations_active_schedule_unique_index.sql
+@@ -0,0 +1,5 @@
++-- 同一予約枠に対してREQUESTED / APPROVEDの予約は1件のみ許可する（06_ERD §12 業務制約）。
++-- アプリ側のexists確認だけでは同時リクエストで二重予約が成立するため、DB側で保証する。
++CREATE UNIQUE INDEX uq_reservations_active_schedule
++    ON reservations (schedule_id)
++    WHERE status IN ('REQUESTED', 'APPROVED') AND deleted_at IS NULL;
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/auth/service/LoginServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/auth/service/LoginServiceTest.java
+index a90f8e8..a075e2d 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/auth/service/LoginServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/auth/service/LoginServiceTest.java
+@@ -14,6 +14,7 @@ import koh.portfolio.springapi.infrastructure.security.jwt.JwtProvider;
+ import org.junit.jupiter.api.BeforeEach;
+ import org.junit.jupiter.api.DisplayName;
+ import org.junit.jupiter.api.Test;
++import org.mockito.InOrder;
+ import org.springframework.security.crypto.password.PasswordEncoder;
+ 
+ import java.time.LocalDateTime;
+@@ -111,6 +112,12 @@ class LoginServiceTest {
+         verify(passwordEncoder).matches("password123", "$2a$encoded-password");
+         verify(refreshTokenRepository).revokeAllByUserId(1L);
+         verify(refreshTokenRepository).save(any(RefreshToken.class));
++
++        // 一括revokeより先にユーザー行を排他取得していること（同時refreshとの直列化）
++        InOrder inOrder = inOrder(userRepository, refreshTokenRepository);
++        inOrder.verify(userRepository).lockForSessionUpdate(1L);
++        inOrder.verify(refreshTokenRepository).revokeAllByUserId(1L);
++        inOrder.verify(refreshTokenRepository).save(any(RefreshToken.class));
+     }
+ 
+     @Test
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/auth/service/LogoutServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/auth/service/LogoutServiceTest.java
+new file mode 100644
+index 0000000..7c9c128
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/auth/service/LogoutServiceTest.java
+@@ -0,0 +1,55 @@
++package koh.portfolio.springapi.application.auth.service;
++
++import koh.portfolio.springapi.application.auth.dto.LogoutDto.LogoutResponse;
++import koh.portfolio.springapi.domain.auth.port.RefreshTokenRepository;
++import koh.portfolio.springapi.domain.user.port.UserRepository;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.mockito.InOrder;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.mockito.Mockito.*;
++
++class LogoutServiceTest {
++
++    private RefreshTokenRepository refreshTokenRepository;
++    private UserRepository userRepository;
++    private LogoutService logoutService;
++
++    @BeforeEach
++    void setUp() {
++        refreshTokenRepository = mock(RefreshTokenRepository.class);
++        userRepository = mock(UserRepository.class);
++        logoutService = new LogoutService(refreshTokenRepository, userRepository);
++    }
++
++    @Test
++    @DisplayName("ログアウト時、ユーザーの有効なRefresh Tokenをすべて失効させる")
++    void logout_revokes_all_active_tokens() {
++        // given
++        Long userId = 1L;
++
++        // when
++        LogoutResponse response = logoutService.execute(userId);
++
++        // then
++        assertThat(response.isLogout()).isTrue();
++        verify(refreshTokenRepository).revokeAllByUserId(userId);
++    }
++
++    @Test
++    @DisplayName("一括revokeより先にユーザー行を排他取得する（同時refreshが発行する後続Tokenの取りこぼし防止）")
++    void logout_locks_user_before_revoking() {
++        // given
++        Long userId = 1L;
++
++        // when
++        logoutService.execute(userId);
++
++        // then
++        InOrder inOrder = inOrder(userRepository, refreshTokenRepository);
++        inOrder.verify(userRepository).lockForSessionUpdate(userId);
++        inOrder.verify(refreshTokenRepository).revokeAllByUserId(userId);
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/auth/service/RefreshTokenServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/auth/service/RefreshTokenServiceTest.java
+index aa947cb..36b0457 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/auth/service/RefreshTokenServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/auth/service/RefreshTokenServiceTest.java
+@@ -14,6 +14,7 @@ import koh.portfolio.springapi.infrastructure.security.jwt.JwtProvider;
+ import org.junit.jupiter.api.BeforeEach;
+ import org.junit.jupiter.api.DisplayName;
+ import org.junit.jupiter.api.Test;
++import org.mockito.InOrder;
+ 
+ import java.time.LocalDateTime;
+ import java.util.Optional;
+@@ -96,6 +97,8 @@ class RefreshTokenServiceTest {
+                 .thenReturn(newExpiresAt);
+         when(refreshTokenRepository.save(any(RefreshToken.class)))
+                 .thenReturn(savedRefreshToken);
++        when(refreshTokenRepository.revokeByToken(currentRefreshTokenValue))
++                .thenReturn(1);
+ 
+         RefreshTokenRequest request = new RefreshTokenRequest(currentRefreshTokenValue);
+ 
+@@ -111,6 +114,13 @@ class RefreshTokenServiceTest {
+         verify(userRepository).findById(userId);
+         verify(refreshTokenRepository).revokeByToken(currentRefreshTokenValue);
+         verify(refreshTokenRepository).save(any(RefreshToken.class));
++
++        // 旧Token失効・後続Token発行より先にユーザー行を排他取得していること
++        // （同時実行のlogout/loginの一括revokeと直列化するため）
++        InOrder inOrder = inOrder(userRepository, refreshTokenRepository);
++        inOrder.verify(userRepository).lockForSessionUpdate(userId);
++        inOrder.verify(refreshTokenRepository).revokeByToken(currentRefreshTokenValue);
++        inOrder.verify(refreshTokenRepository).save(any(RefreshToken.class));
+     }
+ 
+     @Test
+@@ -211,6 +221,60 @@ class RefreshTokenServiceTest {
+         verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+     }
+ 
++    @Test
++    @DisplayName("同時リフレッシュで既に消費されていた場合、失効0件となりAUTH-003例外が発生する")
++    void refresh_token_fail_when_already_consumed_concurrently() {
++        // given
++        Long userId = 1L;
++        String requestRefreshToken = "raced-refresh-token";
++        LocalDateTime now = LocalDateTime.now();
++
++        RefreshToken currentRefreshToken = new RefreshToken(
++                1L,
++                userId,
++                requestRefreshToken,
++                now.plusDays(7),
++                false,
++                now.minusDays(1)
++        );
++
++        User user = new User(
++                userId,
++                "test@example.com",
++                "$2a$encoded-password",
++                "hanyeong",
++                Role.ROLE_USER,
++                UserStatus.ACTIVE,
++                now.minusDays(10),
++                now.minusDays(1),
++                null
++        );
++
++        when(refreshTokenRepository.findByToken(requestRefreshToken))
++                .thenReturn(Optional.of(currentRefreshToken));
++        when(jwtProvider.getUserId(requestRefreshToken))
++                .thenReturn(userId);
++        when(userRepository.findById(userId))
++                .thenReturn(Optional.of(user));
++        // 先行トランザクションが同じトークンを消費済み
++        when(refreshTokenRepository.revokeByToken(requestRefreshToken))
++                .thenReturn(0);
++
++        RefreshTokenRequest request = new RefreshTokenRequest(requestRefreshToken);
++
++        // when & then
++        assertThatThrownBy(() -> refreshTokenService.execute(request))
++                .isInstanceOf(CustomException.class)
++                .satisfies(exception -> {
++                    CustomException customException = (CustomException) exception;
++                    assertThat(customException.getErrorCode().code())
++                            .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN.code());
++                });
++
++        verify(refreshTokenRepository).revokeByToken(requestRefreshToken);
++        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
++    }
++
+     @Test
+     @DisplayName("停止中ユーザーの場合、AUTH-002例外が発生する")
+     void refresh_token_fail_when_user_suspended() {
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/CreateReservationServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/CreateReservationServiceTest.java
+index 52cc026..fe09c3a 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/CreateReservationServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/CreateReservationServiceTest.java
+@@ -3,8 +3,11 @@ package koh.portfolio.springapi.application.reservation.service;
+ import koh.portfolio.springapi.application.reservation.dto.ReservationDto.CreateReservationRequest;
+ import koh.portfolio.springapi.application.reservation.dto.ReservationDto.CreateReservationResponse;
+ import koh.portfolio.springapi.common.exception.CustomException;
++import koh.portfolio.springapi.domain.hospital.model.Hospital;
+ import koh.portfolio.springapi.domain.hospital.model.HospitalSchedule;
+ import koh.portfolio.springapi.domain.hospital.model.HospitalScheduleStatus;
++import koh.portfolio.springapi.domain.hospital.model.HospitalStatus;
++import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
+ import koh.portfolio.springapi.domain.hospital.port.HospitalScheduleRepository;
+ import koh.portfolio.springapi.domain.pet.model.Pet;
+ import koh.portfolio.springapi.domain.pet.model.PetGender;
+@@ -32,6 +35,7 @@ import static org.mockito.Mockito.*;
+ class CreateReservationServiceTest {
+ 
+     private PetRepository petRepository;
++    private HospitalRepository hospitalRepository;
+     private HospitalScheduleRepository hospitalScheduleRepository;
+     private ReservationRepository reservationRepository;
+     private CreateReservationService createReservationService;
+@@ -44,9 +48,17 @@ class CreateReservationServiceTest {
+     @BeforeEach
+     void setUp() {
+         petRepository = mock(PetRepository.class);
++        hospitalRepository = mock(HospitalRepository.class);
+         hospitalScheduleRepository = mock(HospitalScheduleRepository.class);
+         reservationRepository = mock(ReservationRepository.class);
+-        createReservationService = new CreateReservationService(petRepository, hospitalScheduleRepository, reservationRepository);
++        createReservationService = new CreateReservationService(
++                petRepository, hospitalRepository, hospitalScheduleRepository, reservationRepository);
++    }
++
++    private void stubHospital(HospitalStatus status) {
++        LocalDateTime now = LocalDateTime.now();
++        when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(
++                new Hospital(hospitalId, "Tokyo Animal Hospital", "Tokyo, Shibuya", "03-1234-5678", status, now, now, null)));
+     }
+ 
+     private Pet ownedPet() {
+@@ -67,6 +79,7 @@ class CreateReservationServiceTest {
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.of(ownedPet()));
+         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(availableFutureSchedule()));
++        stubHospital(HospitalStatus.ACTIVE);
+         when(reservationRepository.existsActiveByScheduleId(scheduleId)).thenReturn(false);
+         when(reservationRepository.save(any(Reservation.class))).thenAnswer(invocation -> {
+             Reservation arg = invocation.getArgument(0);
+@@ -90,6 +103,7 @@ class CreateReservationServiceTest {
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.of(ownedPet()));
+         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(availableFutureSchedule()));
++        stubHospital(HospitalStatus.ACTIVE);
+         when(reservationRepository.existsActiveByScheduleId(scheduleId)).thenReturn(true);
+ 
+         // when & then
+@@ -152,6 +166,25 @@ class CreateReservationServiceTest {
+                         .isEqualTo(ReservationErrorCode.RESERVATION_SCHEDULE_NOT_FOUND.code()));
+     }
+ 
++    @Test
++    @DisplayName("利用停止中の病院への申請時、RESERVATION-009例外が発生する")
++    void create_reservation_fail_when_hospital_suspended() {
++        // given
++        CreateReservationRequest request = new CreateReservationRequest(petId, hospitalId, scheduleId, null);
++
++        when(petRepository.findById(petId)).thenReturn(Optional.of(ownedPet()));
++        when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(availableFutureSchedule()));
++        stubHospital(HospitalStatus.SUSPENDED);
++
++        // when & then
++        assertThatThrownBy(() -> createReservationService.execute(userId, request))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(ReservationErrorCode.HOSPITAL_NOT_AVAILABLE.code()));
++
++        verify(reservationRepository, never()).save(any(Reservation.class));
++    }
++
+     @Test
+     @DisplayName("BLOCKED状態の予約枠への申請時、RESERVATION-003例外が発生する")
+     void create_reservation_fail_when_schedule_blocked() {
+@@ -162,6 +195,7 @@ class CreateReservationServiceTest {
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.of(ownedPet()));
+         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(blockedSchedule));
++        stubHospital(HospitalStatus.ACTIVE);
+ 
+         // when & then
+         assertThatThrownBy(() -> createReservationService.execute(userId, request))
+@@ -180,6 +214,7 @@ class CreateReservationServiceTest {
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.of(ownedPet()));
+         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(pastSchedule));
++        stubHospital(HospitalStatus.ACTIVE);
+ 
+         // when & then
+         assertThatThrownBy(() -> createReservationService.execute(userId, request))
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/GetReservationServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/GetReservationServiceTest.java
+index 3432468..818bcd1 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/GetReservationServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/GetReservationServiceTest.java
+@@ -65,7 +65,7 @@ class GetReservationServiceTest {
+         LocalDateTime now = LocalDateTime.now();
+         when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(
+                 new Hospital(hospitalId, "Tokyo Animal Hospital", "Tokyo, Shibuya", "03-1234-5678", HospitalStatus.ACTIVE, now, now, null)));
+-        when(petRepository.findById(petId)).thenReturn(Optional.of(
++        when(petRepository.findByIdIncludingDeleted(petId)).thenReturn(Optional.of(
+                 new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null, now, now, null)));
+         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(
+                 new HospitalSchedule(scheduleId, hospitalId, LocalDate.of(2026, 5, 20),
+@@ -90,6 +90,30 @@ class GetReservationServiceTest {
+         assertThat(result.get(0).status()).isEqualTo(ReservationStatus.REQUESTED);
+     }
+ 
++    @Test
++    @DisplayName("論理削除済みペットの予約も一覧に表示される（他の予約も巻き込まれない）")
++    void get_reservation_list_success_when_pet_deleted() {
++        // given
++        LocalDateTime now = LocalDateTime.now();
++        when(reservationRepository.findAllByUserId(userId))
++                .thenReturn(List.of(reservation(userId, ReservationStatus.COMPLETED)));
++        when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(
++                new Hospital(hospitalId, "Tokyo Animal Hospital", "Tokyo, Shibuya", "03-1234-5678", HospitalStatus.ACTIVE, now, now, null)));
++        when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(
++                new HospitalSchedule(scheduleId, hospitalId, LocalDate.of(2026, 5, 20),
++                        LocalTime.of(10, 0), LocalTime.of(10, 30), HospitalScheduleStatus.AVAILABLE, now, now)));
++        when(petRepository.findByIdIncludingDeleted(petId)).thenReturn(Optional.of(
++                new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null, now, now, now)));
++
++        // when
++        List<ReservationSummary> result = getReservationService.execute(userId);
++
++        // then
++        assertThat(result).hasSize(1);
++        assertThat(result.get(0).petName()).isEqualTo("Momo");
++        assertThat(result.get(0).status()).isEqualTo(ReservationStatus.COMPLETED);
++    }
++
+     @Test
+     @DisplayName("RSV-T006: 予約詳細取得成功時、詳細を返却する")
+     void get_reservation_detail_success() {
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/ReservationStateTransitionServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/ReservationStateTransitionServiceTest.java
+index 127f147..6fa9fec 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/ReservationStateTransitionServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/ReservationStateTransitionServiceTest.java
+@@ -8,14 +8,13 @@ import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
+ import org.junit.jupiter.api.BeforeEach;
+ import org.junit.jupiter.api.DisplayName;
+ import org.junit.jupiter.api.Test;
+-import org.mockito.ArgumentCaptor;
+ 
+ import java.time.LocalDateTime;
+ import java.util.Optional;
+ 
+ import static org.assertj.core.api.Assertions.assertThat;
+ import static org.assertj.core.api.Assertions.assertThatThrownBy;
+-import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.*;
+ import static org.mockito.Mockito.*;
+ 
+ class ReservationStateTransitionServiceTest {
+@@ -24,6 +23,7 @@ class ReservationStateTransitionServiceTest {
+     private ApproveReservationService approveReservationService;
+     private CancelReservationService cancelReservationService;
+     private CompleteReservationService completeReservationService;
++    private RejectReservationService rejectReservationService;
+ 
+     private final Long userId = 1L;
+     private final Long reservationId = 1L;
+@@ -34,6 +34,7 @@ class ReservationStateTransitionServiceTest {
+         approveReservationService = new ApproveReservationService(reservationRepository);
+         cancelReservationService = new CancelReservationService(reservationRepository);
+         completeReservationService = new CompleteReservationService(reservationRepository);
++        rejectReservationService = new RejectReservationService(reservationRepository);
+     }
+ 
+     private Reservation reservation(ReservationStatus status) {
+@@ -41,9 +42,31 @@ class ReservationStateTransitionServiceTest {
+         return new Reservation(reservationId, userId, 10L, 100L, 1000L, now, status, null, now, now, null);
+     }
+ 
+-    private void stubFindAndSave(ReservationStatus currentStatus) {
++    private void stubFind(ReservationStatus currentStatus) {
+         when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation(currentStatus)));
+-        when(reservationRepository.save(any(Reservation.class))).thenAnswer(invocation -> invocation.getArgument(0));
++    }
++
++    private void stubUpdateStatus(boolean updated) {
++        when(reservationRepository.updateStatus(
++                anyLong(), any(ReservationStatus.class), any(ReservationStatus.class), any(LocalDateTime.class)))
++                .thenReturn(updated);
++    }
++
++    private void verifyNoTransitionPersisted() {
++        verify(reservationRepository, never())
++                .updateStatus(anyLong(), any(ReservationStatus.class), any(ReservationStatus.class), any(LocalDateTime.class));
++    }
++
++    private void verifyTransition(ReservationStatus expectedStatus, ReservationStatus newStatus) {
++        verify(reservationRepository).updateStatus(
++                eq(reservationId), eq(expectedStatus), eq(newStatus), any(LocalDateTime.class));
++    }
++
++    private void assertInvalidStateTransition(Runnable execution) {
++        assertThatThrownBy(execution::run)
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(ReservationErrorCode.INVALID_STATE_TRANSITION.code()));
+     }
+ 
+     // ----------------------------------------------------------------- approve
+@@ -52,54 +75,63 @@ class ReservationStateTransitionServiceTest {
+     @DisplayName("STATE-T001: REQUESTED状態の予約承認時、APPROVEDへ遷移する")
+     void approve_success_when_requested() {
+         // given
+-        stubFindAndSave(ReservationStatus.REQUESTED);
++        stubFind(ReservationStatus.REQUESTED);
++        stubUpdateStatus(true);
+ 
+         // when
+         approveReservationService.execute(reservationId);
+ 
+         // then
+-        ArgumentCaptor<Reservation> captor = ArgumentCaptor.forClass(Reservation.class);
+-        verify(reservationRepository).save(captor.capture());
+-        assertThat(captor.getValue().getStatus()).isEqualTo(ReservationStatus.APPROVED);
++        verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.APPROVED);
+     }
+ 
+     @Test
+     @DisplayName("STATE-T006: COMPLETED状態の予約承認時、RESERVATION-008例外が発生する")
+     void approve_fail_when_completed() {
+         // given
+-        stubFindAndSave(ReservationStatus.COMPLETED);
++        stubFind(ReservationStatus.COMPLETED);
+ 
+         // when & then
+-        assertThatThrownBy(() -> approveReservationService.execute(reservationId))
+-                .isInstanceOf(CustomException.class)
+-                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+-                        .isEqualTo(ReservationErrorCode.INVALID_STATE_TRANSITION.code()));
++        assertInvalidStateTransition(() -> approveReservationService.execute(reservationId));
++
++        verifyNoTransitionPersisted();
+     }
+ 
+     @Test
+     @DisplayName("STATE-T007: REJECTED状態の予約承認時、RESERVATION-008例外が発生する")
+     void approve_fail_when_rejected() {
+         // given
+-        stubFindAndSave(ReservationStatus.REJECTED);
++        stubFind(ReservationStatus.REJECTED);
+ 
+         // when & then
+-        assertThatThrownBy(() -> approveReservationService.execute(reservationId))
+-                .isInstanceOf(CustomException.class)
+-                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+-                        .isEqualTo(ReservationErrorCode.INVALID_STATE_TRANSITION.code()));
++        assertInvalidStateTransition(() -> approveReservationService.execute(reservationId));
++
++        verifyNoTransitionPersisted();
+     }
+ 
+     @Test
+     @DisplayName("STATE-T008: CANCELLED状態の予約承認時、RESERVATION-008例外が発生する")
+     void approve_fail_when_cancelled() {
+         // given
+-        stubFindAndSave(ReservationStatus.CANCELLED);
++        stubFind(ReservationStatus.CANCELLED);
+ 
+         // when & then
+-        assertThatThrownBy(() -> approveReservationService.execute(reservationId))
+-                .isInstanceOf(CustomException.class)
+-                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+-                        .isEqualTo(ReservationErrorCode.INVALID_STATE_TRANSITION.code()));
++        assertInvalidStateTransition(() -> approveReservationService.execute(reservationId));
++
++        verifyNoTransitionPersisted();
++    }
++
++    @Test
++    @DisplayName("承認の直前に他の遷移が成立していた場合、条件付き更新が0件となりRESERVATION-008例外が発生する")
++    void approve_fail_when_status_changed_concurrently() {
++        // given
++        stubFind(ReservationStatus.REQUESTED);
++        stubUpdateStatus(false);
++
++        // when & then
++        assertInvalidStateTransition(() -> approveReservationService.execute(reservationId));
++
++        verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.APPROVED);
+     }
+ 
+     @Test
+@@ -114,7 +146,7 @@ class ReservationStateTransitionServiceTest {
+                 .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                         .isEqualTo(ReservationErrorCode.RESERVATION_NOT_FOUND.code()));
+ 
+-        verify(reservationRepository, never()).save(any(Reservation.class));
++        verifyNoTransitionPersisted();
+     }
+ 
+     // ------------------------------------------------------------------ cancel
+@@ -123,52 +155,60 @@ class ReservationStateTransitionServiceTest {
+     @DisplayName("RSV-T004・STATE-T003: REQUESTED状態の予約キャンセル時、CANCELLEDへ遷移する")
+     void cancel_success_when_requested() {
+         // given
+-        stubFindAndSave(ReservationStatus.REQUESTED);
++        stubFind(ReservationStatus.REQUESTED);
++        stubUpdateStatus(true);
+ 
+         // when
+         cancelReservationService.execute(userId, reservationId);
+ 
+         // then
+-        ArgumentCaptor<Reservation> captor = ArgumentCaptor.forClass(Reservation.class);
+-        verify(reservationRepository).save(captor.capture());
+-        assertThat(captor.getValue().getStatus()).isEqualTo(ReservationStatus.CANCELLED);
++        verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.CANCELLED);
+     }
+ 
+     @Test
+     @DisplayName("STATE-T005: APPROVED状態の予約キャンセル時、CANCELLEDへ遷移する")
+     void cancel_success_when_approved() {
+         // given
+-        stubFindAndSave(ReservationStatus.APPROVED);
++        stubFind(ReservationStatus.APPROVED);
++        stubUpdateStatus(true);
+ 
+         // when
+         cancelReservationService.execute(userId, reservationId);
+ 
+         // then
+-        ArgumentCaptor<Reservation> captor = ArgumentCaptor.forClass(Reservation.class);
+-        verify(reservationRepository).save(captor.capture());
+-        assertThat(captor.getValue().getStatus()).isEqualTo(ReservationStatus.CANCELLED);
++        verifyTransition(ReservationStatus.APPROVED, ReservationStatus.CANCELLED);
+     }
+ 
+     @Test
+     @DisplayName("RSV-T005: COMPLETED状態の予約キャンセル時、RESERVATION-008例外が発生する")
+     void cancel_fail_when_completed() {
+         // given
+-        stubFindAndSave(ReservationStatus.COMPLETED);
++        stubFind(ReservationStatus.COMPLETED);
+ 
+         // when & then
+-        assertThatThrownBy(() -> cancelReservationService.execute(userId, reservationId))
+-                .isInstanceOf(CustomException.class)
+-                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+-                        .isEqualTo(ReservationErrorCode.INVALID_STATE_TRANSITION.code()));
++        assertInvalidStateTransition(() -> cancelReservationService.execute(userId, reservationId));
++
++        verifyNoTransitionPersisted();
++    }
++
++    @Test
++    @DisplayName("キャンセルの直前に診療完了が成立していた場合、条件付き更新が0件となりRESERVATION-008例外が発生する")
++    void cancel_fail_when_status_changed_concurrently() {
++        // given
++        stubFind(ReservationStatus.APPROVED);
++        stubUpdateStatus(false);
++
++        // when & then
++        assertInvalidStateTransition(() -> cancelReservationService.execute(userId, reservationId));
+ 
+-        verify(reservationRepository, never()).save(any(Reservation.class));
++        verifyTransition(ReservationStatus.APPROVED, ReservationStatus.CANCELLED);
+     }
+ 
+     @Test
+     @DisplayName("他人の予約キャンセル時、RESERVATION-007例外が発生する")
+     void cancel_fail_when_not_owner() {
+         // given
+-        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation(ReservationStatus.REQUESTED)));
++        stubFind(ReservationStatus.REQUESTED);
+ 
+         // when & then
+         assertThatThrownBy(() -> cancelReservationService.execute(999L, reservationId))
+@@ -176,7 +216,7 @@ class ReservationStateTransitionServiceTest {
+                 .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                         .isEqualTo(ReservationErrorCode.NOT_RESERVATION_OWNER.code()));
+ 
+-        verify(reservationRepository, never()).save(any(Reservation.class));
++        verifyNoTransitionPersisted();
+     }
+ 
+     // ---------------------------------------------------------------- complete
+@@ -185,29 +225,130 @@ class ReservationStateTransitionServiceTest {
+     @DisplayName("STATE-T004: APPROVED状態の診療完了時、COMPLETEDへ遷移する")
+     void complete_success_when_approved() {
+         // given
+-        stubFindAndSave(ReservationStatus.APPROVED);
++        stubFind(ReservationStatus.APPROVED);
++        stubUpdateStatus(true);
+ 
+         // when
+         completeReservationService.execute(reservationId);
+ 
+         // then
+-        ArgumentCaptor<Reservation> captor = ArgumentCaptor.forClass(Reservation.class);
+-        verify(reservationRepository).save(captor.capture());
+-        assertThat(captor.getValue().getStatus()).isEqualTo(ReservationStatus.COMPLETED);
++        verifyTransition(ReservationStatus.APPROVED, ReservationStatus.COMPLETED);
+     }
+ 
+     @Test
+     @DisplayName("REQUESTED状態の診療完了時、RESERVATION-008例外が発生する")
+     void complete_fail_when_requested() {
+         // given
+-        stubFindAndSave(ReservationStatus.REQUESTED);
++        stubFind(ReservationStatus.REQUESTED);
++
++        // when & then
++        assertInvalidStateTransition(() -> completeReservationService.execute(reservationId));
++
++        verifyNoTransitionPersisted();
++    }
++
++    @Test
++    @DisplayName("診療完了の直前にキャンセルが成立していた場合、条件付き更新が0件となりRESERVATION-008例外が発生する")
++    void complete_fail_when_status_changed_concurrently() {
++        // given
++        stubFind(ReservationStatus.APPROVED);
++        stubUpdateStatus(false);
++
++        // when & then
++        assertInvalidStateTransition(() -> completeReservationService.execute(reservationId));
++
++        verifyTransition(ReservationStatus.APPROVED, ReservationStatus.COMPLETED);
++    }
++
++    // ------------------------------------------------------------------ reject
++
++    @Test
++    @DisplayName("REQUESTED状態の予約却下時、REJECTEDへ遷移する")
++    void reject_success_when_requested() {
++        // given
++        stubFind(ReservationStatus.REQUESTED);
++        stubUpdateStatus(true);
++
++        // when
++        rejectReservationService.execute(reservationId);
++
++        // then
++        verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.REJECTED);
++    }
++
++    @Test
++    @DisplayName("APPROVED状態の予約却下時、RESERVATION-008例外が発生する")
++    void reject_fail_when_approved() {
++        // given
++        stubFind(ReservationStatus.APPROVED);
++
++        // when & then
++        assertInvalidStateTransition(() -> rejectReservationService.execute(reservationId));
++
++        verifyNoTransitionPersisted();
++    }
++
++    @Test
++    @DisplayName("COMPLETED状態の予約却下時、RESERVATION-008例外が発生する")
++    void reject_fail_when_completed() {
++        // given
++        stubFind(ReservationStatus.COMPLETED);
++
++        // when & then
++        assertInvalidStateTransition(() -> rejectReservationService.execute(reservationId));
++
++        verifyNoTransitionPersisted();
++    }
++
++    @Test
++    @DisplayName("CANCELLED状態の予約却下時、RESERVATION-008例外が発生する")
++    void reject_fail_when_cancelled() {
++        // given
++        stubFind(ReservationStatus.CANCELLED);
++
++        // when & then
++        assertInvalidStateTransition(() -> rejectReservationService.execute(reservationId));
++
++        verifyNoTransitionPersisted();
++    }
++
++    @Test
++    @DisplayName("REJECTED状態の予約却下時、RESERVATION-008例外が発生する")
++    void reject_fail_when_already_rejected() {
++        // given
++        stubFind(ReservationStatus.REJECTED);
++
++        // when & then
++        assertInvalidStateTransition(() -> rejectReservationService.execute(reservationId));
++
++        verifyNoTransitionPersisted();
++    }
++
++    @Test
++    @DisplayName("却下の直前に承認が成立していた場合、条件付き更新が0件となりRESERVATION-008例外が発生する")
++    void reject_fail_when_status_changed_concurrently() {
++        // given
++        stubFind(ReservationStatus.REQUESTED);
++        stubUpdateStatus(false);
+ 
+         // when & then
+-        assertThatThrownBy(() -> completeReservationService.execute(reservationId))
++        assertInvalidStateTransition(() -> rejectReservationService.execute(reservationId));
++
++        verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.REJECTED);
++    }
++
++    @Test
++    @DisplayName("存在しない予約の却下時、RESERVATION-006例外が発生する")
++    void reject_fail_when_not_found() {
++        // given
++        when(reservationRepository.findById(reservationId)).thenReturn(Optional.empty());
++
++        // when & then
++        assertThatThrownBy(() -> rejectReservationService.execute(reservationId))
+                 .isInstanceOf(CustomException.class)
+                 .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+-                        .isEqualTo(ReservationErrorCode.INVALID_STATE_TRANSITION.code()));
++                        .isEqualTo(ReservationErrorCode.RESERVATION_NOT_FOUND.code()));
+ 
+-        verify(reservationRepository, never()).save(any(Reservation.class));
++        verifyNoTransitionPersisted();
+     }
+ }
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/auth/RefreshTokenPersistenceAdapterTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/auth/RefreshTokenPersistenceAdapterTest.java
+index cea01e2..e38251c 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/auth/RefreshTokenPersistenceAdapterTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/auth/RefreshTokenPersistenceAdapterTest.java
+@@ -124,9 +124,11 @@ class RefreshTokenPersistenceAdapterTest {
+                 .build());
+ 
+         // when
+-        refreshTokenRepository.revokeByToken("target-token");
++        int revokedCount = refreshTokenRepository.revokeByToken("target-token");
+ 
+         // then
++        assertThat(revokedCount).isEqualTo(1);
++
+         assertThat(refreshTokenJpaRepository.findByToken("target-token"))
+                 .get()
+                 .extracting(RefreshTokenEntity::isRevoked)
+@@ -137,4 +139,27 @@ class RefreshTokenPersistenceAdapterTest {
+                 .extracting(RefreshTokenEntity::isRevoked)
+                 .isEqualTo(false);
+     }
++
++    @Test
++    @DisplayName("既に失効済みのRefresh Tokenを再度失効させると0件を返却する（rotationの単一消費）")
++    void revoke_by_token_returns_zero_when_already_revoked() {
++        // given
++        LocalDateTime now = LocalDateTime.now();
++
++        refreshTokenJpaRepository.save(RefreshTokenEntity.builder()
++                .userId(1L)
++                .token("rotation-token")
++                .expiresAt(now.plusDays(14))
++                .revoked(false)
++                .createdAt(now)
++                .build());
++
++        // when
++        int firstCall = refreshTokenRepository.revokeByToken("rotation-token");
++        int secondCall = refreshTokenRepository.revokeByToken("rotation-token");
++
++        // then
++        assertThat(firstCall).isEqualTo(1);
++        assertThat(secondCall).isZero();
++    }
+ }
+\ No newline at end of file
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/reservation/ReservationPersistenceAdapterTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/reservation/ReservationPersistenceAdapterTest.java
+new file mode 100644
+index 0000000..2f55096
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/reservation/ReservationPersistenceAdapterTest.java
+@@ -0,0 +1,95 @@
++package koh.portfolio.springapi.infrastructure.persistence.reservation;
++
++import koh.portfolio.springapi.common.exception.CustomException;
++import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
++import koh.portfolio.springapi.domain.reservation.model.Reservation;
++import koh.portfolio.springapi.domain.reservation.model.ReservationStatus;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.springframework.dao.DataIntegrityViolationException;
++
++import java.time.LocalDateTime;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.Mockito.*;
++
++class ReservationPersistenceAdapterTest {
++
++    private ReservationJpaRepository reservationJpaRepository;
++    private ReservationPersistenceAdapter reservationPersistenceAdapter;
++
++    @BeforeEach
++    void setUp() {
++        reservationJpaRepository = mock(ReservationJpaRepository.class);
++        reservationPersistenceAdapter = new ReservationPersistenceAdapter(
++                reservationJpaRepository, new ReservationMapperImpl());
++    }
++
++    private Reservation newReservation() {
++        LocalDateTime now = LocalDateTime.now();
++        return new Reservation(null, 1L, 10L, 100L, 1000L, now.plusDays(1),
++                ReservationStatus.REQUESTED, null, now, now, null);
++    }
++
++    @Test
++    @DisplayName("予約枠の一意制約に違反した場合、RESERVATION-001例外に変換する")
++    void save_translates_unique_violation_to_duplicated_error() {
++        // given
++        when(reservationJpaRepository.saveAndFlush(any(ReservationEntity.class)))
++                .thenThrow(new DataIntegrityViolationException("uq_reservations_active_schedule"));
++
++        // when & then
++        assertThatThrownBy(() -> reservationPersistenceAdapter.save(newReservation()))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(ReservationErrorCode.RESERVATION_DUPLICATED.code()));
++    }
++
++    @Test
++    @DisplayName("予約枠の一意制約以外の整合性違反は変換せずそのまま伝播する")
++    void save_rethrows_unrelated_integrity_violation() {
++        // given
++        DataIntegrityViolationException unrelated =
++                new DataIntegrityViolationException("violates foreign key constraint \"fk_reservations_pet\"");
++        when(reservationJpaRepository.saveAndFlush(any(ReservationEntity.class))).thenThrow(unrelated);
++
++        // when & then
++        assertThatThrownBy(() -> reservationPersistenceAdapter.save(newReservation()))
++                .isSameAs(unrelated);
++    }
++
++    @Test
++    @DisplayName("条件付き更新が1件成立した場合、trueを返却する")
++    void update_status_returns_true_when_one_row_updated() {
++        // given
++        LocalDateTime updatedAt = LocalDateTime.now();
++        when(reservationJpaRepository.updateStatus(1L, ReservationStatus.REQUESTED, ReservationStatus.APPROVED, updatedAt))
++                .thenReturn(1);
++
++        // when
++        boolean result = reservationPersistenceAdapter.updateStatus(
++                1L, ReservationStatus.REQUESTED, ReservationStatus.APPROVED, updatedAt);
++
++        // then
++        assertThat(result).isTrue();
++    }
++
++    @Test
++    @DisplayName("条件付き更新が0件の場合、falseを返却する（他の遷移が先に成立）")
++    void update_status_returns_false_when_no_row_matched() {
++        // given
++        LocalDateTime updatedAt = LocalDateTime.now();
++        when(reservationJpaRepository.updateStatus(1L, ReservationStatus.REQUESTED, ReservationStatus.APPROVED, updatedAt))
++                .thenReturn(0);
++
++        // when
++        boolean result = reservationPersistenceAdapter.updateStatus(
++                1L, ReservationStatus.REQUESTED, ReservationStatus.APPROVED, updatedAt);
++
++        // then
++        assertThat(result).isFalse();
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapterTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapterTest.java
+new file mode 100644
+index 0000000..6041f3d
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapterTest.java
+@@ -0,0 +1,50 @@
++package koh.portfolio.springapi.infrastructure.persistence.user;
++
++import koh.portfolio.springapi.domain.user.model.Role;
++import koh.portfolio.springapi.domain.user.model.UserStatus;
++import koh.portfolio.springapi.domain.user.port.UserRepository;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
++import org.springframework.context.annotation.Import;
++import org.springframework.test.context.ActiveProfiles;
++
++import java.time.LocalDateTime;
++
++import static org.assertj.core.api.Assertions.assertThatCode;
++
++@DataJpaTest
++@ActiveProfiles("test")
++@Import({
++        UserPersistenceAdapter.class,
++        UserMapperImpl.class
++})
++class UserPersistenceAdapterTest {
++
++    @Autowired
++    private UserRepository userRepository;
++
++    @Autowired
++    private UserJpaRepository userJpaRepository;
++
++    @Test
++    @DisplayName("セッション更新用のユーザー行排他取得が実DBで実行できる")
++    void lock_for_session_update_runs_against_database() {
++        // given
++        LocalDateTime now = LocalDateTime.now();
++        UserEntity saved = userJpaRepository.save(UserEntity.builder()
++                .email("lock@example.com")
++                .password("$2a$encoded-password")
++                .nickname("locker")
++                .role(Role.ROLE_USER)
++                .status(UserStatus.ACTIVE)
++                .createdAt(now)
++                .updatedAt(now)
++                .build());
++
++        // when & then
++        assertThatCode(() -> userRepository.lockForSessionUpdate(saved.getId())).doesNotThrowAnyException();
++        assertThatCode(() -> userRepository.lockForSessionUpdate(999_999L)).doesNotThrowAnyException();
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/security/JwtAuthenticationFilterTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/security/JwtAuthenticationFilterTest.java
+new file mode 100644
+index 0000000..baa80e1
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/security/JwtAuthenticationFilterTest.java
+@@ -0,0 +1,81 @@
++package koh.portfolio.springapi.infrastructure.security;
++
++import koh.portfolio.springapi.domain.user.model.Role;
++import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
++import koh.portfolio.springapi.infrastructure.security.jwt.JwtProvider;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.springframework.mock.web.MockFilterChain;
++import org.springframework.mock.web.MockHttpServletRequest;
++import org.springframework.mock.web.MockHttpServletResponse;
++import org.springframework.security.core.Authentication;
++import org.springframework.security.core.context.SecurityContextHolder;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatCode;
++
++class JwtAuthenticationFilterTest {
++
++    private final JwtProvider jwtProvider = new JwtProvider(
++            "test-local-dev-only-secret-key-for-jwt-authentication-must-be-long-enough-please-change",
++            30,
++            14
++    );
++
++    private final JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtProvider);
++
++    @AfterEach
++    void clearContext() {
++        SecurityContextHolder.clearContext();
++    }
++
++    private MockHttpServletRequest requestWithBearer(String token) {
++        MockHttpServletRequest request = new MockHttpServletRequest();
++        request.addHeader("Authorization", "Bearer " + token);
++        return request;
++    }
++
++    @Test
++    @DisplayName("Access Tokenの場合、userIdとroleで認証情報を設定する")
++    void authenticates_with_access_token() throws Exception {
++        // given
++        String accessToken = jwtProvider.createAccessToken(1L, "test@example.com", Role.ROLE_USER);
++
++        // when
++        jwtAuthenticationFilter.doFilter(requestWithBearer(accessToken), new MockHttpServletResponse(), new MockFilterChain());
++
++        // then
++        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
++        assertThat(authentication).isNotNull();
++        assertThat(authentication.getPrincipal()).isEqualTo(1L);
++        assertThat(authentication.getAuthorities())
++                .extracting(Object::toString)
++                .containsExactly("ROLE_USER");
++    }
++
++    @Test
++    @DisplayName("Refresh TokenをBearerに渡した場合、例外を投げず未認証のまま次のフィルターへ進む")
++    void does_not_authenticate_with_refresh_token() {
++        // given
++        String refreshToken = jwtProvider.createRefreshToken(1L);
++
++        // when & then
++        assertThatCode(() -> jwtAuthenticationFilter.doFilter(
++                requestWithBearer(refreshToken), new MockHttpServletResponse(), new MockFilterChain()))
++                .doesNotThrowAnyException();
++
++        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
++    }
++
++    @Test
++    @DisplayName("不正なTokenの場合、例外を投げず未認証のまま次のフィルターへ進む")
++    void does_not_authenticate_with_invalid_token() {
++        // when & then
++        assertThatCode(() -> jwtAuthenticationFilter.doFilter(
++                requestWithBearer("invalid-token"), new MockHttpServletResponse(), new MockFilterChain()))
++                .doesNotThrowAnyException();
++
++        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/security/JwtProviderTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/security/JwtProviderTest.java
+index 5266bf4..3eaf3cc 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/security/JwtProviderTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/security/JwtProviderTest.java
+@@ -60,4 +60,41 @@ class JwtProviderTest {
+         // then
+         assertThat(result).isFalse();
+     }
++
++    @Test
++    @DisplayName("同一ユーザー・同一秒に連続発行してもRefresh Tokenは重複しない")
++    void refresh_tokens_issued_in_same_second_are_unique() {
++        // given
++        Long userId = 1L;
++
++        // when
++        String first = jwtProvider.createRefreshToken(userId);
++        String second = jwtProvider.createRefreshToken(userId);
++
++        // then
++        assertThat(first).isNotEqualTo(second);
++        assertThat(jwtProvider.getUserId(first)).isEqualTo(userId);
++        assertThat(jwtProvider.getUserId(second)).isEqualTo(userId);
++    }
++
++    @Test
++    @DisplayName("Refresh TokenはvalidateAccessTokenでfalseを返却する")
++    void refresh_token_is_not_accepted_as_access_token() {
++        // given
++        String refreshToken = jwtProvider.createRefreshToken(1L);
++
++        // when & then
++        assertThat(jwtProvider.validateToken(refreshToken)).isTrue();
++        assertThat(jwtProvider.validateAccessToken(refreshToken)).isFalse();
++    }
++
++    @Test
++    @DisplayName("Access TokenはvalidateAccessTokenでtrueを返却する")
++    void access_token_is_accepted_as_access_token() {
++        // given
++        String accessToken = jwtProvider.createAccessToken(1L, "test@example.com", Role.ROLE_USER);
++
++        // when & then
++        assertThat(jwtProvider.validateAccessToken(accessToken)).isTrue();
++    }
+ }
+\ No newline at end of file
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminControllerTest.java b/spring-api/src/test/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminControllerTest.java
+index 5022e7e..75ced17 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminControllerTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminControllerTest.java
+@@ -2,6 +2,7 @@ package koh.portfolio.springapi.presentation.reservation;
+ 
+ import koh.portfolio.springapi.application.reservation.usecase.ApproveReservationUseCase;
+ import koh.portfolio.springapi.application.reservation.usecase.CompleteReservationUseCase;
++import koh.portfolio.springapi.application.reservation.usecase.RejectReservationUseCase;
+ import koh.portfolio.springapi.common.exception.GlobalExceptionHandler;
+ import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
+ import org.junit.jupiter.api.DisplayName;
+@@ -40,6 +41,9 @@ class ReservationAdminControllerTest {
+     @MockBean
+     private CompleteReservationUseCase completeReservationUseCase;
+ 
++    @MockBean
++    private RejectReservationUseCase rejectReservationUseCase;
++
+     @Test
+     @DisplayName("PATCH /api/v1/admin/reservations/{reservationId}/approve - 予約承認成功")
+     void approve_reservation_success() throws Exception {
+@@ -61,4 +65,15 @@ class ReservationAdminControllerTest {
+ 
+         verify(completeReservationUseCase).execute(1L);
+     }
++
++    @Test
++    @DisplayName("PATCH /api/v1/admin/reservations/{reservationId}/reject - 予約却下成功")
++    void reject_reservation_success() throws Exception {
++        // when & then
++        mockMvc.perform(patch("/api/v1/admin/reservations/1/reject"))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.success").value(true));
++
++        verify(rejectReservationUseCase).execute(1L);
++    }
+ }

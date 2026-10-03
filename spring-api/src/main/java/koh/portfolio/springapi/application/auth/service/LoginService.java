@@ -48,6 +48,9 @@ public class LoginService implements LoginUseCase {
 
         String refreshTokenValue = jwtProvider.createRefreshToken(user.getId());
 
+        // 同一ユーザーのrefresh / logoutと直列化してから失効させる（REVIEW-002 R-01）
+        userRepository.lockForSessionUpdate(user.getId());
+
         refreshTokenRepository.revokeAllByUserId(user.getId());
 
         RefreshToken refreshToken = RefreshToken.issue(

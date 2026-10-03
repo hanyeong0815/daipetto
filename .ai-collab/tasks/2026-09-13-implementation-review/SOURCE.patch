@@ -1,0 +1,251 @@
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/RejectReservationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/RejectReservationService.java
+new file mode 100644
+index 0000000..bf7e098
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/service/RejectReservationService.java
+@@ -0,0 +1,22 @@
++package koh.portfolio.springapi.application.reservation.service;
++
++import koh.portfolio.springapi.application.reservation.usecase.RejectReservationUseCase;
++import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
++import koh.portfolio.springapi.domain.reservation.model.Reservation;
++import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++
++@Service
++@RequiredArgsConstructor
++public class RejectReservationService implements RejectReservationUseCase {
++    private final ReservationRepository reservationRepository;
++
++    @Override
++    public void execute(Long reservationId) {
++        Reservation reservation = reservationRepository.findById(reservationId)
++                .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::defaultException);
++
++        reservationRepository.save(reservation.reject());
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/usecase/RejectReservationUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/usecase/RejectReservationUseCase.java
+new file mode 100644
+index 0000000..99d4026
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/reservation/usecase/RejectReservationUseCase.java
+@@ -0,0 +1,5 @@
++package koh.portfolio.springapi.application.reservation.usecase;
++
++public interface RejectReservationUseCase {
++    void execute(Long reservationId);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/model/Reservation.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/model/Reservation.java
+index 53dcd77..5cfcdf6 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/model/Reservation.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/reservation/model/Reservation.java
+@@ -53,4 +53,11 @@ public class Reservation {
+         return new Reservation(this.id, this.userId, this.petId, this.hospitalId, this.scheduleId,
+                 this.reservationDatetime, ReservationStatus.COMPLETED, this.memo, this.createdAt, LocalDateTime.now(), this.deletedAt);
+     }
++
++    public Reservation reject() {
++        Preconditions.validate(this.status == ReservationStatus.REQUESTED, ReservationErrorCode.INVALID_STATE_TRANSITION);
++
++        return new Reservation(this.id, this.userId, this.petId, this.hospitalId, this.scheduleId,
++                this.reservationDatetime, ReservationStatus.REJECTED, this.memo, this.createdAt, LocalDateTime.now(), this.deletedAt);
++    }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminController.java b/spring-api/src/main/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminController.java
+index 6cc209c..23bb2d5 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminController.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminController.java
+@@ -2,11 +2,15 @@ package koh.portfolio.springapi.presentation.reservation;
+ 
+ import koh.portfolio.springapi.application.reservation.usecase.ApproveReservationUseCase;
+ import koh.portfolio.springapi.application.reservation.usecase.CompleteReservationUseCase;
++import koh.portfolio.springapi.application.reservation.usecase.RejectReservationUseCase;
+ import koh.portfolio.springapi.common.response.ApiResponse;
+ import lombok.RequiredArgsConstructor;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.security.access.prepost.PreAuthorize;
+-import org.springframework.web.bind.annotation.*;
++import org.springframework.web.bind.annotation.PatchMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
+ 
+ @RestController
+ @RequestMapping("/api/v1/admin/reservations")
+@@ -14,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
+ public class ReservationAdminController {
+     private final ApproveReservationUseCase approveReservationUseCase;
+     private final CompleteReservationUseCase completeReservationUseCase;
++    private final RejectReservationUseCase rejectReservationUseCase;
+ 
+     @PatchMapping("/{reservationId}/approve")
+     @PreAuthorize("hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')")
+@@ -28,4 +33,11 @@ public class ReservationAdminController {
+         completeReservationUseCase.execute(reservationId);
+         return ResponseEntity.ok(ApiResponse.success(null));
+     }
++
++    @PatchMapping("{reservationId}/reject")
++    @PreAuthorize("hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')")
++    public ResponseEntity<ApiResponse<Void>> rejectReservation(@PathVariable Long reservationId) {
++        rejectReservationUseCase.execute(reservationId);
++        return ResponseEntity.ok(ApiResponse.success(null));
++    }
+ }
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/ReservationStateTransitionServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/ReservationStateTransitionServiceTest.java
+index 127f147..562ca99 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/ReservationStateTransitionServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/ReservationStateTransitionServiceTest.java
+@@ -24,6 +24,7 @@ class ReservationStateTransitionServiceTest {
+     private ApproveReservationService approveReservationService;
+     private CancelReservationService cancelReservationService;
+     private CompleteReservationService completeReservationService;
++    private RejectReservationService rejectReservationService;
+ 
+     private final Long userId = 1L;
+     private final Long reservationId = 1L;
+@@ -34,6 +35,7 @@ class ReservationStateTransitionServiceTest {
+         approveReservationService = new ApproveReservationService(reservationRepository);
+         cancelReservationService = new CancelReservationService(reservationRepository);
+         completeReservationService = new CompleteReservationService(reservationRepository);
++        rejectReservationService = new RejectReservationService(reservationRepository);
+     }
+ 
+     private Reservation reservation(ReservationStatus status) {
+@@ -210,4 +212,96 @@ class ReservationStateTransitionServiceTest {
+ 
+         verify(reservationRepository, never()).save(any(Reservation.class));
+     }
++
++    // ------------------------------------------------------------------ reject
++
++    @Test
++    @DisplayName("REQUESTED状態の予約却下時、REJECTEDへ遷移する")
++    void reject_success_when_requested() {
++        // given
++        stubFindAndSave(ReservationStatus.REQUESTED);
++
++        // when
++        rejectReservationService.execute(reservationId);
++
++        // then
++        ArgumentCaptor<Reservation> captor = ArgumentCaptor.forClass(Reservation.class);
++        verify(reservationRepository).save(captor.capture());
++        assertThat(captor.getValue().getStatus()).isEqualTo(ReservationStatus.REJECTED);
++    }
++
++    @Test
++    @DisplayName("APPROVED状態の予約却下時、RESERVATION-008例外が発生する")
++    void reject_fail_when_approved() {
++        // given
++        stubFindAndSave(ReservationStatus.APPROVED);
++
++        // when & then
++        assertThatThrownBy(() -> rejectReservationService.execute(reservationId))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(ReservationErrorCode.INVALID_STATE_TRANSITION.code()));
++
++        verify(reservationRepository, never()).save(any(Reservation.class));
++    }
++
++    @Test
++    @DisplayName("COMPLETED状態の予約却下時、RESERVATION-008例外が発生する")
++    void reject_fail_when_completed() {
++        // given
++        stubFindAndSave(ReservationStatus.COMPLETED);
++
++        // when & then
++        assertThatThrownBy(() -> rejectReservationService.execute(reservationId))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(ReservationErrorCode.INVALID_STATE_TRANSITION.code()));
++
++        verify(reservationRepository, never()).save(any(Reservation.class));
++    }
++
++    @Test
++    @DisplayName("CANCELLED状態の予約却下時、RESERVATION-008例外が発生する")
++    void reject_fail_when_cancelled() {
++        // given
++        stubFindAndSave(ReservationStatus.CANCELLED);
++
++        // when & then
++        assertThatThrownBy(() -> rejectReservationService.execute(reservationId))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(ReservationErrorCode.INVALID_STATE_TRANSITION.code()));
++
++        verify(reservationRepository, never()).save(any(Reservation.class));
++    }
++
++    @Test
++    @DisplayName("REJECTED状態の予約却下時、RESERVATION-008例外が発生する")
++    void reject_fail_when_already_rejected() {
++        // given
++        stubFindAndSave(ReservationStatus.REJECTED);
++
++        // when & then
++        assertThatThrownBy(() -> rejectReservationService.execute(reservationId))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(ReservationErrorCode.INVALID_STATE_TRANSITION.code()));
++
++        verify(reservationRepository, never()).save(any(Reservation.class));
++    }
++
++    @Test
++    @DisplayName("存在しない予約の却下時、RESERVATION-006例外が発生する")
++    void reject_fail_when_not_found() {
++        // given
++        when(reservationRepository.findById(reservationId)).thenReturn(Optional.empty());
++
++        // when & then
++        assertThatThrownBy(() -> rejectReservationService.execute(reservationId))
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(ReservationErrorCode.RESERVATION_NOT_FOUND.code()));
++
++        verify(reservationRepository, never()).save(any(Reservation.class));
++    }
+ }
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminControllerTest.java b/spring-api/src/test/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminControllerTest.java
+index 5022e7e..75ced17 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminControllerTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/presentation/reservation/ReservationAdminControllerTest.java
+@@ -2,6 +2,7 @@ package koh.portfolio.springapi.presentation.reservation;
+ 
+ import koh.portfolio.springapi.application.reservation.usecase.ApproveReservationUseCase;
+ import koh.portfolio.springapi.application.reservation.usecase.CompleteReservationUseCase;
++import koh.portfolio.springapi.application.reservation.usecase.RejectReservationUseCase;
+ import koh.portfolio.springapi.common.exception.GlobalExceptionHandler;
+ import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
+ import org.junit.jupiter.api.DisplayName;
+@@ -40,6 +41,9 @@ class ReservationAdminControllerTest {
+     @MockBean
+     private CompleteReservationUseCase completeReservationUseCase;
+ 
++    @MockBean
++    private RejectReservationUseCase rejectReservationUseCase;
++
+     @Test
+     @DisplayName("PATCH /api/v1/admin/reservations/{reservationId}/approve - 予約承認成功")
+     void approve_reservation_success() throws Exception {
+@@ -61,4 +65,15 @@ class ReservationAdminControllerTest {
+ 
+         verify(completeReservationUseCase).execute(1L);
+     }
++
++    @Test
++    @DisplayName("PATCH /api/v1/admin/reservations/{reservationId}/reject - 予約却下成功")
++    void reject_reservation_success() throws Exception {
++        // when & then
++        mockMvc.perform(patch("/api/v1/admin/reservations/1/reject"))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.success").value(true));
++
++        verify(rejectReservationUseCase).execute(1L);
++    }
+ }
