@@ -3,8 +3,11 @@ package koh.portfolio.springapi.application.reservation.service;
 import koh.portfolio.springapi.application.reservation.dto.ReservationDto.CreateReservationRequest;
 import koh.portfolio.springapi.application.reservation.dto.ReservationDto.CreateReservationResponse;
 import koh.portfolio.springapi.common.exception.CustomException;
+import koh.portfolio.springapi.domain.hospital.model.Hospital;
 import koh.portfolio.springapi.domain.hospital.model.HospitalSchedule;
 import koh.portfolio.springapi.domain.hospital.model.HospitalScheduleStatus;
+import koh.portfolio.springapi.domain.hospital.model.HospitalStatus;
+import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
 import koh.portfolio.springapi.domain.hospital.port.HospitalScheduleRepository;
 import koh.portfolio.springapi.domain.pet.model.Pet;
 import koh.portfolio.springapi.domain.pet.model.PetGender;
@@ -32,6 +35,7 @@ import static org.mockito.Mockito.*;
 class CreateReservationServiceTest {
 
     private PetRepository petRepository;
+    private HospitalRepository hospitalRepository;
     private HospitalScheduleRepository hospitalScheduleRepository;
     private ReservationRepository reservationRepository;
     private CreateReservationService createReservationService;
@@ -44,9 +48,17 @@ class CreateReservationServiceTest {
     @BeforeEach
     void setUp() {
         petRepository = mock(PetRepository.class);
+        hospitalRepository = mock(HospitalRepository.class);
         hospitalScheduleRepository = mock(HospitalScheduleRepository.class);
         reservationRepository = mock(ReservationRepository.class);
-        createReservationService = new CreateReservationService(petRepository, hospitalScheduleRepository, reservationRepository);
+        createReservationService = new CreateReservationService(
+                petRepository, hospitalRepository, hospitalScheduleRepository, reservationRepository);
+    }
+
+    private void stubHospital(HospitalStatus status) {
+        LocalDateTime now = LocalDateTime.now();
+        when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(
+                new Hospital(hospitalId, "Tokyo Animal Hospital", "Tokyo, Shibuya", "03-1234-5678", status, now, now, null)));
     }
 
     private Pet ownedPet() {
@@ -67,6 +79,7 @@ class CreateReservationServiceTest {
 
         when(petRepository.findById(petId)).thenReturn(Optional.of(ownedPet()));
         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(availableFutureSchedule()));
+        stubHospital(HospitalStatus.ACTIVE);
         when(reservationRepository.existsActiveByScheduleId(scheduleId)).thenReturn(false);
         when(reservationRepository.save(any(Reservation.class))).thenAnswer(invocation -> {
             Reservation arg = invocation.getArgument(0);
@@ -90,6 +103,7 @@ class CreateReservationServiceTest {
 
         when(petRepository.findById(petId)).thenReturn(Optional.of(ownedPet()));
         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(availableFutureSchedule()));
+        stubHospital(HospitalStatus.ACTIVE);
         when(reservationRepository.existsActiveByScheduleId(scheduleId)).thenReturn(true);
 
         // when & then
@@ -153,6 +167,25 @@ class CreateReservationServiceTest {
     }
 
     @Test
+    @DisplayName("利用停止中の病院への申請時、RESERVATION-009例外が発生する")
+    void create_reservation_fail_when_hospital_suspended() {
+        // given
+        CreateReservationRequest request = new CreateReservationRequest(petId, hospitalId, scheduleId, null);
+
+        when(petRepository.findById(petId)).thenReturn(Optional.of(ownedPet()));
+        when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(availableFutureSchedule()));
+        stubHospital(HospitalStatus.SUSPENDED);
+
+        // when & then
+        assertThatThrownBy(() -> createReservationService.execute(userId, request))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                        .isEqualTo(ReservationErrorCode.HOSPITAL_NOT_AVAILABLE.code()));
+
+        verify(reservationRepository, never()).save(any(Reservation.class));
+    }
+
+    @Test
     @DisplayName("BLOCKED状態の予約枠への申請時、RESERVATION-003例外が発生する")
     void create_reservation_fail_when_schedule_blocked() {
         // given
@@ -162,6 +195,7 @@ class CreateReservationServiceTest {
 
         when(petRepository.findById(petId)).thenReturn(Optional.of(ownedPet()));
         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(blockedSchedule));
+        stubHospital(HospitalStatus.ACTIVE);
 
         // when & then
         assertThatThrownBy(() -> createReservationService.execute(userId, request))
@@ -180,6 +214,7 @@ class CreateReservationServiceTest {
 
         when(petRepository.findById(petId)).thenReturn(Optional.of(ownedPet()));
         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(pastSchedule));
+        stubHospital(HospitalStatus.ACTIVE);
 
         // when & then
         assertThatThrownBy(() -> createReservationService.execute(userId, request))

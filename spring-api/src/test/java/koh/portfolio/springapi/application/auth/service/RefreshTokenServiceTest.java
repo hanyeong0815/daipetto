@@ -14,6 +14,7 @@ import koh.portfolio.springapi.infrastructure.security.jwt.JwtProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -96,6 +97,8 @@ class RefreshTokenServiceTest {
                 .thenReturn(newExpiresAt);
         when(refreshTokenRepository.save(any(RefreshToken.class)))
                 .thenReturn(savedRefreshToken);
+        when(refreshTokenRepository.revokeByToken(currentRefreshTokenValue))
+                .thenReturn(1);
 
         RefreshTokenRequest request = new RefreshTokenRequest(currentRefreshTokenValue);
 
@@ -111,6 +114,13 @@ class RefreshTokenServiceTest {
         verify(userRepository).findById(userId);
         verify(refreshTokenRepository).revokeByToken(currentRefreshTokenValue);
         verify(refreshTokenRepository).save(any(RefreshToken.class));
+
+        // 旧Token失効・後続Token発行より先にユーザー行を排他取得していること
+        // （同時実行のlogout/loginの一括revokeと直列化するため）
+        InOrder inOrder = inOrder(userRepository, refreshTokenRepository);
+        inOrder.verify(userRepository).lockForSessionUpdate(userId);
+        inOrder.verify(refreshTokenRepository).revokeByToken(currentRefreshTokenValue);
+        inOrder.verify(refreshTokenRepository).save(any(RefreshToken.class));
     }
 
     @Test
@@ -208,6 +218,60 @@ class RefreshTokenServiceTest {
         verify(refreshTokenRepository).findByToken(requestRefreshToken);
         verify(jwtProvider, never()).getUserId(anyString());
         verify(refreshTokenRepository, never()).revokeByToken(anyString());
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+    }
+
+    @Test
+    @DisplayName("同時リフレッシュで既に消費されていた場合、失効0件となりAUTH-003例外が発生する")
+    void refresh_token_fail_when_already_consumed_concurrently() {
+        // given
+        Long userId = 1L;
+        String requestRefreshToken = "raced-refresh-token";
+        LocalDateTime now = LocalDateTime.now();
+
+        RefreshToken currentRefreshToken = new RefreshToken(
+                1L,
+                userId,
+                requestRefreshToken,
+                now.plusDays(7),
+                false,
+                now.minusDays(1)
+        );
+
+        User user = new User(
+                userId,
+                "test@example.com",
+                "$2a$encoded-password",
+                "hanyeong",
+                Role.ROLE_USER,
+                UserStatus.ACTIVE,
+                now.minusDays(10),
+                now.minusDays(1),
+                null
+        );
+
+        when(refreshTokenRepository.findByToken(requestRefreshToken))
+                .thenReturn(Optional.of(currentRefreshToken));
+        when(jwtProvider.getUserId(requestRefreshToken))
+                .thenReturn(userId);
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
+        // 先行トランザクションが同じトークンを消費済み
+        when(refreshTokenRepository.revokeByToken(requestRefreshToken))
+                .thenReturn(0);
+
+        RefreshTokenRequest request = new RefreshTokenRequest(requestRefreshToken);
+
+        // when & then
+        assertThatThrownBy(() -> refreshTokenService.execute(request))
+                .isInstanceOf(CustomException.class)
+                .satisfies(exception -> {
+                    CustomException customException = (CustomException) exception;
+                    assertThat(customException.getErrorCode().code())
+                            .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN.code());
+                });
+
+        verify(refreshTokenRepository).revokeByToken(requestRefreshToken);
         verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
     }
 

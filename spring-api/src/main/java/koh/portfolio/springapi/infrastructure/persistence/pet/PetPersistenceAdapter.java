@@ -31,6 +31,12 @@ public class PetPersistenceAdapter implements PetRepository {
     }
 
     @Override
+    public Optional<Pet> findByIdIncludingDeleted(Long id) {
+        return petJpaRepository.findById(id)
+                .map(petMapper::toDomain);
+    }
+
+    @Override
     public List<Pet> findAllByUserId(Long userId) {
         return petJpaRepository.findAllByUserIdAndDeletedAtIsNull(userId)
                 .stream().map(petMapper::toDomain).toList();

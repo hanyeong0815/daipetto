@@ -60,7 +60,7 @@ Rules:
 6. Role checks via `@PreAuthorize("hasAuthority('ROLE_...')")`; SecurityConfig only guarantees `authenticated()`.
 7. Owner checks with the `Preconditions.validate` pattern (see `UpdatePetService`).
 8. Domain state transitions are methods returning a new immutable instance (see `Hospital.suspend()`, `Reservation.approve()`); Lombok on Domain: `@Getter`/constructors only, never `@Setter`/`@Data`.
-9. Auth policy: access token 30 min / refresh token 14 days, refresh **rotation** (old token revoked on every use), max 1 active refresh token per user, stored in PostgreSQL (no Redis in MVP).
+9. Auth policy: access token 30 min / refresh token 14 days, refresh **rotation** (old token revoked on every use), max 1 active refresh token per user, stored in PostgreSQL (no Redis in MVP). Login, refresh and logout all take `SELECT ... FOR UPDATE` on the user row (`UserRepository.lockForSessionUpdate`) before touching tokens — without that per-user serialization the bulk revoke misses a successor token inserted by a concurrent refresh (docs/12 §3-11).
 
 ## 4. API common spec
 
@@ -95,7 +95,8 @@ Error messages in Japanese. New codes follow `{DOMAIN}-{seq}`; `{DOMAIN}-999` is
 | RESERVATION-005 | 過去日時の枠 | 400 |
 | RESERVATION-006 | 存在しない予約 | 404 |
 | RESERVATION-007 | 予約者本人でない | 403 |
-| RESERVATION-008 | 不正な状態遷移 | 409 |
+| RESERVATION-008 | 不正な状態遷移（同時実行で負けた側を含む） | 409 |
+| RESERVATION-009 | SUSPENDED病院への予約 | 409 |
 | AUTH/USER/PET/HOSPITAL/RESERVATION-999 | domain default | 500 |
 | VALIDATION-001 | `@Valid` failure (GlobalExceptionHandler) | 400 |
 | SERVER-001 | unhandled exception fallback | 500 |
@@ -126,8 +127,9 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 ## 7. DB / Flyway
 
 - DB changes only via Flyway; logical delete (`deleted_at`) is the default.
-- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations.
-- ⚠ Unmerged `feat/spring/pet-fields` also uses **V4** (`V4__alter_pets_add_columns.sql` — breed/neutered/microchip_number). Renumber one side at merge. New migrations start at **V8**; check every branch for number collisions before numbering.
+- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile).
+- ⚠ Unmerged `feat/spring/pet-fields` also uses **V4** (`V4__alter_pets_add_columns.sql` — breed/neutered/microchip_number). Renumber one side at merge. New migrations start at **V9**; check every branch for number collisions before numbering.
+- ⚠ V8 fails on an existing database that already holds duplicate active reservations for one schedule; clean those rows before applying.
 - Not created yet: health_records / vaccinations / notifications / hospital_admins (definitions in docs/06). Because `hospital_admins` is missing, admin APIs cannot verify "own hospital" — hospital-affiliation checks are intentionally skipped for now.
 
 ## 8. Test rules
@@ -136,8 +138,9 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 - Spring Boot 3.3.13 → use `@MockBean` (never `@MockitoBean`).
 - Controller tests: `@WebMvcTest` + `@AutoConfigureMockMvc(addFilters = false)` + `@Import(GlobalExceptionHandler.class)`. If `JwtAuthenticationFilter` breaks context creation, exclude it via `excludeFilters`. Mock **every** UseCase the controller depends on.
 - Principal is `Long`: use `new UsernamePasswordAuthenticationToken(1L, null, authorities)` — `.with(user(...))` fails.
-- Unit tests mock repositories (no DB; H2/Testcontainers not introduced). Null-tolerant `@Query` bugs escape mock tests — see docs/12 §3-10.
-- Verify: `./gradlew clean test` in `spring-api/` (133 green as of 2026-08-23).
+- Most unit tests mock repositories. H2 **is** available for `@DataJpaTest` (`application-test.yml`, `MODE=PostgreSQL`, `ddl-auto=create-drop`, Flyway disabled) — see `RefreshTokenPersistenceAdapterTest`; Testcontainers is not introduced.
+- Mocked repositories prove neither real SQL nor concurrency. Null-tolerant `@Query` bugs escape them (docs/12 §3-10) and so do races (docs/12 §3-11). No PostgreSQL concurrency test exists yet.
+- Verify: `./gradlew clean test` in `spring-api/` (161 green as of 2026-09-23).
 
 ## 9. Environment
 
@@ -152,16 +155,19 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 Start: `docker compose up -d` (postgres) → `./gradlew bootRun` / `npm run dev`.
 API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (`VITE_API_BASE_URL_WEB` / `_ANDROID` / `_IOS`).
 
-## 10. Status (2026-08-23)
+## 10. Status (2026-09-13)
 
-**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete) · Frontend all screens SC-001〜015 (auth·pet·hospital wired to real API) · ProtectedRoute + role guards · token restore on reload.
+**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · Frontend all screens SC-001〜015 (auth·pet·hospital wired to real API) · ProtectedRoute + role guards · token restore on reload.
 
-**Practice gaps** (user implements these personally — do NOT implement unless explicitly asked; list in TODO.md is authoritative):
-- Reservation reject: `PATCH /api/v1/admin/reservations/{id}/reject` (docs/07 §9-6 marked 未実装).
+**Practice gaps** (user implements these personally — do NOT implement unless explicitly asked; list in TODO.md is authoritative): none outstanding as of this date.
+
+**Review round 2 (Codex REVIEW-002, 2026-09-14)**: R-02〜R-08 accepted as resolved; R-01 stayed open because the conditional revoke did not serialize refresh against the per-user bulk revoke in login/logout. Fixed on 2026-09-23 by locking the user row in all three operations (see §3 rule 9); response in `HANDOFF-003.md`. That also closes the previously deferred concurrent-login residual.
+
+**Review round 2026-09-13** (Codex REVIEW-001 → fixes in `.ai-collab/tasks/2026-09-13-implementation-review/HANDOFF-002.md`): R-01〜R-08 addressed — refresh rotation now single-consumption (conditional revoke must affect exactly 1 row), refresh tokens carry `jti`, access/refresh separated by a `type` claim so a refresh token used as Bearer no longer throws inside the filter, reservations are protected by a DB-level partial unique index plus expected-status conditional updates, SUSPENDED hospitals reject new reservations (RESERVATION-009), deleted pets no longer break reservation history, and the frontend refresh queue settles every waiter on failure. **Still unverified**: real PostgreSQL concurrency runs for the race fixes.
 
 **Not started**: HealthRecord / Vaccination / Notification APIs · schedule auto-generation Scheduler (from `hospital_business_hours`) · vaccine reminder Scheduler · django-api entirely · frontend wiring for reservation/health/notification/admin(reservation·user) screens.
 
-**Unmerged branches**: `feat/spring/pet-fields` (pet columns + docs 06/07 updates), `fix/auth-session-issues` (current).
+**Unmerged branches**: `feat/spring/pet-fields` (pet columns + docs 06/07 updates); verify current unmerged set with `git branch --all` and `git log` before relying on this line — not re-audited in this update.
 
 ## 11. Workflow rules
 

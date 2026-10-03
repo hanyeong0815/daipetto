@@ -1,6 +1,7 @@
 package koh.portfolio.springapi.application.reservation.service;
 
 import koh.portfolio.springapi.application.reservation.usecase.CompleteReservationUseCase;
+import koh.portfolio.springapi.common.exception.Preconditions;
 import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
 import koh.portfolio.springapi.domain.reservation.model.Reservation;
 import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
@@ -19,6 +20,12 @@ public class CompleteReservationService implements CompleteReservationUseCase {
         Reservation reservation = reservationRepository.findById(reservationId)
                 .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::defaultException);
 
-        reservationRepository.save(reservation.complete());
+        Reservation completed = reservation.complete();
+
+        Preconditions.validate(
+                reservationRepository.updateStatus(
+                        reservation.getId(), reservation.getStatus(), completed.getStatus(), completed.getUpdatedAt()),
+                ReservationErrorCode.INVALID_STATE_TRANSITION
+        );
     }
 }

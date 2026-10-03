@@ -60,4 +60,41 @@ class JwtProviderTest {
         // then
         assertThat(result).isFalse();
     }
+
+    @Test
+    @DisplayName("同一ユーザー・同一秒に連続発行してもRefresh Tokenは重複しない")
+    void refresh_tokens_issued_in_same_second_are_unique() {
+        // given
+        Long userId = 1L;
+
+        // when
+        String first = jwtProvider.createRefreshToken(userId);
+        String second = jwtProvider.createRefreshToken(userId);
+
+        // then
+        assertThat(first).isNotEqualTo(second);
+        assertThat(jwtProvider.getUserId(first)).isEqualTo(userId);
+        assertThat(jwtProvider.getUserId(second)).isEqualTo(userId);
+    }
+
+    @Test
+    @DisplayName("Refresh TokenはvalidateAccessTokenでfalseを返却する")
+    void refresh_token_is_not_accepted_as_access_token() {
+        // given
+        String refreshToken = jwtProvider.createRefreshToken(1L);
+
+        // when & then
+        assertThat(jwtProvider.validateToken(refreshToken)).isTrue();
+        assertThat(jwtProvider.validateAccessToken(refreshToken)).isFalse();
+    }
+
+    @Test
+    @DisplayName("Access TokenはvalidateAccessTokenでtrueを返却する")
+    void access_token_is_accepted_as_access_token() {
+        // given
+        String accessToken = jwtProvider.createAccessToken(1L, "test@example.com", Role.ROLE_USER);
+
+        // when & then
+        assertThat(jwtProvider.validateAccessToken(accessToken)).isTrue();
+    }
 }

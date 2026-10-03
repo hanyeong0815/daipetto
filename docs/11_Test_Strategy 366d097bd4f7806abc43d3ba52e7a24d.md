@@ -10,7 +10,7 @@
 | Document | Test Strategy |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-08-23 |
+| Updated | 2026-09-13 |
 
 ---
 
@@ -126,6 +126,12 @@ flowchart TB
 | AUTH-T005 | Refresh Token再発行 | 新Access Token発行 |
 | AUTH-T006 | 失効Refresh Token利用 | AUTH-003返却 |
 | AUTH-T007 | ログアウト | Refresh Token revoked=true |
+| AUTH-T008 | 同時リフレッシュ（既に消費済みToken） | 失効0件 → AUTH-003返却 |
+| AUTH-T009 | Refresh TokenをAuthorization Bearerに使用 | 認証情報を設定せず例外も発生しない（401 AUTH-001） |
+| AUTH-T010 | 同一ユーザー・同一秒のRefresh Token連続発行 | Token文字列が重複しない（`jti`） |
+| AUTH-T011 | 再発行の最中にログアウト | ログアウト後に有効なRefresh Tokenが残らない |
+| AUTH-T012 | 再発行の最中にログイン | 有効なRefresh Tokenはログイン発行分の1本のみ |
+| AUTH-T013 | 同時ログイン | 直列化され、有効なRefresh Tokenは1本のみ |
 
 ---
 
@@ -188,6 +194,8 @@ flowchart TB
 | RSV-T004 | 予約キャンセル | CANCELLED更新 |
 | RSV-T005 | COMPLETED予約キャンセル | 状態遷移エラー |
 | RSV-T006 | 予約詳細取得 | 正常取得 |
+| RSV-T007 | SUSPENDED病院への予約申請 | RESERVATION-009 |
+| RSV-T008 | 論理削除済みペットを含む予約一覧取得 | 当該予約も他の予約も表示される |
 
 ---
 
@@ -203,6 +211,8 @@ flowchart TB
 | STATE-T006 | COMPLETED | 承認 | 不正遷移エラー |
 | STATE-T007 | REJECTED | 承認 | 不正遷移エラー |
 | STATE-T008 | CANCELLED | 承認 | 不正遷移エラー |
+| STATE-T009 | REQUESTED（直前に他の遷移が成立） | 承認 / 却下 | 条件付き更新0件 → RESERVATION-008 |
+| STATE-T010 | APPROVED（直前に他の遷移が成立） | 診療完了 / キャンセル | 条件付き更新0件 → RESERVATION-008 |
 
 ---
 

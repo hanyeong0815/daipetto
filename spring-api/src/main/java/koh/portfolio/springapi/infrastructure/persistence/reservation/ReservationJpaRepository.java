@@ -2,7 +2,11 @@ package koh.portfolio.springapi.infrastructure.persistence.reservation;
 
 import koh.portfolio.springapi.domain.reservation.model.ReservationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -12,4 +16,14 @@ public interface ReservationJpaRepository extends JpaRepository<ReservationEntit
     List<ReservationEntity> findAllByUserIdAndDeletedAtIsNull(Long userId);
 
     boolean existsByScheduleIdAndStatusInAndDeletedAtIsNull(Long scheduleId, List<ReservationStatus> statuses);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update ReservationEntity set status = :newStatus, updatedAt = :updatedAt "
+            + "where id = :id and status = :expectedStatus and deletedAt is null")
+    int updateStatus(
+            @Param("id") Long id,
+            @Param("expectedStatus") ReservationStatus expectedStatus,
+            @Param("newStatus") ReservationStatus newStatus,
+            @Param("updatedAt") LocalDateTime updatedAt
+    );
 }

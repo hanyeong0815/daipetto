@@ -36,8 +36,27 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 })
 
 // レスポンスインターセプター: 401時にトークンリフレッシュ
+// リフレッシュ失敗時も待機中のリクエストを必ず解決させるため、rejectも保持する
+type PendingRequest = {
+  resolve: (token: string) => void
+  reject: (reason: unknown) => void
+}
+
 let isRefreshing = false
-let pendingRequests: Array<(token: string) => void> = []
+let pendingRequests: PendingRequest[] = []
+
+function settlePendingRequests(token: string | null, error?: unknown) {
+  const waiting = pendingRequests
+  pendingRequests = []
+
+  waiting.forEach(({ resolve, reject }) => {
+    if (token) {
+      resolve(token)
+    } else {
+      reject(error)
+    }
+  })
+}
 
 apiClient.interceptors.response.use(
   (response) => response,
@@ -55,9 +74,11 @@ apiClient.interceptors.response.use(
     }
 
     if (isRefreshing) {
-      return new Promise<string>((resolve) => {
-        pendingRequests.push(resolve)
+      return new Promise<string>((resolve, reject) => {
+        pendingRequests.push({ resolve, reject })
       }).then((newToken) => {
+        // 再試行後にもう一度401になった場合、この分岐に戻らず即座に失敗させる
+        originalRequest._retry = true
         if (originalRequest.headers) {
           originalRequest.headers.Authorization = `Bearer ${newToken}`
         }
@@ -76,16 +97,15 @@ apiClient.interceptors.response.use(
       const { accessToken, refreshToken: newRefreshToken } = data.data
       setTokens(accessToken, newRefreshToken)
 
-      pendingRequests.forEach((resolve) => resolve(accessToken))
-      pendingRequests = []
+      settlePendingRequests(accessToken)
 
       if (originalRequest.headers) {
         originalRequest.headers.Authorization = `Bearer ${accessToken}`
       }
       return apiClient(originalRequest)
-    } catch {
+    } catch (refreshError) {
       clearAuth()
-      pendingRequests = []
+      settlePendingRequests(null, refreshError)
       return Promise.reject(error)
     } finally {
       isRefreshing = false

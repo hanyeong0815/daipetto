@@ -1,6 +1,6 @@
 # Daipetto — 作業TODOリスト
 
-最終更新: 2026-08-23
+最終更新: 2026-09-23
 
 ---
 
@@ -19,12 +19,29 @@
 - [x] ペット CRUD API (`POST / GET list / GET detail / PATCH / DELETE /api/v1/pets`)
   - owner チェックを `Preconditions.validate` パターンで統一済み
 - [x] Hospital・HospitalSchedule・HospitalBusinessHours CRUD API（2026-08-02〜08-09実装、詳細は本ファイル下部参照）
-- [x] Reservation API（2026-08-23実装。予約却下`reject`のみ練習用に未実装、下記参照）
+- [x] Reservation API（2026-08-23実装、2026-09-13に予約却下`reject`追加で完成）
   - `V7__create_reservations.sql`、`domain/reservation`・`application/reservation`・`infrastructure/persistence/reservation`・`presentation/reservation` 一式
-  - 実装: `POST /api/v1/reservations`（申請）・`GET /api/v1/reservations`（一覧）・`GET /api/v1/reservations/{id}`（詳細）・`PATCH /api/v1/reservations/{id}/cancel`（キャンセル）・`PATCH /api/v1/admin/reservations/{id}/approve`（承認）・`PATCH /api/v1/admin/reservations/{id}/complete`（診療完了）
+  - 実装: `POST /api/v1/reservations`（申請）・`GET /api/v1/reservations`（一覧）・`GET /api/v1/reservations/{id}`（詳細）・`PATCH /api/v1/reservations/{id}/cancel`（キャンセル）・`PATCH /api/v1/admin/reservations/{id}/approve`（承認）・`PATCH /api/v1/admin/reservations/{id}/complete`（診療完了）・`PATCH /api/v1/admin/reservations/{id}/reject`（却下、ユーザー実装＋Claude Codeレビュー）
   - `ReservationErrorCode`: RESERVATION-001〜005（`docs/07_API_Design` §9-3準拠）に加え、実装時に006（予約が見つからない）・007（予約者本人ではない）・008（不正な状態遷移）を新規追加
-  - 状態遷移（承認・キャンセル・完了）は `Reservation` ドメインモデル内のメソッドで制御（`Hospital.suspend()`と同じ不変オブジェクトパターン）
-  - テスト31件追加（Service 22件・Mapper 2件・Controller 7件）、`./gradlew clean test`で133件全green
+  - 状態遷移（承認・キャンセル・完了・却下）は `Reservation` ドメインモデル内のメソッドで制御（`Hospital.suspend()`と同じ不変オブジェクトパターン）
+  - テスト37件追加（Service 28件・Mapper 2件・Controller 7件）、`./gradlew clean test`で140件全green
+  - **reject実装レビューで発見・修正したバグ（2026-09-13, Claude Code）**: `Reservation.reject()`がREQUESTED/APPROVED/CANCELLEDの3状態から却下可能になっていた（`docs/07_API_Design` §9-6・`AGENTS.md` §6の「REQUESTED→REJECTEDのみ」に反する）。REQUESTED限定に修正し、APPROVED/CANCELLED/COMPLETED/REJECTED各状態からの却下を拒否する回帰テストを追加。`ReservationAdminControllerTest`の`reject_reservation_success`の`@DisplayName`が「診療完了成功」のコピペ違いだったのも修正
+  - 却下理由（`reason`）は実装せず: `reservations`にカラムが無く設計ギャップだったため、docsからRequest例を削除しスコープ外と明記
+
+- [x] Codexコードレビュー指摘（REVIEW-001、2026-09-13）の対応 — Claude Code
+  - R-01 Refresh Token消費の非原子性: 条件付き失効の**更新件数が1件**の呼び出しのみ後続発行を許可（0件はAUTH-003）。`RefreshTokenRepository.revokeByToken`をintに変更
+  - R-02 同一秒のRefresh Token重複: `jti`(UUID)を付与（`token`のUNIQUE制約違反による500を回避）
+  - R-03 二重予約: `V8__add_reservations_active_schedule_unique_index.sql`（部分UNIQUE）追加＋制約違反をRESERVATION-001に変換（`saveAndFlush`で検知）
+  - R-04 終了状態の上書き: 承認・却下・完了・キャンセルを「読み取り時点の状態」を条件にした条件付きUPDATEへ変更。0件更新はRESERVATION-008。`RejectReservationService`に`@Transactional`追加
+  - R-05 SUSPENDED病院への予約: `CreateReservationService`で病院状態を検証、`RESERVATION-009`新規追加
+  - R-06 論理削除ペットで予約一覧が壊れる: `PetRepository.findByIdIncludingDeleted`を追加し履歴表示に使用
+  - R-07 Refresh TokenをBearerに使うとフィルターで例外: `type` claimでAccess Token専用に検証（`validateAccessToken`）
+  - R-08 リフレッシュ失敗時に待機リクエストが未解決: キューに`reject`も保持して全waiterをsettle
+  - テスト17件追加（計157件green）。詳細は `.ai-collab/tasks/2026-09-13-implementation-review/HANDOFF-002.md`
+  - [ ] **残課題**: 実PostgreSQLでの同時実行テスト（R-01/R-03/R-04）は未実施。モックテストでは競合を検証できない（`docs/12` §3-11）
+  - [x] **R-01の残り（REVIEW-002指摘、2026-09-23対応）**: refreshとlogin/logoutの一括revokeが直列化されておらず、ログアウト後も後続Tokenが生き残る（＝セッションが残る）問題。login/refresh/logoutの3操作すべてでTokenを触る前に`UserRepository.lockForSessionUpdate`（ユーザー行の`SELECT ... FOR UPDATE`）を取得して直列化。保留していた同時ログインの残課題もこれで解消
+  - [x] REVIEW-002の非ブロッキング所見: `ReservationPersistenceAdapter`が全ての整合性違反をRESERVATION-001に変換していた点を、`uq_reservations_active_schedule`違反のみに限定（他はそのまま伝播）
+  - [ ] **残課題**: 実PostgreSQLでの同時実行検証（refresh×logout / refresh×login / 同時ログイン）は、Docker未起動のため2026-09-23時点で未実施。検証スクリプトは用意済み
 
 ### Frontend
 - [x] プロジェクト初期構築 (React 18 + TypeScript + Vite + Tailwind CSS)
@@ -117,12 +134,8 @@
 - [x] `PATCH /api/v1/admin/reservations/{id}/approve` — 予約承認（HOSPITAL_ADMIN、§9-5）
 - [x] `PATCH /api/v1/admin/reservations/{id}/complete` — 診療完了（HOSPITAL_ADMIN、§9-7）
 - [x] RESERVATION-001〜008 ErrorCode 追加（001〜005はdocs/07_API_Design §9-3準拠、006〜008は実装時に新規追加。ルート`AGENTS.md` §5参照）
-- [x] Reservation 関連テスト（Service 20件・Mapper 2件・Controller 7件、計29件）
-
-**あえて未実装のまま残した項目（練習用、ユーザーが実装予定）:**
-- [ ] `PATCH /api/v1/admin/reservations/{id}/reject` — 予約却下（HOSPITAL_ADMIN、docs/07_API_Design §9-6に「（未実装）」表示済み）
-  - 参考パターン: `ApproveReservationService`・`CancelReservationService`（`application/reservation/service/`）とほぼ同じ構造（findById → 状態チェック → save）。却下理由（`reason`）を永続化するかは設計判断が必要（現状`reservations`テーブルに保存先カラム無し。永続化するなら`docs/06_ERD`にカラム追加が必要）
-  - `ReservationErrorCode.RESERVATION_NOT_FOUND`（RESERVATION-006）・`INVALID_STATE_TRANSITION`（RESERVATION-008）は実装済みのためそのまま使える
+- [x] `PATCH /api/v1/admin/reservations/{id}/reject` — 予約却下（HOSPITAL_ADMIN/SYSTEM_ADMIN、docs/07_API_Design §9-6。2026-09-13、ユーザー実装＋Claude Codeレビューで完成。詳細は上部の完了済みセクション参照）
+- [x] Reservation 関連テスト（Service 28件・Mapper 2件・Controller 7件、計37件）
 
 ### Notification API
 - [ ] `Notification` ドメイン・エンティティ・テーブル作成

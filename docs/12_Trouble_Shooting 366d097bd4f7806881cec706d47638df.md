@@ -10,7 +10,7 @@
 | Document | Trouble Shooting |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-08-23 |
+| Updated | 2026-09-13 |
 
 ---
 
@@ -498,6 +498,48 @@ Hibernate 6がnull値のバインドパラメータの型を推論できず、Po
 ## **教訓**
 
 Service層のモックテストだけでは検出できないため、null許容パラメータを含む`@Query`には最低限1件、実DBに接続する統合テスト（`@DataJpaTest`等）を追加することが望ましい。
+
+---
+
+# **3-11. モックテストを通過する競合状態（2026-09-13 コードレビュー指摘）**
+
+## **症状**
+
+単体テストは全件green、手動操作でも再現しないが、同時リクエストで以下が成立してしまう。
+
+| 事象 | 内容 |
+| --- | --- |
+| Refresh Token二重使用 | 2つのリクエストが同じ未失効Tokenを読み、両方が後続Tokenを発行できる |
+| ログアウトしてもセッションが残る | 再発行が旧Tokenを失効させてから後続Tokenをinsertする間にログアウトの一括revokeが走ると、後続Tokenがログアウトのスナップショットに入らず失効対象から漏れる（同様にログインと競合すると有効Tokenが2本残る） |
+| Refresh Token重複 | 同一ユーザー・同一秒の再発行で同じ署名文字列となり、`token`のUNIQUE制約違反で500 |
+| 二重予約 | 両方が`existsActiveByScheduleId=false`を観測し、同一予約枠に2件のREQUESTEDが作成される |
+| 終了状態の上書き | 承認と却下が同時に走ると、後から保存した側がREJECTEDをAPPROVEDで上書きする |
+
+---
+
+## **原因**
+
+「読み取り → アプリ側で判定 → 保存」の3ステップが原子的でない。トランザクション境界（`@Transactional`）はステップ全体の排他を保証しない。また、条件付きUPDATEの戻り値（更新件数）を捨てていたため、0件更新でも処理が続行していた。
+
+---
+
+## **対応方法**
+
+判定をDB側の1文に寄せ、更新件数で勝敗を判定する。
+
+| 対象 | 対応 |
+| --- | --- |
+| Refresh Token消費 | `UPDATE ... WHERE token=? AND revoked=false`の更新件数が1件の呼び出しのみ後続発行を許可（0件はAUTH-003） |
+| ログイン／再発行／ログアウトの競合 | 3操作ともTokenを触る前に対象ユーザー行を`SELECT ... FOR UPDATE`で排他取得し、ユーザー単位で直列化する（`09_Security_Design` §3-5） |
+| Refresh Token重複 | 発行ごとに`jti`（UUID）を付与 |
+| 二重予約 | 部分UNIQUE INDEX `uq_reservations_active_schedule`（`06_ERD` §17）を追加し、制約違反をRESERVATION-001に変換 |
+| 状態遷移 | `UPDATE ... WHERE id=? AND status=<読み取り時点の状態>`の条件付き更新。0件はRESERVATION-008 |
+
+---
+
+## **教訓**
+
+Repositoryをモックした単体テストは「同時実行」を一切検証しない。`docs/12` §3-10（実DB接続でしか出ないSQLの問題）と同種で、モックが通ることは正しさの根拠にならない。一意制約・条件付きUPDATEの更新件数など、**DBが保証する不変条件**として表現できるものはDB側に寄せる。なお本項の修正後も、実PostgreSQLでの同時実行テストは未実施（残課題）。
 
 ---
 

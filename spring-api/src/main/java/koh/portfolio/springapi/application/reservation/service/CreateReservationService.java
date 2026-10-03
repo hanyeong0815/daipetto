@@ -4,8 +4,11 @@ import koh.portfolio.springapi.application.reservation.dto.ReservationDto.Create
 import koh.portfolio.springapi.application.reservation.dto.ReservationDto.CreateReservationResponse;
 import koh.portfolio.springapi.application.reservation.usecase.CreateReservationUseCase;
 import koh.portfolio.springapi.common.exception.Preconditions;
+import koh.portfolio.springapi.domain.hospital.model.Hospital;
 import koh.portfolio.springapi.domain.hospital.model.HospitalSchedule;
 import koh.portfolio.springapi.domain.hospital.model.HospitalScheduleStatus;
+import koh.portfolio.springapi.domain.hospital.model.HospitalStatus;
+import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
 import koh.portfolio.springapi.domain.hospital.port.HospitalScheduleRepository;
 import koh.portfolio.springapi.domain.pet.model.Pet;
 import koh.portfolio.springapi.domain.pet.port.PetRepository;
@@ -22,6 +25,7 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class CreateReservationService implements CreateReservationUseCase {
     private final PetRepository petRepository;
+    private final HospitalRepository hospitalRepository;
     private final HospitalScheduleRepository hospitalScheduleRepository;
     private final ReservationRepository reservationRepository;
 
@@ -35,6 +39,14 @@ public class CreateReservationService implements CreateReservationUseCase {
         Preconditions.validate(
                 schedule != null && schedule.getHospitalId().equals(request.hospitalId()),
                 ReservationErrorCode.RESERVATION_SCHEDULE_NOT_FOUND
+        );
+
+        // SUSPENDED病院は新規予約不可（08_State_Design §4-3）。
+        // 検索一覧から除外されるだけではAPI境界で防げない
+        Hospital hospital = hospitalRepository.findById(request.hospitalId()).orElse(null);
+        Preconditions.validate(
+                hospital != null && hospital.getStatus() == HospitalStatus.ACTIVE,
+                ReservationErrorCode.HOSPITAL_NOT_AVAILABLE
         );
 
         Preconditions.validate(schedule.getStatus() != HospitalScheduleStatus.BLOCKED, ReservationErrorCode.RESERVATION_SCHEDULE_BLOCKED);
