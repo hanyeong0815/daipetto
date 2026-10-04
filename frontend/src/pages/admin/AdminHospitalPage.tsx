@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useAuthStore } from '../../stores/authStore'
 import { useHospitalStore } from '../../stores/hospitalStore'
 import { hospitalApi } from '../../api/hospital'
+import { extractErrorMessage } from '../../api/client'
+import { formatTime } from '../../utils/date'
 import type { DayOfWeek, HospitalBusinessHours, HospitalSchedule } from '../../types'
 
 const DAY_ORDER: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
@@ -31,12 +33,6 @@ const emptyBusinessHoursForm: BusinessHoursFormState = {
   slotDurationMinutes: '30',
 }
 
-function extractErrorMessage(err: unknown, fallback: string): string {
-  return (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback
-}
-
-// バックエンドは "HH:mm:ss" 形式で返すため表示用に秒を落とす
-const formatTime = (time: string) => time.slice(0, 5)
 
 export default function AdminHospitalPage() {
   const { user } = useAuthStore()

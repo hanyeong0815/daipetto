@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { usePetStore } from '../stores/petStore'
+import { PET_SPECIES_LABEL } from '../types'
 
 export default function MyPetPage() {
-  const { pets, isLoading, fetchPets } = usePetStore()
+  const { pets, isLoading, error, fetchPets } = usePetStore()
 
   useEffect(() => {
     fetchPets()
@@ -32,7 +33,14 @@ export default function MyPetPage() {
         </Link>
       </div>
 
-      {pets.length === 0 ? (
+      {error && pets.length === 0 ? (
+        // 取得失敗を「ペット未登録」と見せない
+        <div className="flex items-center gap-2 bg-error-red/10 border border-error-red/20 text-error-red px-sm py-3 rounded-lg font-body-md text-body-md">
+          <span className="material-symbols-outlined text-[18px] flex-shrink-0">error</span>
+          <span className="flex-grow">{error}</span>
+          <button type="button" onClick={() => fetchPets()} className="font-button-text text-button-text underline flex-shrink-0">再試行</button>
+        </div>
+      ) : pets.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-xl gap-md text-center mt-xl">
           <div className="w-20 h-20 rounded-full bg-surface-container-low flex items-center justify-center">
             <span className="material-symbols-outlined text-neutral-gray-600 text-[40px]">pets</span>
@@ -70,7 +78,7 @@ export default function MyPetPage() {
                   <span className="material-symbols-outlined text-neutral-gray-600">chevron_right</span>
                 </div>
                 <p className="font-body-md text-body-md text-neutral-gray-600 mt-0.5 truncate">
-                  {pet.breed ?? '—'} · {pet.gender === 'MALE' ? 'オス' : 'メス'}
+                  {PET_SPECIES_LABEL[pet.species] ?? '—'}
                 </p>
                 <div className="flex items-center gap-2 mt-3">
                   <span className="inline-flex items-center gap-1 text-primary border border-primary/20 bg-surface-bright font-label-md text-label-md px-2.5 py-1 rounded-full">

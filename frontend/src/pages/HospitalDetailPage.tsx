@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useHospitalStore } from '../stores/hospitalStore'
 import type { DayOfWeek } from '../types'
+import { formatTime } from '../utils/date'
 
 const DAY_ORDER: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
 const DAY_LABEL: Record<DayOfWeek, string> = {
@@ -13,9 +14,6 @@ const DAY_LABEL: Record<DayOfWeek, string> = {
   SATURDAY: '土曜日',
   SUNDAY: '日曜日',
 }
-
-// バックエンドは "HH:mm:ss" 形式で返すため表示用に秒を落とす
-const formatTime = (time: string) => time.slice(0, 5)
 
 export default function HospitalDetailPage() {
   const { hospitalId } = useParams()

@@ -1,4 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
+import { authApi } from '../../api/auth'
+import { useAuthStore } from '../../stores/authStore'
 
 interface TopAppBarProps {
   variant?: 'main' | 'detail'
@@ -15,6 +17,15 @@ const mainNavItems = [
 
 export default function TopAppBar({ variant = 'main', title }: TopAppBarProps) {
   const navigate = useNavigate()
+
+  const handleLogout = async () => {
+    if (!window.confirm('ログアウトしますか？')) return
+    const { refreshToken, clearAuth } = useAuthStore.getState()
+    // サーバー側の失効に失敗しても、端末のトークンは必ず破棄してログイン画面へ戻す
+    if (refreshToken) await authApi.logout(refreshToken).catch(() => undefined)
+    clearAuth()
+    navigate('/login', { replace: true })
+  }
 
   if (variant === 'detail') {
     return (
@@ -77,12 +88,14 @@ export default function TopAppBar({ variant = 'main', title }: TopAppBarProps) {
               </span>
             )}
           </NavLink>
-          <NavLink
-            to="/profile"
+          <button
+            onClick={handleLogout}
+            aria-label="ログアウト"
+            title="ログアウト"
             className="w-9 h-9 rounded-full overflow-hidden border border-outline-variant flex items-center justify-center bg-secondary-container"
           >
-            <span className="material-symbols-outlined text-[20px] text-secondary">person</span>
-          </NavLink>
+            <span className="material-symbols-outlined text-[20px] text-secondary">logout</span>
+          </button>
         </div>
       </div>
     </header>

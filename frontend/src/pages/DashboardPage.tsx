@@ -1,15 +1,70 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { usePetStore } from '../stores/petStore'
+import { reservationApi } from '../api/reservation'
+import { healthRecordApi } from '../api/healthRecord'
+import { daysFromToday, formatTime, isUpcoming } from '../utils/date'
+import { PET_SPECIES_LABEL, type HealthRecord, type ReservationSummary } from '../types'
+
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
+
+// "2026-10-25" → "10月25日（日）"。日付だけをUTCで解釈し、端末のタイムゾーンに依存させない
+function formatDateJa(date: string) {
+  const d = new Date(`${date}T00:00:00Z`)
+  return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日（${WEEKDAYS[d.getUTCDay()]}）`
+}
+
+const relativeDay = (date: string) => {
+  const diff = -daysFromToday(date)
+  return diff <= 0 ? '今日' : `${diff}日前`
+}
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user)
   const { pets, fetchPets } = usePetStore()
+  const [nextReservation, setNextReservation] = useState<ReservationSummary | null>(null)
+  const [reservationError, setReservationError] = useState(false)
+  const [records, setRecords] = useState<HealthRecord[]>([])
+  const [recordsError, setRecordsError] = useState(false)
+  const firstPetId = pets[0]?.id
 
   useEffect(() => {
     fetchPets()
+    reservationApi
+      .getList()
+      .then((res) => {
+        // 「次の予約」は開始がJSTの現在より後のもの（当日でも開始時刻を過ぎたものは含めない）
+        const upcoming = (res.data ?? [])
+          .filter((r) => (r.status === 'REQUESTED' || r.status === 'APPROVED') && isUpcoming(r.availableDate, r.startTime))
+          .sort((a, b) => `${a.availableDate}${a.startTime}`.localeCompare(`${b.availableDate}${b.startTime}`))
+        setNextReservation(upcoming[0] ?? null)
+      })
+      .catch(() => setReservationError(true))
   }, [fetchPets])
+
+  useEffect(() => {
+    if (firstPetId === undefined) return
+    let active = true
+    setRecordsError(false)
+    healthRecordApi
+      .getList(firstPetId)
+      .then((res) => active && setRecords(res.data ?? []))
+      .catch(() => active && setRecordsError(true))
+    return () => {
+      active = false
+    }
+  }, [firstPetId])
+
+  // 一覧は記録日の新しい順（docs/07 §6-1）
+  const weights = records.filter((r) => r.weight != null).slice(0, 5).map((r) => Number(r.weight)).reverse()
+  const latestWeight = weights.length > 0 ? weights[weights.length - 1] : null
+  const weightDiff = latestWeight !== null && weights.length >= 2 ? latestWeight - weights[weights.length - 2] : null
+  // 最小〜最大を30〜100%に割り当てる（最大値比だと数百gの変化が見えない）
+  const minWeight = Math.min(...weights)
+  const maxWeight = Math.max(...weights)
+  const barHeight = (w: number) => (maxWeight === minWeight ? 100 : 30 + (70 * (w - minWeight)) / (maxWeight - minWeight))
+  const symptoms = records.filter((r) => r.symptom).slice(0, 2)
 
   return (
     <div className="px-container-margin pt-lg pb-xl flex flex-col gap-lg">
@@ -37,29 +92,35 @@ export default function DashboardPage() {
                 次の予約
               </span>
             </div>
-            <span className="font-label-md text-label-md text-neutral-gray-600 bg-surface-container-low px-2 py-1 rounded-lg">
-              あと2日
-            </span>
-          </div>
-          <div className="pl-2">
-            <h3 className="font-headline-md text-headline-md text-neutral-gray-900 mb-1">
-              10月25日（水）午後2:00
-            </h3>
-            <p className="font-body-lg text-body-lg text-on-surface-variant mb-4">
-              幸せ動物病院 - フィラリア予防接種
-            </p>
-            <div className="flex justify-between items-center bg-neutral-gray-50 p-3 rounded-lg border border-neutral-gray-100">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-secondary-container overflow-hidden flex items-center justify-center">
-                  <span className="material-symbols-outlined text-secondary text-[16px]">pets</span>
-                </div>
-                <span className="font-body-md text-body-md text-neutral-gray-900 font-medium">ボリ</span>
-              </div>
-              <span className="font-label-md text-label-md text-neutral-gray-600 flex items-center gap-1">
-                詳細を見る <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+            {nextReservation && (
+              <span className="font-label-md text-label-md text-neutral-gray-600 bg-surface-container-low px-2 py-1 rounded-lg">
+                {daysFromToday(nextReservation.availableDate) === 0 ? '今日' : `あと${daysFromToday(nextReservation.availableDate)}日`}
               </span>
-            </div>
+            )}
           </div>
+          {nextReservation ? (
+            <div className="pl-2">
+              <h3 className="font-headline-md text-headline-md text-neutral-gray-900 mb-1">
+                {formatDateJa(nextReservation.availableDate)} {formatTime(nextReservation.startTime)}
+              </h3>
+              <p className="font-body-lg text-body-lg text-on-surface-variant mb-4">
+                {nextReservation.hospitalName} - {nextReservation.status === 'APPROVED' ? '予約確定' : '承認待ち'}
+              </p>
+              <div className="flex justify-between items-center bg-neutral-gray-50 p-3 rounded-lg border border-neutral-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-secondary-container overflow-hidden flex items-center justify-center">
+                    <span className="material-symbols-outlined text-secondary text-[16px]">pets</span>
+                  </div>
+                  <span className="font-body-md text-body-md text-neutral-gray-900 font-medium">{nextReservation.petName}</span>
+                </div>
+                <span className="font-label-md text-label-md text-neutral-gray-600 flex items-center gap-1">
+                  詳細を見る <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                </span>
+              </div>
+            </div>
+          ) : (
+            <p className="pl-2 font-body-md text-body-md text-neutral-gray-600">{reservationError ? '予約情報を取得できませんでした。' : '予定されている予約はありません。'}</p>
+          )}
         </Link>
       </section>
 
@@ -99,7 +160,7 @@ export default function DashboardPage() {
                     <span className="material-symbols-outlined text-neutral-gray-600">chevron_right</span>
                   </div>
                   <p className="font-body-md text-body-md text-neutral-gray-600 mt-0.5">
-                    {pet.breed ?? '—'} · {pet.gender === 'MALE' ? 'オス' : 'メス'}
+                    {PET_SPECIES_LABEL[pet.species] ?? '—'}
                     {pet.weight ? ` · ${pet.weight}kg` : ''}
                   </p>
                   <div className="flex gap-2 mt-3">
@@ -115,9 +176,10 @@ export default function DashboardPage() {
         )}
       </section>
 
-      {/* 健康サマリー */}
+      {/* 健康サマリー（先頭のペットの健康記録から表示） */}
+      {firstPetId !== undefined && (
       <section>
-        <h2 className="font-headline-md text-headline-md text-neutral-gray-900 mb-sm">健康サマリー</h2>
+        <h2 className="font-headline-md text-headline-md text-neutral-gray-900 mb-sm">健康サマリー（{pets[0].name}）</h2>
         <div className="grid grid-cols-2 gap-gutter">
           {/* 体重推移 */}
           <div className="bg-surface-container-lowest rounded-[16px] p-md shadow-[0px_4px_20px_rgba(0,0,0,0.05)] border border-neutral-gray-100 flex flex-col justify-between aspect-square">
@@ -129,21 +191,28 @@ export default function DashboardPage() {
                 <span className="font-label-md text-label-md text-neutral-gray-600">体重変化</span>
               </div>
               <span className="font-headline-lg-mobile text-headline-lg-mobile text-neutral-gray-900">
-                28.5<span className="font-body-md text-body-md text-neutral-gray-600 ml-0.5">kg</span>
+                {latestWeight ?? '—'}<span className="font-body-md text-body-md text-neutral-gray-600 ml-0.5">kg</span>
               </span>
             </div>
+            {/* 直近5件の体重（古い順） */}
             <div className="w-full h-12 mt-auto flex items-end gap-1.5 justify-between">
-              {[40, 45, 42, 55, 60].map((h, i) => (
+              {weights.map((w, i) => (
                 <div
                   key={i}
-                  className={`w-full rounded-t-md ${i === 4 ? 'bg-success-blue' : 'bg-neutral-gray-100'}`}
-                  style={{ height: `${h}%` }}
+                  className={`w-full rounded-t-md ${i === weights.length - 1 ? 'bg-success-blue' : 'bg-neutral-gray-100'}`}
+                  style={{ height: `${barHeight(w)}%` }}
                 />
               ))}
             </div>
             <p className="font-label-md text-label-md text-success-blue mt-2 flex items-center gap-0.5">
-              <span className="material-symbols-outlined text-[12px]">trending_up</span>
-              +0.2kg（先月比）
+              {weightDiff === null ? (
+                recordsError ? '健康記録を取得できませんでした' : '体重の記録がまだありません'
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-[12px]">{weightDiff >= 0 ? 'trending_up' : 'trending_down'}</span>
+                  {weightDiff >= 0 ? '+' : ''}{weightDiff.toFixed(2)}kg（前回比）
+                </>
+              )}
             </p>
           </div>
 
@@ -156,25 +225,24 @@ export default function DashboardPage() {
                 </div>
                 <span className="font-label-md text-label-md text-neutral-gray-600">最近の症状</span>
               </div>
-              <ul className="flex flex-col gap-2.5">
-                <li className="flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-warning-yellow mt-1.5 flex-shrink-0" />
-                  <div>
-                    <p className="font-body-md text-body-md text-neutral-gray-900 leading-tight">軽い咳</p>
-                    <p className="font-label-md text-label-md text-neutral-gray-600 mt-0.5">2日前</p>
-                  </div>
-                </li>
-                <li className="flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-neutral-gray-100 mt-1.5 flex-shrink-0" />
-                  <div>
-                    <p className="font-body-md text-body-md text-neutral-gray-600 leading-tight">食欲不振</p>
-                    <p className="font-label-md text-label-md text-neutral-gray-600 mt-0.5">1週間前</p>
-                  </div>
-                </li>
-              </ul>
+              {symptoms.length === 0 ? (
+                <p className="font-body-md text-body-md text-neutral-gray-600">{recordsError ? '健康記録を取得できませんでした。' : '記録された症状はありません。'}</p>
+              ) : (
+                <ul className="flex flex-col gap-2.5">
+                  {symptoms.map((r, i) => (
+                    <li key={r.healthRecordId} className="flex items-start gap-2">
+                      <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${i === 0 ? 'bg-warning-yellow' : 'bg-neutral-gray-100'}`} />
+                      <div className="min-w-0">
+                        <p className={`font-body-md text-body-md leading-tight truncate ${i === 0 ? 'text-neutral-gray-900' : 'text-neutral-gray-600'}`}>{r.symptom}</p>
+                        <p className="font-label-md text-label-md text-neutral-gray-600 mt-0.5">{relativeDay(r.recordedDate)}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <Link
-              to="/pets/1/health"
+              to={`/pets/${firstPetId}/health`}
               className="mt-auto font-label-md text-label-md text-primary w-full text-center flex items-center justify-center gap-1 bg-surface-container-low py-2 rounded-lg hover:bg-surface-container transition-colors"
             >
               記録を追加 <span className="material-symbols-outlined text-[14px]">add</span>
@@ -182,6 +250,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+      )}
 
       {/* クイックメニュー */}
       <section>

@@ -1,6 +1,6 @@
 # Daipetto — 作業TODOリスト
 
-最終更新: 2026-10-03
+最終更新: 2026-10-04
 
 ---
 
@@ -198,7 +198,7 @@
 
 ---
 
-## 🚧 未実装 — Frontend（API 連動）
+## Frontend — API連動の実装状況・残作業
 
 ### Hospital API 連動（2026-08-09 実装、Claude Code）
 - [x] 病院検索 (`HospitalSearchPage`) — Hospital API 連動。distance/rating/reviews/specialtyはバックエンドに存在しないため削除
@@ -209,17 +209,42 @@
 - [x] `api/hospital.ts` — 全Hospital関連API（公開4 + 管理者6）のラッパー
 - [x] プラットフォーム別APIベースURL — `Capacitor.getPlatform()`で実行時に自動判定（Web/Android/iOS）、`.env`の手動書き換えが不要に
 
-### 実 API 接続が必要な画面（残り）
-- [ ] 予約 (`ReservationPage`) — Reservation API 連動（バックエンド実装済み・連動可能）
-- [ ] 予約履歴 (`ReservationHistoryPage`) — Reservation API 連動（バックエンド実装済み・連動可能）
-- [ ] 健康記録 (`HealthRecordPage`) — HealthRecord API 連動（バックエンド実装済み・連動可能）
-- [ ] 通知 (`NotificationsPage`) — Notification API 連動（バックエンド実装済み・連動可能）
-- [ ] 管理者画面 `AdminReservationPage` — 予約承認/却下/完了API連動（バックエンド実装済み・連動可能）
+### Reservation / HealthRecord / Notification API 連動（2026-10-04 実装、Claude Code、ブランチ `feat/react-api-integration`）
+- [x] 予約 (`ReservationPage`) — 病院詳細・予約枠一覧から予約可能日（今日以降のAVAILABLE枠）と時間を選び`POST /reservations`。BLOCKED枠は選択不可。重複などのエラーはAPIのメッセージを表示
+  - 診療目的はAPIに項目が無いため任意選択とし、`memo`の先頭に「診療目的: …」として付記（`docs/05` SC-010）
+- [x] 予約履歴 (`ReservationHistoryPage`) — 一覧・詳細（メモ表示）・キャンセル（REQUESTED/APPROVEDのみ）。却下(REJECTED)も表示。ダミーの「病院詳細」（予約IDを病院IDとして使っていた）と「レビューを書く」（機能なし）は削除
+- [x] 健康記録 (`HealthRecordPage`) — 一覧・登録・編集（PATCH）・削除。記録種別の選択（予防接種・投薬など）はモデルに無いため廃止し、体重・症状・メモの入力に変更
+- [x] 通知 (`NotificationsPage`) — 一覧・既読化（一括既読APIが無いため「すべて既読」は1件ずつPATCH）。日時はJSTのまま表示
+- [x] ダッシュボード — 次の予約（今日以降のREQUESTED/APPROVEDで最も早いもの）と、先頭ペットの健康記録（直近の体重・前回比・最近の症状）を実データ化
+- [x] ログアウト — ヘッダー右上（存在しない`/profile`へのリンクだった）をログアウトボタンに変更。`POST /auth/logout`の後、失敗してもローカルのトークンを破棄
+- [x] ペット一覧の表示修正 — 一覧API（PetSummary）は品種・性別を返さないため、常に「— · メス」と表示されていた。種別と体重の表示に変更
+- [ ] 管理者画面 `AdminReservationPage` — **要判断**: 承認/却下/完了APIはあるが、管理者が予約を一覧するAPIが無い（`docs/05` SC-013は一覧表示を定義、`docs/07`に該当APIなし）。Spring側に管理者用一覧APIを追加するか、ユーザー判断待ち
 - [ ] 管理者画面 `AdminUserPage` — ユーザー管理API連動（バックエンド未実装のため連動不可）
 
 ### 状態管理追加
-- [ ] `reservationStore.ts` — 予約一覧・詳細
-- [ ] `notificationStore.ts` — 通知・未読数
+- [ ] `reservationStore.ts` / `notificationStore.ts` — 未作成。各画面がAPIを直接呼ぶ形で足りているため。未読数バッジなど複数画面で状態を共有する時に追加する
+
+### Codexレビュー後の修正・検証（2026-10-04）
+
+> 上記の `[x]` はAPI接続の実装済みを示し、レビュー承認を意味しない。判定は **CHANGES_REQUESTED**。詳細: `.ai-collab/tasks/2026-10-04-frontend-api-integration/REVIEW-001.md`。
+>
+> 再レビュー（`REVIEW-002.md`、2026-10-04）でF-01〜F-03は **ACCEPTED**。ブラウザ回帰とAndroid APKビルドはClaude Codeの報告のみで、Codexは未実施。
+
+- [x] F-01 [P1] アカウント切替時に前ユーザーのペット一覧・選択状態を破棄し、前セッションの遅延レスポンスによる再保存も防止する。A→ログアウト→B＋取得失敗/応答遅延で他ユーザーの情報が表示されないことを確認
+  - 修正（Claude Code、HANDOFF-002 → Codex REVIEW-002でACCEPTED）: `authStore.session`（clearAuthごとに増加）で`petStore`を破棄し、古いセッションで始まった応答は反映しない。ログアウトせずに別アカウントでログインした場合も`LoginPage`がclearAuthして新セッションにする。マイペットは取得失敗を「未登録」と区別して再試行を表示
+- [x] F-02 [P2] 病院詳細・予約枠をhospitalId単位で管理し、古い病院の応答を無視する。切替時は選択をリセットし、現在の病院の取得完了まで進行不可にする。取得エラーと再試行も表示
+  - 修正（同上）: `ReservationPage`は病院IDをkeyに作り直し、病院情報・予約枠をその病院専用のローカル状態で取得（遅れて届いた応答は破棄）。取得完了まで「次へ」不可、失敗時は再試行を表示。共有の`hospitalStore`も最後に要求した病院の応答だけを反映し、別の病院へ切り替えた時点で前のデータを消す（病院詳細・管理者画面にも効く）
+- [x] F-03 [P2] 予約枠とダッシュボードの「次の予約」をJSTの開始日時で判定する。同日でも過去時刻を除外し、確認・送信時にも再確認する
+  - 修正（同上）: `utils/date.ts`の`isUpcoming`（開始がJSTの現在より後。バックエンドのRESERVATION-005と同じ判定）を予約可能日・時間枠・送信前の再確認・ダッシュボードに適用。ダッシュボードは取得失敗を空データと区別して表示
+- [x] Codex実行: `npm run build`（TypeScript/Vite）成功。実ストアを使うNode再現でF-01/F-02を確認（欠陥再現であり受け入れ成功ではない）
+- [x] 修正後のブラウザ回帰確認: アカウント切替、応答順序逆転、ネットワーク失敗、JST当日の過去/未来枠、通常の予約・健康記録・通知・ログアウト
+  - Claude Code実施（2026-10-04 21時台JST、捨てDB）。結果は`HANDOFF-002.md`。Node再現（実ストア）`scripts/fix-acceptance.cjs` 10件も追加。Codexの確認は未実施
+- [ ] Androidエミュレーター/実機でAPI疎通・認証・主要操作を確認（Claudeによるdebug APKビルド成功の報告あり、端末実行は未検証）
+- [ ] iOSビルド・実行確認（syncのみ実施との報告。Windowsではビルド未実施）
+- [ ] ペット編集画面と`PetUpdateRequest`の`petType`必須項目を対応する（バックエンド更新APIは実装済み、現在の画面接続範囲外）
+
+### バックエンドレビュー確定
+- [x] HealthRecord/NotificationのR-01〜R-04・T-01・D-01: Codex `2026-10-03-health-notification/REVIEW-003.md`でACCEPTED（2026-10-04）。209テスト、実PostgreSQLの部分更新/削除/停止/通知/認証予約の検証済み。今回のFrontend承認とは別
 
 ### 認証フロー（2026-08-09 実装、branch: `fix/auth-session-issues`）
 - [x] Protected Route 実装（`components/auth/ProtectedRoute.tsx`。未ログイン → `/login` にリダイレクト）

@@ -1,0 +1,1847 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 0a73fab..5560c1e 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -12,7 +12,7 @@ This is the repository entry point for Codex and the canonical shared project po
+ - Agent-facing files in `.codex/` and `.ai-collab/` use concise English. User-facing replies remain Korean; product design docs and code comments retain the language rules below.
+ - Operational source of truth: `.ai-collab/PROTOCOL.md`. The original research corrections remain in `docs/codex-workflow/01_CORRECTIONS.md` for reference only.
+ 
+-Last updated: 2026-08-23 (branch `fix/auth-session-issues`)
++Last updated: 2026-10-04 (branch `feat/react-api-integration`)
+ 
+ ## 1. Areas
+ 
+@@ -161,9 +161,11 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
+ Start: `docker compose up -d` (postgres) → `./gradlew bootRun` / `npm run dev`.
+ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (`VITE_API_BASE_URL_WEB` / `_ANDROID` / `_IOS`).
+ 
+-## 10. Status (2026-09-13)
++## 10. Status (2026-10-04)
+ 
+-**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · HealthRecord CRUD · Notification (list/read + generation on reservation approve/reject/complete, 2026-10-03) · Frontend all screens SC-001〜015 (auth·pet·hospital wired to real API) · ProtectedRoute + role guards · token restore on reload.
++**Frontend review (2026-10-04)**: API wiring is implemented, but review is CHANGES_REQUESTED in `.ai-collab/tasks/2026-10-04-frontend-api-integration/REVIEW-001.md`: F-01 private pet cache survives account changes, F-02 stale hospital schedules can overwrite the current hospital, F-03 same-day past slots remain selectable. Codex verified the frontend build and reproduced F-01/F-02 with the actual stores. Browser/Capacitor evidence remains implementer-reported; native runtime verification is pending in TODO.md. Codex owns only this review and the user-requested TODO/status update; application fixes remain with Claude. Claude fixed F-01..F-03 on 2026-10-04 (session-scoped pet store reset/guard, hospital-keyed reservation data with latest-response-wins hospital store, JST start-time rule `isUpcoming`); response in `HANDOFF-002.md`, awaiting re-review.
++
++**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · HealthRecord CRUD · Notification (list/read + generation on reservation approve/reject/complete, 2026-10-03) · Frontend all screens SC-001〜015 (auth·pet·hospital·reservation·health record·notification·dashboard·logout wired to real API, 2026-10-04) · ProtectedRoute + role guards · token restore on reload.
+ 
+ **Practice gaps** (user implements these personally — do NOT implement unless explicitly asked; list in TODO.md is authoritative): none outstanding. The user waived the gap for the HealthRecord/Notification round (2026-10-03); the §11 rule still applies to future domains unless they waive it again.
+ 
+@@ -173,7 +175,7 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
+ 
+ **Review round 2026-09-13** (Codex REVIEW-001 → fixes in `.ai-collab/tasks/2026-09-13-implementation-review/HANDOFF-002.md`): R-01〜R-08 addressed — refresh rotation now single-consumption (conditional revoke must affect exactly 1 row), refresh tokens carry `jti`, access/refresh separated by a `type` claim so a refresh token used as Bearer no longer throws inside the filter, reservations are protected by a DB-level partial unique index plus expected-status conditional updates, SUSPENDED hospitals reject new reservations (RESERVATION-009), deleted pets no longer break reservation history, and the frontend refresh queue settles every waiter on failure. **Still unverified**: real PostgreSQL concurrency runs for the race fixes.
+ 
+-**Not started**: Vaccination API (needed before the VACCINATION notification type and its reminder can work) · schedule auto-generation Scheduler (from `hospital_business_hours`) · vaccine reminder Scheduler · django-api entirely · frontend wiring for reservation/health/notification/admin(reservation·user) screens.
++**Not started**: Vaccination API (needed before the VACCINATION notification type and its reminder can work) · schedule auto-generation Scheduler (from `hospital_business_hours`) · vaccine reminder Scheduler · django-api entirely · frontend admin reservation screen (needs an admin reservation list API that neither Spring nor docs/07 defines — user decision pending) and admin user screen (backend not built).
+ 
+ **Unmerged branches**: `feat/spring/pet-fields` (pet columns + docs 06/07 updates); verify current unmerged set with `git branch --all` and `git log` before relying on this line — not re-audited in this update.
+ 
+diff --git a/TODO.md b/TODO.md
+index 2ad9d96..90bf1ff 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -1,6 +1,6 @@
+ # Daipetto — 作業TODOリスト
+ 
+-最終更新: 2026-10-03
++最終更新: 2026-10-04
+ 
+ ---
+ 
+@@ -198,7 +198,7 @@
+ 
+ ---
+ 
+-## 🚧 未実装 — Frontend（API 連動）
++## Frontend — API連動の実装状況・残作業
+ 
+ ### Hospital API 連動（2026-08-09 実装、Claude Code）
+ - [x] 病院検索 (`HospitalSearchPage`) — Hospital API 連動。distance/rating/reviews/specialtyはバックエンドに存在しないため削除
+@@ -209,17 +209,40 @@
+ - [x] `api/hospital.ts` — 全Hospital関連API（公開4 + 管理者6）のラッパー
+ - [x] プラットフォーム別APIベースURL — `Capacitor.getPlatform()`で実行時に自動判定（Web/Android/iOS）、`.env`の手動書き換えが不要に
+ 
+-### 実 API 接続が必要な画面（残り）
+-- [ ] 予約 (`ReservationPage`) — Reservation API 連動（バックエンド実装済み・連動可能）
+-- [ ] 予約履歴 (`ReservationHistoryPage`) — Reservation API 連動（バックエンド実装済み・連動可能）
+-- [ ] 健康記録 (`HealthRecordPage`) — HealthRecord API 連動（バックエンド実装済み・連動可能）
+-- [ ] 通知 (`NotificationsPage`) — Notification API 連動（バックエンド実装済み・連動可能）
+-- [ ] 管理者画面 `AdminReservationPage` — 予約承認/却下/完了API連動（バックエンド実装済み・連動可能）
++### Reservation / HealthRecord / Notification API 連動（2026-10-04 実装、Claude Code、ブランチ `feat/react-api-integration`）
++- [x] 予約 (`ReservationPage`) — 病院詳細・予約枠一覧から予約可能日（今日以降のAVAILABLE枠）と時間を選び`POST /reservations`。BLOCKED枠は選択不可。重複などのエラーはAPIのメッセージを表示
++  - 診療目的はAPIに項目が無いため任意選択とし、`memo`の先頭に「診療目的: …」として付記（`docs/05` SC-010）
++- [x] 予約履歴 (`ReservationHistoryPage`) — 一覧・詳細（メモ表示）・キャンセル（REQUESTED/APPROVEDのみ）。却下(REJECTED)も表示。ダミーの「病院詳細」（予約IDを病院IDとして使っていた）と「レビューを書く」（機能なし）は削除
++- [x] 健康記録 (`HealthRecordPage`) — 一覧・登録・編集（PATCH）・削除。記録種別の選択（予防接種・投薬など）はモデルに無いため廃止し、体重・症状・メモの入力に変更
++- [x] 通知 (`NotificationsPage`) — 一覧・既読化（一括既読APIが無いため「すべて既読」は1件ずつPATCH）。日時はJSTのまま表示
++- [x] ダッシュボード — 次の予約（今日以降のREQUESTED/APPROVEDで最も早いもの）と、先頭ペットの健康記録（直近の体重・前回比・最近の症状）を実データ化
++- [x] ログアウト — ヘッダー右上（存在しない`/profile`へのリンクだった）をログアウトボタンに変更。`POST /auth/logout`の後、失敗してもローカルのトークンを破棄
++- [x] ペット一覧の表示修正 — 一覧API（PetSummary）は品種・性別を返さないため、常に「— · メス」と表示されていた。種別と体重の表示に変更
++- [ ] 管理者画面 `AdminReservationPage` — **要判断**: 承認/却下/完了APIはあるが、管理者が予約を一覧するAPIが無い（`docs/05` SC-013は一覧表示を定義、`docs/07`に該当APIなし）。Spring側に管理者用一覧APIを追加するか、ユーザー判断待ち
+ - [ ] 管理者画面 `AdminUserPage` — ユーザー管理API連動（バックエンド未実装のため連動不可）
+ 
+ ### 状態管理追加
+-- [ ] `reservationStore.ts` — 予約一覧・詳細
+-- [ ] `notificationStore.ts` — 通知・未読数
++- [ ] `reservationStore.ts` / `notificationStore.ts` — 未作成。各画面がAPIを直接呼ぶ形で足りているため。未読数バッジなど複数画面で状態を共有する時に追加する
++
++### Codexレビュー後の修正・検証（2026-10-04）
++
++> 上記の `[x]` はAPI接続の実装済みを示し、レビュー承認を意味しない。判定は **CHANGES_REQUESTED**。詳細: `.ai-collab/tasks/2026-10-04-frontend-api-integration/REVIEW-001.md`。
++
++- [x] F-01 [P1] アカウント切替時に前ユーザーのペット一覧・選択状態を破棄し、前セッションの遅延レスポンスによる再保存も防止する。A→ログアウト→B＋取得失敗/応答遅延で他ユーザーの情報が表示されないことを確認
++  - 修正（Claude Code、再レビュー待ち・HANDOFF-002）: `authStore.session`（clearAuthごとに増加）で`petStore`を破棄し、古いセッションで始まった応答は反映しない。ログアウトせずに別アカウントでログインした場合も`LoginPage`がclearAuthして新セッションにする。マイペットは取得失敗を「未登録」と区別して再試行を表示
++- [x] F-02 [P2] 病院詳細・予約枠をhospitalId単位で管理し、古い病院の応答を無視する。切替時は選択をリセットし、現在の病院の取得完了まで進行不可にする。取得エラーと再試行も表示
++  - 修正（同上）: `ReservationPage`は病院IDをkeyに作り直し、病院情報・予約枠をその病院専用のローカル状態で取得（遅れて届いた応答は破棄）。取得完了まで「次へ」不可、失敗時は再試行を表示。共有の`hospitalStore`も最後に要求した病院の応答だけを反映し、別の病院へ切り替えた時点で前のデータを消す（病院詳細・管理者画面にも効く）
++- [x] F-03 [P2] 予約枠とダッシュボードの「次の予約」をJSTの開始日時で判定する。同日でも過去時刻を除外し、確認・送信時にも再確認する
++  - 修正（同上）: `utils/date.ts`の`isUpcoming`（開始がJSTの現在より後。バックエンドのRESERVATION-005と同じ判定）を予約可能日・時間枠・送信前の再確認・ダッシュボードに適用。ダッシュボードは取得失敗を空データと区別して表示
++- [x] Codex実行: `npm run build`（TypeScript/Vite）成功。実ストアを使うNode再現でF-01/F-02を確認（欠陥再現であり受け入れ成功ではない）
++- [x] 修正後のブラウザ回帰確認: アカウント切替、応答順序逆転、ネットワーク失敗、JST当日の過去/未来枠、通常の予約・健康記録・通知・ログアウト
++  - Claude Code実施（2026-10-04 21時台JST、捨てDB）。結果は`HANDOFF-002.md`。Node再現（実ストア）`scripts/fix-acceptance.cjs` 10件も追加。Codexの確認は未実施
++- [ ] Androidエミュレーター/実機でAPI疎通・認証・主要操作を確認（Claudeによるdebug APKビルド成功の報告あり、端末実行は未検証）
++- [ ] iOSビルド・実行確認（syncのみ実施との報告。Windowsではビルド未実施）
++- [ ] ペット編集画面と`PetUpdateRequest`の`petType`必須項目を対応する（バックエンド更新APIは実装済み、現在の画面接続範囲外）
++
++### バックエンドレビュー確定
++- [x] HealthRecord/NotificationのR-01〜R-04・T-01・D-01: Codex `2026-10-03-health-notification/REVIEW-003.md`でACCEPTED（2026-10-04）。209テスト、実PostgreSQLの部分更新/削除/停止/通知/認証予約の検証済み。今回のFrontend承認とは別
+ 
+ ### 認証フロー（2026-08-09 実装、branch: `fix/auth-session-issues`）
+ - [x] Protected Route 実装（`components/auth/ProtectedRoute.tsx`。未ログイン → `/login` にリダイレクト）
+diff --git a/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md b/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md
+index bdd22fc..8b634d0 100644
+--- a/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md	
++++ b/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md	
+@@ -10,7 +10,7 @@
+ | Document | Screen Design |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-08-23 |
++| Updated | 2026-10-04 |
+ 
+ # **1. 画面設計概要**
+ 
+@@ -530,8 +530,11 @@ flowchart TB
+ | 病院 | ○ |
+ | ペット | ○ |
+ | 予約日時 | ○ |
++| 診療目的 | × |
+ | メモ | × |
+ 
++予約日時は病院の予約枠のうち、`AVAILABLE`かつ開始がJSTの現在より後の枠から日付・時間の順に選ぶ（当日でも開始時刻を過ぎた枠は選べない。バックエンドのRESERVATION-005と同じ判定で、送信直前にも再確認する）。病院情報・予約枠の取得が完了するまで次へ進めず、失敗時は再試行を表示する。診療目的は予約APIに項目が無いため、選択した場合は`memo`の先頭に「診療目的: …」として付記して送る（`07_API_Design` §9-3）。
++
+ ---
+ 
+ ## **状態**
+diff --git a/frontend/src/api/client.ts b/frontend/src/api/client.ts
+index 25bc037..30624e8 100644
+--- a/frontend/src/api/client.ts
++++ b/frontend/src/api/client.ts
+@@ -112,3 +112,8 @@ apiClient.interceptors.response.use(
+     }
+   },
+ )
++
++// APIのエラーレスポンス（{ success:false, code, message }）から表示用メッセージを取り出す
++export function extractErrorMessage(err: unknown, fallback: string): string {
++  return (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback
++}
+diff --git a/frontend/src/api/healthRecord.ts b/frontend/src/api/healthRecord.ts
+new file mode 100644
+index 0000000..e3a9bec
+--- /dev/null
++++ b/frontend/src/api/healthRecord.ts
+@@ -0,0 +1,18 @@
++import { apiClient } from './client'
++import type { ApiResponse, HealthRecord, HealthRecordRequest } from '../types'
++
++export const healthRecordApi = {
++  getList: (petId: number) =>
++    apiClient.get<ApiResponse<HealthRecord[]>>(`/api/v1/pets/${petId}/health-records`).then((r) => r.data),
++
++  create: (petId: number, body: HealthRecordRequest) =>
++    apiClient
++      .post<ApiResponse<{ healthRecordId: number }>>(`/api/v1/pets/${petId}/health-records`, body)
++      .then((r) => r.data),
++
++  update: (healthRecordId: number, body: HealthRecordRequest) =>
++    apiClient.patch<ApiResponse<null>>(`/api/v1/health-records/${healthRecordId}`, body).then((r) => r.data),
++
++  remove: (healthRecordId: number) =>
++    apiClient.delete<ApiResponse<null>>(`/api/v1/health-records/${healthRecordId}`).then((r) => r.data),
++}
+diff --git a/frontend/src/api/notification.ts b/frontend/src/api/notification.ts
+new file mode 100644
+index 0000000..520235a
+--- /dev/null
++++ b/frontend/src/api/notification.ts
+@@ -0,0 +1,9 @@
++import { apiClient } from './client'
++import type { ApiResponse, AppNotification } from '../types'
++
++export const notificationApi = {
++  getList: () => apiClient.get<ApiResponse<AppNotification[]>>('/api/v1/notifications').then((r) => r.data),
++
++  markAsRead: (notificationId: number) =>
++    apiClient.patch<ApiResponse<null>>(`/api/v1/notifications/${notificationId}/read`).then((r) => r.data),
++}
+diff --git a/frontend/src/api/reservation.ts b/frontend/src/api/reservation.ts
+new file mode 100644
+index 0000000..08310b6
+--- /dev/null
++++ b/frontend/src/api/reservation.ts
+@@ -0,0 +1,17 @@
++import { apiClient } from './client'
++import type { ApiResponse, ReservationCreateRequest, ReservationDetail, ReservationStatus, ReservationSummary } from '../types'
++
++export const reservationApi = {
++  create: (body: ReservationCreateRequest) =>
++    apiClient
++      .post<ApiResponse<{ reservationId: number; status: ReservationStatus }>>('/api/v1/reservations', body)
++      .then((r) => r.data),
++
++  getList: () => apiClient.get<ApiResponse<ReservationSummary[]>>('/api/v1/reservations').then((r) => r.data),
++
++  getDetail: (reservationId: number) =>
++    apiClient.get<ApiResponse<ReservationDetail>>(`/api/v1/reservations/${reservationId}`).then((r) => r.data),
++
++  cancel: (reservationId: number) =>
++    apiClient.patch<ApiResponse<null>>(`/api/v1/reservations/${reservationId}/cancel`).then((r) => r.data),
++}
+diff --git a/frontend/src/components/layout/TopAppBar.tsx b/frontend/src/components/layout/TopAppBar.tsx
+index e1dcdfa..f751c0d 100644
+--- a/frontend/src/components/layout/TopAppBar.tsx
++++ b/frontend/src/components/layout/TopAppBar.tsx
+@@ -1,4 +1,6 @@
+ import { NavLink, useNavigate } from 'react-router-dom'
++import { authApi } from '../../api/auth'
++import { useAuthStore } from '../../stores/authStore'
+ 
+ interface TopAppBarProps {
+   variant?: 'main' | 'detail'
+@@ -16,6 +18,15 @@ const mainNavItems = [
+ export default function TopAppBar({ variant = 'main', title }: TopAppBarProps) {
+   const navigate = useNavigate()
+ 
++  const handleLogout = async () => {
++    if (!window.confirm('ログアウトしますか？')) return
++    const { refreshToken, clearAuth } = useAuthStore.getState()
++    // サーバー側の失効に失敗しても、端末のトークンは必ず破棄してログイン画面へ戻す
++    if (refreshToken) await authApi.logout(refreshToken).catch(() => undefined)
++    clearAuth()
++    navigate('/login', { replace: true })
++  }
++
+   if (variant === 'detail') {
+     return (
+       <header className="bg-surface-container-lowest border-b border-neutral-gray-100 z-40 pt-safe shrink-0">
+@@ -77,12 +88,14 @@ export default function TopAppBar({ variant = 'main', title }: TopAppBarProps) {
+               </span>
+             )}
+           </NavLink>
+-          <NavLink
+-            to="/profile"
++          <button
++            onClick={handleLogout}
++            aria-label="ログアウト"
++            title="ログアウト"
+             className="w-9 h-9 rounded-full overflow-hidden border border-outline-variant flex items-center justify-center bg-secondary-container"
+           >
+-            <span className="material-symbols-outlined text-[20px] text-secondary">person</span>
+-          </NavLink>
++            <span className="material-symbols-outlined text-[20px] text-secondary">logout</span>
++          </button>
+         </div>
+       </div>
+     </header>
+diff --git a/frontend/src/pages/DashboardPage.tsx b/frontend/src/pages/DashboardPage.tsx
+index c9279dc..8eda4f0 100644
+--- a/frontend/src/pages/DashboardPage.tsx
++++ b/frontend/src/pages/DashboardPage.tsx
+@@ -1,16 +1,71 @@
+-import { useEffect } from 'react'
++import { useEffect, useState } from 'react'
+ import { Link } from 'react-router-dom'
+ import { useAuthStore } from '../stores/authStore'
+ import { usePetStore } from '../stores/petStore'
++import { reservationApi } from '../api/reservation'
++import { healthRecordApi } from '../api/healthRecord'
++import { daysFromToday, formatTime, isUpcoming } from '../utils/date'
++import { PET_SPECIES_LABEL, type HealthRecord, type ReservationSummary } from '../types'
++
++const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
++
++// "2026-10-25" → "10月25日（日）"。日付だけをUTCで解釈し、端末のタイムゾーンに依存させない
++function formatDateJa(date: string) {
++  const d = new Date(`${date}T00:00:00Z`)
++  return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日（${WEEKDAYS[d.getUTCDay()]}）`
++}
++
++const relativeDay = (date: string) => {
++  const diff = -daysFromToday(date)
++  return diff <= 0 ? '今日' : `${diff}日前`
++}
+ 
+ export default function DashboardPage() {
+   const user = useAuthStore((s) => s.user)
+   const { pets, fetchPets } = usePetStore()
++  const [nextReservation, setNextReservation] = useState<ReservationSummary | null>(null)
++  const [reservationError, setReservationError] = useState(false)
++  const [records, setRecords] = useState<HealthRecord[]>([])
++  const [recordsError, setRecordsError] = useState(false)
++  const firstPetId = pets[0]?.id
+ 
+   useEffect(() => {
+     fetchPets()
++    reservationApi
++      .getList()
++      .then((res) => {
++        // 「次の予約」は開始がJSTの現在より後のもの（当日でも開始時刻を過ぎたものは含めない）
++        const upcoming = (res.data ?? [])
++          .filter((r) => (r.status === 'REQUESTED' || r.status === 'APPROVED') && isUpcoming(r.availableDate, r.startTime))
++          .sort((a, b) => `${a.availableDate}${a.startTime}`.localeCompare(`${b.availableDate}${b.startTime}`))
++        setNextReservation(upcoming[0] ?? null)
++      })
++      .catch(() => setReservationError(true))
+   }, [fetchPets])
+ 
++  useEffect(() => {
++    if (firstPetId === undefined) return
++    let active = true
++    setRecordsError(false)
++    healthRecordApi
++      .getList(firstPetId)
++      .then((res) => active && setRecords(res.data ?? []))
++      .catch(() => active && setRecordsError(true))
++    return () => {
++      active = false
++    }
++  }, [firstPetId])
++
++  // 一覧は記録日の新しい順（docs/07 §6-1）
++  const weights = records.filter((r) => r.weight != null).slice(0, 5).map((r) => Number(r.weight)).reverse()
++  const latestWeight = weights.length > 0 ? weights[weights.length - 1] : null
++  const weightDiff = latestWeight !== null && weights.length >= 2 ? latestWeight - weights[weights.length - 2] : null
++  // 最小〜最大を30〜100%に割り当てる（最大値比だと数百gの変化が見えない）
++  const minWeight = Math.min(...weights)
++  const maxWeight = Math.max(...weights)
++  const barHeight = (w: number) => (maxWeight === minWeight ? 100 : 30 + (70 * (w - minWeight)) / (maxWeight - minWeight))
++  const symptoms = records.filter((r) => r.symptom).slice(0, 2)
++
+   return (
+     <div className="px-container-margin pt-lg pb-xl flex flex-col gap-lg">
+       {/* ウェルカム */}
+@@ -37,29 +92,35 @@ export default function DashboardPage() {
+                 次の予約
+               </span>
+             </div>
+-            <span className="font-label-md text-label-md text-neutral-gray-600 bg-surface-container-low px-2 py-1 rounded-lg">
+-              あと2日
+-            </span>
++            {nextReservation && (
++              <span className="font-label-md text-label-md text-neutral-gray-600 bg-surface-container-low px-2 py-1 rounded-lg">
++                {daysFromToday(nextReservation.availableDate) === 0 ? '今日' : `あと${daysFromToday(nextReservation.availableDate)}日`}
++              </span>
++            )}
+           </div>
+-          <div className="pl-2">
+-            <h3 className="font-headline-md text-headline-md text-neutral-gray-900 mb-1">
+-              10月25日（水）午後2:00
+-            </h3>
+-            <p className="font-body-lg text-body-lg text-on-surface-variant mb-4">
+-              幸せ動物病院 - フィラリア予防接種
+-            </p>
+-            <div className="flex justify-between items-center bg-neutral-gray-50 p-3 rounded-lg border border-neutral-gray-100">
+-              <div className="flex items-center gap-3">
+-                <div className="w-8 h-8 rounded-full bg-secondary-container overflow-hidden flex items-center justify-center">
+-                  <span className="material-symbols-outlined text-secondary text-[16px]">pets</span>
++          {nextReservation ? (
++            <div className="pl-2">
++              <h3 className="font-headline-md text-headline-md text-neutral-gray-900 mb-1">
++                {formatDateJa(nextReservation.availableDate)} {formatTime(nextReservation.startTime)}
++              </h3>
++              <p className="font-body-lg text-body-lg text-on-surface-variant mb-4">
++                {nextReservation.hospitalName} - {nextReservation.status === 'APPROVED' ? '予約確定' : '承認待ち'}
++              </p>
++              <div className="flex justify-between items-center bg-neutral-gray-50 p-3 rounded-lg border border-neutral-gray-100">
++                <div className="flex items-center gap-3">
++                  <div className="w-8 h-8 rounded-full bg-secondary-container overflow-hidden flex items-center justify-center">
++                    <span className="material-symbols-outlined text-secondary text-[16px]">pets</span>
++                  </div>
++                  <span className="font-body-md text-body-md text-neutral-gray-900 font-medium">{nextReservation.petName}</span>
+                 </div>
+-                <span className="font-body-md text-body-md text-neutral-gray-900 font-medium">ボリ</span>
++                <span className="font-label-md text-label-md text-neutral-gray-600 flex items-center gap-1">
++                  詳細を見る <span className="material-symbols-outlined text-[16px]">chevron_right</span>
++                </span>
+               </div>
+-              <span className="font-label-md text-label-md text-neutral-gray-600 flex items-center gap-1">
+-                詳細を見る <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+-              </span>
+             </div>
+-          </div>
++          ) : (
++            <p className="pl-2 font-body-md text-body-md text-neutral-gray-600">{reservationError ? '予約情報を取得できませんでした。' : '予定されている予約はありません。'}</p>
++          )}
+         </Link>
+       </section>
+ 
+@@ -99,7 +160,7 @@ export default function DashboardPage() {
+                     <span className="material-symbols-outlined text-neutral-gray-600">chevron_right</span>
+                   </div>
+                   <p className="font-body-md text-body-md text-neutral-gray-600 mt-0.5">
+-                    {pet.breed ?? '—'} · {pet.gender === 'MALE' ? 'オス' : 'メス'}
++                    {PET_SPECIES_LABEL[pet.species] ?? '—'}
+                     {pet.weight ? ` · ${pet.weight}kg` : ''}
+                   </p>
+                   <div className="flex gap-2 mt-3">
+@@ -115,9 +176,10 @@ export default function DashboardPage() {
+         )}
+       </section>
+ 
+-      {/* 健康サマリー */}
++      {/* 健康サマリー（先頭のペットの健康記録から表示） */}
++      {firstPetId !== undefined && (
+       <section>
+-        <h2 className="font-headline-md text-headline-md text-neutral-gray-900 mb-sm">健康サマリー</h2>
++        <h2 className="font-headline-md text-headline-md text-neutral-gray-900 mb-sm">健康サマリー（{pets[0].name}）</h2>
+         <div className="grid grid-cols-2 gap-gutter">
+           {/* 体重推移 */}
+           <div className="bg-surface-container-lowest rounded-[16px] p-md shadow-[0px_4px_20px_rgba(0,0,0,0.05)] border border-neutral-gray-100 flex flex-col justify-between aspect-square">
+@@ -129,21 +191,28 @@ export default function DashboardPage() {
+                 <span className="font-label-md text-label-md text-neutral-gray-600">体重変化</span>
+               </div>
+               <span className="font-headline-lg-mobile text-headline-lg-mobile text-neutral-gray-900">
+-                28.5<span className="font-body-md text-body-md text-neutral-gray-600 ml-0.5">kg</span>
++                {latestWeight ?? '—'}<span className="font-body-md text-body-md text-neutral-gray-600 ml-0.5">kg</span>
+               </span>
+             </div>
++            {/* 直近5件の体重（古い順） */}
+             <div className="w-full h-12 mt-auto flex items-end gap-1.5 justify-between">
+-              {[40, 45, 42, 55, 60].map((h, i) => (
++              {weights.map((w, i) => (
+                 <div
+                   key={i}
+-                  className={`w-full rounded-t-md ${i === 4 ? 'bg-success-blue' : 'bg-neutral-gray-100'}`}
+-                  style={{ height: `${h}%` }}
++                  className={`w-full rounded-t-md ${i === weights.length - 1 ? 'bg-success-blue' : 'bg-neutral-gray-100'}`}
++                  style={{ height: `${barHeight(w)}%` }}
+                 />
+               ))}
+             </div>
+             <p className="font-label-md text-label-md text-success-blue mt-2 flex items-center gap-0.5">
+-              <span className="material-symbols-outlined text-[12px]">trending_up</span>
+-              +0.2kg（先月比）
++              {weightDiff === null ? (
++                recordsError ? '健康記録を取得できませんでした' : '体重の記録がまだありません'
++              ) : (
++                <>
++                  <span className="material-symbols-outlined text-[12px]">{weightDiff >= 0 ? 'trending_up' : 'trending_down'}</span>
++                  {weightDiff >= 0 ? '+' : ''}{weightDiff.toFixed(2)}kg（前回比）
++                </>
++              )}
+             </p>
+           </div>
+ 
+@@ -156,25 +225,24 @@ export default function DashboardPage() {
+                 </div>
+                 <span className="font-label-md text-label-md text-neutral-gray-600">最近の症状</span>
+               </div>
+-              <ul className="flex flex-col gap-2.5">
+-                <li className="flex items-start gap-2">
+-                  <div className="w-1.5 h-1.5 rounded-full bg-warning-yellow mt-1.5 flex-shrink-0" />
+-                  <div>
+-                    <p className="font-body-md text-body-md text-neutral-gray-900 leading-tight">軽い咳</p>
+-                    <p className="font-label-md text-label-md text-neutral-gray-600 mt-0.5">2日前</p>
+-                  </div>
+-                </li>
+-                <li className="flex items-start gap-2">
+-                  <div className="w-1.5 h-1.5 rounded-full bg-neutral-gray-100 mt-1.5 flex-shrink-0" />
+-                  <div>
+-                    <p className="font-body-md text-body-md text-neutral-gray-600 leading-tight">食欲不振</p>
+-                    <p className="font-label-md text-label-md text-neutral-gray-600 mt-0.5">1週間前</p>
+-                  </div>
+-                </li>
+-              </ul>
++              {symptoms.length === 0 ? (
++                <p className="font-body-md text-body-md text-neutral-gray-600">{recordsError ? '健康記録を取得できませんでした。' : '記録された症状はありません。'}</p>
++              ) : (
++                <ul className="flex flex-col gap-2.5">
++                  {symptoms.map((r, i) => (
++                    <li key={r.healthRecordId} className="flex items-start gap-2">
++                      <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${i === 0 ? 'bg-warning-yellow' : 'bg-neutral-gray-100'}`} />
++                      <div className="min-w-0">
++                        <p className={`font-body-md text-body-md leading-tight truncate ${i === 0 ? 'text-neutral-gray-900' : 'text-neutral-gray-600'}`}>{r.symptom}</p>
++                        <p className="font-label-md text-label-md text-neutral-gray-600 mt-0.5">{relativeDay(r.recordedDate)}</p>
++                      </div>
++                    </li>
++                  ))}
++                </ul>
++              )}
+             </div>
+             <Link
+-              to="/pets/1/health"
++              to={`/pets/${firstPetId}/health`}
+               className="mt-auto font-label-md text-label-md text-primary w-full text-center flex items-center justify-center gap-1 bg-surface-container-low py-2 rounded-lg hover:bg-surface-container transition-colors"
+             >
+               記録を追加 <span className="material-symbols-outlined text-[14px]">add</span>
+@@ -182,6 +250,7 @@ export default function DashboardPage() {
+           </div>
+         </div>
+       </section>
++      )}
+ 
+       {/* クイックメニュー */}
+       <section>
+diff --git a/frontend/src/pages/HealthRecordPage.tsx b/frontend/src/pages/HealthRecordPage.tsx
+index e6e08c8..ed755a6 100644
+--- a/frontend/src/pages/HealthRecordPage.tsx
++++ b/frontend/src/pages/HealthRecordPage.tsx
+@@ -1,38 +1,93 @@
+-import { useState, FormEvent } from 'react'
++import { useCallback, useEffect, useState, FormEvent } from 'react'
+ import { useParams } from 'react-router-dom'
++import { healthRecordApi } from '../api/healthRecord'
++import { extractErrorMessage } from '../api/client'
+ import { todayInJapan } from '../utils/date'
++import type { HealthRecord } from '../types'
+ 
+-type RecordType = 'symptom' | 'weight' | 'vaccine' | 'medicine' | 'note'
++const inputClass = 'w-full h-[48px] px-sm bg-neutral-gray-50 border border-neutral-gray-100 rounded-lg font-body-md text-body-md text-on-surface placeholder:text-neutral-gray-600 focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all'
+ 
+-const typeConfig: Record<RecordType, { label: string; icon: string; color: string }> = {
+-  symptom: { label: '症状', icon: 'sick', color: 'text-warning-yellow bg-warning-yellow/10' },
+-  weight: { label: '体重', icon: 'monitor_weight', color: 'text-success-blue bg-success-blue/10' },
+-  vaccine: { label: '予防接種', icon: 'vaccines', color: 'text-primary bg-primary/10' },
+-  medicine: { label: '投薬', icon: 'medication', color: 'text-secondary bg-secondary-container' },
+-  note: { label: 'メモ', icon: 'note', color: 'text-neutral-gray-600 bg-neutral-gray-100' },
+-}
++const emptyForm = () => ({ date: todayInJapan(), weight: '', symptom: '', memo: '' })
+ 
+-const mockRecords = [
+-  { id: 1, type: 'symptom' as RecordType, date: '2024-10-20', note: '軽い咳がある。2日間続いている。', weight: null },
+-  { id: 2, type: 'weight' as RecordType, date: '2024-10-14', note: '', weight: 28.5 },
+-  { id: 3, type: 'vaccine' as RecordType, date: '2024-10-01', note: '混合ワクチン（DHPP）3回目接種完了', weight: null },
+-  { id: 4, type: 'medicine' as RecordType, date: '2024-09-28', note: 'フィラリア予防薬投与（1錠）', weight: null },
+-  { id: 5, type: 'note' as RecordType, date: '2024-09-15', note: '食欲が平常より低下。フードの種類変更を検討。', weight: null },
+-]
++function recordIcon(r: HealthRecord) {
++  if (r.symptom) return { icon: 'sick', color: 'text-warning-yellow bg-warning-yellow/10' }
++  if (r.weight != null) return { icon: 'monitor_weight', color: 'text-success-blue bg-success-blue/10' }
++  return { icon: 'note', color: 'text-neutral-gray-600 bg-neutral-gray-100' }
++}
+ 
+ export default function HealthRecordPage() {
+-  useParams()
++  const petId = Number(useParams().petId)
++  const [records, setRecords] = useState<HealthRecord[]>([])
++  const [isLoading, setIsLoading] = useState(true)
++  const [error, setError] = useState<string | null>(null)
+   const [showForm, setShowForm] = useState(false)
+-  const [recordType, setRecordType] = useState<RecordType>('symptom')
+-  const [date, setDate] = useState(todayInJapan)
+-  const [note, setNote] = useState('')
+-  const [weight, setWeight] = useState('')
++  // null = 新規登録、数値 = その記録の編集
++  const [editingId, setEditingId] = useState<number | null>(null)
++  const [form, setForm] = useState(emptyForm)
++  const [isSaving, setIsSaving] = useState(false)
+ 
+-  const handleSubmit = (e: FormEvent) => {
+-    e.preventDefault()
++  const load = useCallback(async () => {
++    try {
++      const res = await healthRecordApi.getList(petId)
++      setRecords(res.data ?? [])
++    } catch (err) {
++      setError(extractErrorMessage(err, '健康記録の取得に失敗しました。'))
++    } finally {
++      setIsLoading(false)
++    }
++  }, [petId])
++
++  useEffect(() => {
++    load()
++  }, [load])
++
++  const closeForm = () => {
+     setShowForm(false)
+-    setNote('')
+-    setWeight('')
++    setEditingId(null)
++    setForm(emptyForm())
++  }
++
++  const openEdit = (r: HealthRecord) => {
++    setEditingId(r.healthRecordId)
++    setForm({ date: r.recordedDate, weight: r.weight != null ? String(r.weight) : '', symptom: r.symptom ?? '', memo: r.memo ?? '' })
++    setShowForm(true)
++  }
++
++  const handleSubmit = async (e: FormEvent) => {
++    e.preventDefault()
++    setError(null)
++    setIsSaving(true)
++    // 体重はPATCHで消去できないため、空欄は「変更しない」として送らない。症状・メモは空文字で消去される
++    const body = {
++      recordedDate: form.date,
++      weight: form.weight === '' ? undefined : Number(form.weight),
++      symptom: editingId === null ? form.symptom || undefined : form.symptom,
++      memo: editingId === null ? form.memo || undefined : form.memo,
++    }
++    try {
++      if (editingId === null) {
++        await healthRecordApi.create(petId, body)
++      } else {
++        await healthRecordApi.update(editingId, body)
++      }
++      closeForm()
++      await load()
++    } catch (err) {
++      setError(extractErrorMessage(err, '健康記録の保存に失敗しました。'))
++    } finally {
++      setIsSaving(false)
++    }
++  }
++
++  const handleDelete = async (healthRecordId: number) => {
++    if (!window.confirm('この記録を削除してもよろしいですか？')) return
++    setError(null)
++    try {
++      await healthRecordApi.remove(healthRecordId)
++      await load()
++    } catch (err) {
++      setError(extractErrorMessage(err, '健康記録の削除に失敗しました。'))
++    }
+   }
+ 
+   return (
+@@ -40,7 +95,7 @@ export default function HealthRecordPage() {
+       <div className="flex justify-between items-center">
+         <h1 className="font-headline-lg-mobile text-headline-lg-mobile text-neutral-gray-900">健康記録</h1>
+         <button
+-          onClick={() => setShowForm((v) => !v)}
++          onClick={() => (showForm ? closeForm() : setShowForm(true))}
+           className="flex items-center gap-1 bg-pet-green-vibrant text-white font-button-text text-button-text px-4 py-2.5 rounded-xl hover:bg-primary transition-colors active:scale-[0.98]"
+         >
+           <span className="material-symbols-outlined text-[18px]">{showForm ? 'close' : 'add'}</span>
+@@ -48,98 +103,101 @@ export default function HealthRecordPage() {
+         </button>
+       </div>
+ 
++      {error && (
++        <div className="flex items-center gap-2 bg-error-red/10 border border-error-red/20 text-error-red px-sm py-3 rounded-lg font-body-md text-body-md">
++          <span className="material-symbols-outlined text-[18px] flex-shrink-0">error</span>
++          {error}
++        </div>
++      )}
++
+       {showForm && (
+         <form
+           onSubmit={handleSubmit}
+           className="bg-surface-container-lowest rounded-[16px] border border-neutral-gray-100 p-container-margin flex flex-col gap-md shadow-[0px_4px_20px_rgba(0,0,0,0.05)]"
+         >
+-          <h2 className="font-headline-md text-headline-md text-neutral-gray-900">新しい記録を追加</h2>
++          <h2 className="font-headline-md text-headline-md text-neutral-gray-900">{editingId === null ? '新しい記録を追加' : '記録を編集'}</h2>
+ 
+           <div className="flex flex-col gap-xs">
+-            <label className="font-label-md text-label-md text-on-surface-variant">記録の種類</label>
+-            <div className="flex gap-sm flex-wrap">
+-              {(Object.keys(typeConfig) as RecordType[]).map((t) => (
+-                <button
+-                  key={t}
+-                  type="button"
+-                  onClick={() => setRecordType(t)}
+-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border font-label-md text-label-md transition-all ${
+-                    recordType === t ? 'border-pet-green-vibrant bg-pet-green-vibrant/5 text-primary' : 'border-neutral-gray-100 text-neutral-gray-600'
+-                  }`}
+-                >
+-                  <span className="material-symbols-outlined text-[14px]">{typeConfig[t].icon}</span>
+-                  {typeConfig[t].label}
+-                </button>
+-              ))}
+-            </div>
++            <label className="font-label-md text-label-md text-on-surface-variant">日付</label>
++            <input type="date" required value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} className={inputClass} />
+           </div>
+ 
+           <div className="flex flex-col gap-xs">
+-            <label className="font-label-md text-label-md text-on-surface-variant">日付</label>
+-            <input
+-              type="date"
+-              value={date}
+-              onChange={(e) => setDate(e.target.value)}
+-              className="w-full h-[48px] px-sm bg-neutral-gray-50 border border-neutral-gray-100 rounded-lg font-body-md text-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all"
+-            />
++            <label className="font-label-md text-label-md text-on-surface-variant">体重（kg・任意）</label>
++            <div className="relative">
++              <input
++                type="number"
++                step="0.01"
++                min="0"
++                max="999.99"
++                value={form.weight}
++                onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))}
++                placeholder="0.0"
++                className={`${inputClass} pr-14`}
++              />
++              <span className="absolute right-sm top-1/2 -translate-y-1/2 font-body-md text-body-md text-neutral-gray-600">kg</span>
++            </div>
+           </div>
+ 
+-          {recordType === 'weight' && (
+-            <div className="flex flex-col gap-xs">
+-              <label className="font-label-md text-label-md text-on-surface-variant">体重（kg）</label>
+-              <div className="relative">
+-                <input
+-                  type="number"
+-                  step="0.1"
+-                  min="0"
+-                  value={weight}
+-                  onChange={(e) => setWeight(e.target.value)}
+-                  placeholder="0.0"
+-                  className="w-full h-[48px] px-sm pr-14 bg-neutral-gray-50 border border-neutral-gray-100 rounded-lg font-body-md text-body-md text-on-surface placeholder:text-neutral-gray-600 focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all"
+-                />
+-                <span className="absolute right-sm top-1/2 -translate-y-1/2 font-body-md text-body-md text-neutral-gray-600">kg</span>
+-              </div>
+-            </div>
+-          )}
++          <div className="flex flex-col gap-xs">
++            <label className="font-label-md text-label-md text-on-surface-variant">症状（任意）</label>
++            <input type="text" maxLength={255} value={form.symptom} onChange={(e) => setForm((f) => ({ ...f, symptom: e.target.value }))} placeholder="例: 咳、食欲低下" className={inputClass} />
++          </div>
+ 
+           <div className="flex flex-col gap-xs">
+-            <label className="font-label-md text-label-md text-on-surface-variant">メモ</label>
++            <label className="font-label-md text-label-md text-on-surface-variant">メモ（任意）</label>
+             <textarea
+               rows={3}
+-              value={note}
+-              onChange={(e) => setNote(e.target.value)}
++              value={form.memo}
++              onChange={(e) => setForm((f) => ({ ...f, memo: e.target.value }))}
+               placeholder="観察した内容を入力してください"
+               className="w-full px-sm py-sm bg-neutral-gray-50 border border-neutral-gray-100 rounded-lg font-body-md text-body-md text-on-surface placeholder:text-neutral-gray-600 focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all resize-none"
+             />
+           </div>
+ 
+-          <button type="submit" className="w-full h-[48px] bg-pet-green-vibrant hover:bg-primary text-white font-button-text text-button-text rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
++          <button type="submit" disabled={isSaving} className="w-full h-[48px] bg-pet-green-vibrant hover:bg-primary disabled:bg-neutral-gray-100 disabled:text-neutral-gray-600 text-white font-button-text text-button-text rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
+             <span className="material-symbols-outlined">check</span>
+-            保存
++            {isSaving ? '保存中…' : '保存'}
+           </button>
+         </form>
+       )}
+ 
+-      <div className="flex flex-col gap-sm">
+-        {mockRecords.map((r) => {
+-          const config = typeConfig[r.type]
+-          return (
+-            <div key={r.id} className="bg-surface-container-lowest rounded-xl border border-neutral-gray-100 px-container-margin py-md flex items-start gap-3 shadow-[0px_2px_8px_rgba(0,0,0,0.03)]">
+-              <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${config.color}`}>
+-                <span className="material-symbols-outlined icon-fill text-[18px]">{config.icon}</span>
+-              </div>
+-              <div className="flex-grow min-w-0">
+-                <div className="flex items-center justify-between gap-2">
+-                  <span className={`font-label-md text-label-md px-2 py-0.5 rounded-full ${config.color}`}>{config.label}</span>
+-                  <span className="font-label-md text-label-md text-neutral-gray-600 flex-shrink-0">{r.date}</span>
++      {isLoading ? (
++        <div className="flex items-center justify-center py-xl">
++          <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
++        </div>
++      ) : records.length === 0 ? (
++        <p className="font-body-md text-body-md text-neutral-gray-600 text-center py-xl">健康記録はまだありません。</p>
++      ) : (
++        <div className="flex flex-col gap-sm">
++          {records.map((r) => {
++            const config = recordIcon(r)
++            return (
++              <div key={r.healthRecordId} className="bg-surface-container-lowest rounded-xl border border-neutral-gray-100 px-container-margin py-md flex items-start gap-3 shadow-[0px_2px_8px_rgba(0,0,0,0.03)]">
++                <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${config.color}`}>
++                  <span className="material-symbols-outlined icon-fill text-[18px]">{config.icon}</span>
++                </div>
++                <div className="flex-grow min-w-0">
++                  <div className="flex items-center justify-between gap-2">
++                    <span className="font-label-md text-label-md text-neutral-gray-600">{r.recordedDate}</span>
++                    <div className="flex items-center gap-1 flex-shrink-0">
++                      <button onClick={() => openEdit(r)} aria-label="編集" className="p-1 rounded-full text-neutral-gray-600 hover:bg-surface-container-low">
++                        <span className="material-symbols-outlined text-[18px]">edit</span>
++                      </button>
++                      <button onClick={() => handleDelete(r.healthRecordId)} aria-label="削除" className="p-1 rounded-full text-error-red hover:bg-error-red/10">
++                        <span className="material-symbols-outlined text-[18px]">delete</span>
++                      </button>
++                    </div>
++                  </div>
++                  {r.weight != null && <p className="font-body-lg text-body-lg text-neutral-gray-900 mt-1 font-medium">{r.weight} kg</p>}
++                  {r.symptom && <p className="font-label-md text-label-md text-warning-yellow mt-1">症状: {r.symptom}</p>}
++                  {r.memo && <p className="font-body-md text-body-md text-neutral-gray-900 mt-1 whitespace-pre-wrap">{r.memo}</p>}
+                 </div>
+-                {r.weight != null && <p className="font-body-lg text-body-lg text-neutral-gray-900 mt-1 font-medium">{r.weight} kg</p>}
+-                {r.note && <p className="font-body-md text-body-md text-neutral-gray-900 mt-1">{r.note}</p>}
+               </div>
+-            </div>
+-          )
+-        })}
+-      </div>
++            )
++          })}
++        </div>
++      )}
+     </div>
+   )
+ }
+diff --git a/frontend/src/pages/HospitalDetailPage.tsx b/frontend/src/pages/HospitalDetailPage.tsx
+index b8328a8..eb4ba6a 100644
+--- a/frontend/src/pages/HospitalDetailPage.tsx
++++ b/frontend/src/pages/HospitalDetailPage.tsx
+@@ -2,6 +2,7 @@ import { useEffect } from 'react'
+ import { Link, useParams } from 'react-router-dom'
+ import { useHospitalStore } from '../stores/hospitalStore'
+ import type { DayOfWeek } from '../types'
++import { formatTime } from '../utils/date'
+ 
+ const DAY_ORDER: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
+ const DAY_LABEL: Record<DayOfWeek, string> = {
+@@ -14,9 +15,6 @@ const DAY_LABEL: Record<DayOfWeek, string> = {
+   SUNDAY: '日曜日',
+ }
+ 
+-// バックエンドは "HH:mm:ss" 形式で返すため表示用に秒を落とす
+-const formatTime = (time: string) => time.slice(0, 5)
+-
+ export default function HospitalDetailPage() {
+   const { hospitalId } = useParams()
+   const { selectedHospital, businessHours, isLoading, fetchHospitalDetail, fetchBusinessHours } = useHospitalStore()
+diff --git a/frontend/src/pages/LoginPage.tsx b/frontend/src/pages/LoginPage.tsx
+index fe6799b..69db91d 100644
+--- a/frontend/src/pages/LoginPage.tsx
++++ b/frontend/src/pages/LoginPage.tsx
+@@ -5,7 +5,7 @@ import { useAuthStore } from '../stores/authStore'
+ 
+ export default function LoginPage() {
+   const navigate = useNavigate()
+-  const { setTokens, setUser } = useAuthStore()
++  const { setTokens, setUser, clearAuth } = useAuthStore()
+   const [showPw, setShowPw] = useState(false)
+   const [email, setEmail] = useState('')
+   const [password, setPassword] = useState('')
+@@ -22,6 +22,8 @@ export default function LoginPage() {
+         setError(res.message ?? 'ログインに失敗しました。')
+         return
+       }
++      // ログアウトせずに別アカウントでログインした場合も、前のユーザーのキャッシュを捨てて新しいセッションにする
++      clearAuth()
+       setTokens(res.data.accessToken, res.data.refreshToken)
+       const meRes = await authApi.getMe()
+       if (meRes.success && meRes.data) setUser(meRes.data)
+diff --git a/frontend/src/pages/MyPetPage.tsx b/frontend/src/pages/MyPetPage.tsx
+index 5c0d70a..e4c83fc 100644
+--- a/frontend/src/pages/MyPetPage.tsx
++++ b/frontend/src/pages/MyPetPage.tsx
+@@ -1,9 +1,10 @@
+ import { useEffect } from 'react'
+ import { Link } from 'react-router-dom'
+ import { usePetStore } from '../stores/petStore'
++import { PET_SPECIES_LABEL } from '../types'
+ 
+ export default function MyPetPage() {
+-  const { pets, isLoading, fetchPets } = usePetStore()
++  const { pets, isLoading, error, fetchPets } = usePetStore()
+ 
+   useEffect(() => {
+     fetchPets()
+@@ -32,7 +33,14 @@ export default function MyPetPage() {
+         </Link>
+       </div>
+ 
+-      {pets.length === 0 ? (
++      {error && pets.length === 0 ? (
++        // 取得失敗を「ペット未登録」と見せない
++        <div className="flex items-center gap-2 bg-error-red/10 border border-error-red/20 text-error-red px-sm py-3 rounded-lg font-body-md text-body-md">
++          <span className="material-symbols-outlined text-[18px] flex-shrink-0">error</span>
++          <span className="flex-grow">{error}</span>
++          <button type="button" onClick={() => fetchPets()} className="font-button-text text-button-text underline flex-shrink-0">再試行</button>
++        </div>
++      ) : pets.length === 0 ? (
+         <div className="flex flex-col items-center justify-center py-xl gap-md text-center mt-xl">
+           <div className="w-20 h-20 rounded-full bg-surface-container-low flex items-center justify-center">
+             <span className="material-symbols-outlined text-neutral-gray-600 text-[40px]">pets</span>
+@@ -70,7 +78,7 @@ export default function MyPetPage() {
+                   <span className="material-symbols-outlined text-neutral-gray-600">chevron_right</span>
+                 </div>
+                 <p className="font-body-md text-body-md text-neutral-gray-600 mt-0.5 truncate">
+-                  {pet.breed ?? '—'} · {pet.gender === 'MALE' ? 'オス' : 'メス'}
++                  {PET_SPECIES_LABEL[pet.species] ?? '—'}
+                 </p>
+                 <div className="flex items-center gap-2 mt-3">
+                   <span className="inline-flex items-center gap-1 text-primary border border-primary/20 bg-surface-bright font-label-md text-label-md px-2.5 py-1 rounded-full">
+diff --git a/frontend/src/pages/NotificationsPage.tsx b/frontend/src/pages/NotificationsPage.tsx
+index 88e6a19..0e6065d 100644
+--- a/frontend/src/pages/NotificationsPage.tsx
++++ b/frontend/src/pages/NotificationsPage.tsx
+@@ -1,55 +1,72 @@
+-import { useState } from 'react'
++import { useEffect, useState } from 'react'
++import { notificationApi } from '../api/notification'
++import { extractErrorMessage } from '../api/client'
++import type { AppNotification, NotificationType } from '../types'
+ 
+-type NotifType = 'reservation' | 'health' | 'system'
+-
+-interface Notification {
+-  id: number
+-  type: NotifType
+-  title: string
+-  body: string
+-  time: string
+-  read: boolean
+-}
+-
+-const typeConfig: Record<NotifType, { icon: string; color: string }> = {
+-  reservation: { icon: 'calendar_today', color: 'text-primary bg-primary/10' },
+-  health: { icon: 'favorite', color: 'text-error-red bg-error-red/10' },
+-  system: { icon: 'notifications', color: 'text-neutral-gray-600 bg-neutral-gray-100' },
++const typeConfig: Record<NotificationType, { icon: string; color: string }> = {
++  RESERVATION_APPROVED: { icon: 'event_available', color: 'text-primary bg-primary/10' },
++  RESERVATION_REJECTED: { icon: 'event_busy', color: 'text-error-red bg-error-red/10' },
++  TREATMENT_COMPLETED: { icon: 'medical_services', color: 'text-success-blue bg-success-blue/10' },
++  VACCINATION: { icon: 'vaccines', color: 'text-warning-yellow bg-warning-yellow/10' },
+ }
+ 
+-const mockNotifications: Notification[] = [
+-  { id: 1, type: 'reservation', title: '予約リマインダー', body: '明日の午後2:00に幸せ動物病院の予約があります。ボリと一緒に準備しましょう！', time: '1時間前', read: false },
+-  { id: 2, type: 'health', title: '予防接種のお知らせ', body: 'ボリのフィラリア予防薬の投与日まであと3日です。', time: '3時間前', read: false },
+-  { id: 3, type: 'reservation', title: '予約が確定されました', body: '10月18日 愛情動物クリニックの予約が確定されました。', time: '昨日', read: true },
+-  { id: 4, type: 'system', title: 'サービスのお知らせ', body: '10月28日（月）メンテナンスのため、午前2:00〜4:00はサービスをご利用いただけません。', time: '2日前', read: true },
+-  { id: 5, type: 'health', title: '健康記録が保存されました', body: 'ボリの体重記録が保存されました。（28.5 kg）', time: '3日前', read: true },
+-]
++// createdAt はオフセットなしのJST日時（docs/07 §2-7）。端末のタイムゾーンで解釈し直さずそのまま表示する
++const formatDateTime = (dateTime: string) => dateTime.slice(0, 16).replace('T', ' ')
+ 
+ export default function NotificationsPage() {
+-  const [notifications, setNotifications] = useState(mockNotifications)
++  const [notifications, setNotifications] = useState<AppNotification[]>([])
++  const [isLoading, setIsLoading] = useState(true)
++  const [error, setError] = useState<string | null>(null)
++
++  useEffect(() => {
++    notificationApi
++      .getList()
++      .then((res) => setNotifications(res.data ?? []))
++      .catch((err) => setError(extractErrorMessage(err, '通知の取得に失敗しました。')))
++      .finally(() => setIsLoading(false))
++  }, [])
+ 
+-  const unreadCount = notifications.filter((n) => !n.read).length
++  const unread = notifications.filter((n) => !n.isRead)
+ 
+-  const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+-  const markRead = (id: number) => setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
++  const markRead = async (ids: number[]) => {
++    setError(null)
++    try {
++      // ponytail: 一括既読APIが無いため1件ずつ。件数が増えたら一括APIを追加する
++      await Promise.all(ids.map((id) => notificationApi.markAsRead(id)))
++      setNotifications((prev) => prev.map((n) => (ids.includes(n.notificationId) ? { ...n, isRead: true } : n)))
++    } catch (err) {
++      setError(extractErrorMessage(err, '既読への変更に失敗しました。'))
++    }
++  }
+ 
+   return (
+     <div className="px-container-margin pt-lg pb-xl flex flex-col gap-lg">
+       <div className="flex justify-between items-center">
+         <div>
+           <h1 className="font-headline-lg-mobile text-headline-lg-mobile text-neutral-gray-900">通知</h1>
+-          {unreadCount > 0 && (
+-            <p className="font-label-md text-label-md text-neutral-gray-600 mt-0.5">未読の通知 {unreadCount}件</p>
++          {unread.length > 0 && (
++            <p className="font-label-md text-label-md text-neutral-gray-600 mt-0.5">未読の通知 {unread.length}件</p>
+           )}
+         </div>
+-        {unreadCount > 0 && (
+-          <button onClick={markAllRead} className="font-label-md text-label-md text-primary hover:underline">
++        {unread.length > 0 && (
++          <button onClick={() => markRead(unread.map((n) => n.notificationId))} className="font-label-md text-label-md text-primary hover:underline">
+             すべて既読にする
+           </button>
+         )}
+       </div>
+ 
+-      {notifications.length === 0 ? (
++      {error && (
++        <div className="flex items-center gap-2 bg-error-red/10 border border-error-red/20 text-error-red px-sm py-3 rounded-lg font-body-md text-body-md">
++          <span className="material-symbols-outlined text-[18px] flex-shrink-0">error</span>
++          {error}
++        </div>
++      )}
++
++      {isLoading ? (
++        <div className="flex items-center justify-center py-xl">
++          <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
++        </div>
++      ) : notifications.length === 0 ? (
+         <div className="flex flex-col items-center justify-center py-xl gap-md text-center mt-xl">
+           <div className="w-20 h-20 rounded-full bg-surface-container-low flex items-center justify-center">
+             <span className="material-symbols-outlined text-neutral-gray-600 text-[40px]">notifications_off</span>
+@@ -64,20 +81,20 @@ export default function NotificationsPage() {
+           {notifications.map((n) => {
+             const config = typeConfig[n.type]
+             return (
+-              <button key={n.id} onClick={() => markRead(n.id)}
+-                className={`w-full text-left rounded-xl border px-container-margin py-md flex items-start gap-3 transition-all ${n.read ? 'bg-surface-container-lowest border-neutral-gray-100' : 'bg-primary/5 border-primary/20'}`}>
++              <button key={n.notificationId} onClick={() => !n.isRead && markRead([n.notificationId])}
++                className={`w-full text-left rounded-xl border px-container-margin py-md flex items-start gap-3 transition-all ${n.isRead ? 'bg-surface-container-lowest border-neutral-gray-100' : 'bg-primary/5 border-primary/20'}`}>
+                 <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${config.color}`}>
+                   <span className="material-symbols-outlined icon-fill text-[18px]">{config.icon}</span>
+                 </div>
+                 <div className="flex-grow min-w-0">
+                   <div className="flex items-start justify-between gap-2">
+-                    <p className={`font-body-lg text-body-lg leading-tight ${!n.read ? 'text-neutral-gray-900 font-semibold' : 'text-neutral-gray-900'}`}>{n.title}</p>
++                    <p className={`font-body-lg text-body-lg leading-tight ${!n.isRead ? 'text-neutral-gray-900 font-semibold' : 'text-neutral-gray-900'}`}>{n.title}</p>
+                     <div className="flex items-center gap-1.5 flex-shrink-0">
+-                      {!n.read && <span className="w-2 h-2 rounded-full bg-pet-green-vibrant" />}
+-                      <span className="font-label-md text-label-md text-neutral-gray-600">{n.time}</span>
++                      {!n.isRead && <span className="w-2 h-2 rounded-full bg-pet-green-vibrant" />}
++                      <span className="font-label-md text-label-md text-neutral-gray-600">{formatDateTime(n.createdAt)}</span>
+                     </div>
+                   </div>
+-                  <p className="font-body-md text-body-md text-neutral-gray-600 mt-1 leading-relaxed">{n.body}</p>
++                  <p className="font-body-md text-body-md text-neutral-gray-600 mt-1 leading-relaxed">{n.message}</p>
+                 </div>
+               </button>
+             )
+diff --git a/frontend/src/pages/PetRegisterPage.tsx b/frontend/src/pages/PetRegisterPage.tsx
+index 649eb33..5303471 100644
+--- a/frontend/src/pages/PetRegisterPage.tsx
++++ b/frontend/src/pages/PetRegisterPage.tsx
+@@ -2,6 +2,7 @@ import React, { useState, FormEvent } from 'react'
+ import { useNavigate } from 'react-router-dom'
+ import { FaDog, FaCat, FaPaw } from 'react-icons/fa6'
+ import { petApi } from '../api/pet'
++import { extractErrorMessage } from '../api/client'
+ import { usePetStore } from '../stores/petStore'
+ import type { PetSpecies, PetGender } from '../types'
+ 
+@@ -43,10 +44,7 @@ export default function PetRegisterPage() {
+       await fetchPets()
+       setTimeout(() => navigate('/pets'), 2000)
+     } catch (err: unknown) {
+-      const message =
+-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+-        ?? 'ペットの登録に失敗しました。もう一度お試しください。'
+-      setError(message)
++      setError(extractErrorMessage(err, 'ペットの登録に失敗しました。もう一度お試しください。'))
+     } finally {
+       setIsLoading(false)
+     }
+diff --git a/frontend/src/pages/ReservationHistoryPage.tsx b/frontend/src/pages/ReservationHistoryPage.tsx
+index 1470498..41ae6e1 100644
+--- a/frontend/src/pages/ReservationHistoryPage.tsx
++++ b/frontend/src/pages/ReservationHistoryPage.tsx
+@@ -1,35 +1,74 @@
+-import { useState } from 'react'
++import { useCallback, useEffect, useState } from 'react'
+ import { Link } from 'react-router-dom'
++import { reservationApi } from '../api/reservation'
++import { extractErrorMessage } from '../api/client'
++import { formatTime } from '../utils/date'
++import type { ReservationStatus, ReservationSummary } from '../types'
+ 
+-type Status = 'upcoming' | 'completed' | 'cancelled'
++type Filter = 'all' | 'upcoming' | 'completed' | 'cancelled'
+ 
+-interface Reservation {
+-  id: number
+-  hospitalName: string
+-  petName: string
+-  service: string
+-  date: string
+-  time: string
+-  status: Status
++const statusConfig: Record<ReservationStatus, { label: string; color: string }> = {
++  REQUESTED: { label: '申請中', color: 'text-warning-yellow bg-warning-yellow/10' },
++  APPROVED: { label: '予約確定', color: 'text-primary bg-primary/10' },
++  COMPLETED: { label: '診療完了', color: 'text-neutral-gray-600 bg-neutral-gray-50' },
++  REJECTED: { label: '却下', color: 'text-error-red bg-error-red/10' },
++  CANCELLED: { label: 'キャンセル', color: 'text-error-red bg-error-red/10' },
+ }
+ 
+-const reservations: Reservation[] = [
+-  { id: 1, hospitalName: '幸せ動物病院', petName: 'ボリ', service: 'フィラリア予防接種', date: '2024-10-25', time: '14:00', status: 'upcoming' },
+-  { id: 2, hospitalName: '愛情動物クリニック', petName: 'ナビ', service: '健康診断', date: '2024-10-18', time: '10:30', status: 'upcoming' },
+-  { id: 3, hospitalName: '幸せ動物病院', petName: 'ボリ', service: '皮膚科診察', date: '2024-09-30', time: '15:00', status: 'completed' },
+-  { id: 4, hospitalName: '笑顔動物病院', petName: 'ボリ', service: '外科手術', date: '2024-09-10', time: '11:00', status: 'cancelled' },
+-]
+-
+-const statusConfig: Record<Status, { label: string; color: string }> = {
+-  upcoming: { label: '予約確定', color: 'text-primary bg-primary/10' },
+-  completed: { label: '診療完了', color: 'text-neutral-gray-600 bg-neutral-gray-50' },
+-  cancelled: { label: 'キャンセル', color: 'text-error-red bg-error-red/10' },
++const filterStatuses: Record<Exclude<Filter, 'all'>, ReservationStatus[]> = {
++  upcoming: ['REQUESTED', 'APPROVED'],
++  completed: ['COMPLETED'],
++  cancelled: ['CANCELLED', 'REJECTED'],
+ }
+ 
+ export default function ReservationHistoryPage() {
+-  const [filter, setFilter] = useState<'all' | Status>('all')
++  const [filter, setFilter] = useState<Filter>('all')
++  const [reservations, setReservations] = useState<ReservationSummary[]>([])
++  const [memos, setMemos] = useState<Record<number, string>>({})
++  const [isLoading, setIsLoading] = useState(true)
++  const [error, setError] = useState<string | null>(null)
++
++  const load = useCallback(async () => {
++    try {
++      const res = await reservationApi.getList()
++      setReservations(res.data ?? [])
++    } catch (err) {
++      setError(extractErrorMessage(err, '予約一覧の取得に失敗しました。'))
++    } finally {
++      setIsLoading(false)
++    }
++  }, [])
++
++  useEffect(() => {
++    load()
++  }, [load])
++
++  const handleCancel = async (reservationId: number) => {
++    if (!window.confirm('この予約をキャンセルしてもよろしいですか？')) return
++    setError(null)
++    try {
++      await reservationApi.cancel(reservationId)
++    } catch (err) {
++      setError(extractErrorMessage(err, '予約のキャンセルに失敗しました。'))
++    }
++    // 失敗時も他の操作で状態が変わっている可能性があるため取り直す
++    await load()
++  }
+ 
+-  const filtered = filter === 'all' ? reservations : reservations.filter((r) => r.status === filter)
++  const toggleDetail = async (reservationId: number) => {
++    if (reservationId in memos) {
++      setMemos(({ [reservationId]: _, ...rest }) => rest)
++      return
++    }
++    try {
++      const res = await reservationApi.getDetail(reservationId)
++      setMemos((prev) => ({ ...prev, [reservationId]: res.data?.memo ?? '' }))
++    } catch (err) {
++      setError(extractErrorMessage(err, '予約詳細の取得に失敗しました。'))
++    }
++  }
++
++  const filtered = filter === 'all' ? reservations : reservations.filter((r) => filterStatuses[filter].includes(r.status))
+ 
+   return (
+     <div className="px-container-margin pt-lg pb-xl flex flex-col gap-lg">
+@@ -37,7 +76,7 @@ export default function ReservationHistoryPage() {
+ 
+       <div className="flex gap-sm border-b border-neutral-gray-100">
+         {(['all', 'upcoming', 'completed', 'cancelled'] as const).map((f) => {
+-          const labels = { all: 'すべて', upcoming: '予定', completed: '完了', cancelled: 'キャンセル' }
++          const labels = { all: 'すべて', upcoming: '予定', completed: '完了', cancelled: 'キャンセル・却下' }
+           return (
+             <button key={f} onClick={() => setFilter(f)}
+               className={`pb-3 font-button-text text-button-text transition-all border-b-2 -mb-px ${filter === f ? 'border-pet-green-vibrant text-primary' : 'border-transparent text-neutral-gray-600 hover:text-on-surface'}`}>
+@@ -47,7 +86,18 @@ export default function ReservationHistoryPage() {
+         })}
+       </div>
+ 
+-      {filtered.length === 0 ? (
++      {error && (
++        <div className="flex items-center gap-2 bg-error-red/10 border border-error-red/20 text-error-red px-sm py-3 rounded-lg font-body-md text-body-md">
++          <span className="material-symbols-outlined text-[18px] flex-shrink-0">error</span>
++          {error}
++        </div>
++      )}
++
++      {isLoading ? (
++        <div className="flex items-center justify-center py-xl">
++          <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
++        </div>
++      ) : filtered.length === 0 ? (
+         <div className="flex flex-col items-center justify-center py-xl gap-md text-center mt-xl">
+           <div className="w-20 h-20 rounded-full bg-surface-container-low flex items-center justify-center">
+             <span className="material-symbols-outlined text-neutral-gray-600 text-[40px]">calendar_today</span>
+@@ -65,44 +115,44 @@ export default function ReservationHistoryPage() {
+         <div className="flex flex-col gap-sm">
+           {filtered.map((r) => {
+             const config = statusConfig[r.status]
++            const isOpen = r.reservationId in memos
+             return (
+-              <div key={r.id} className="bg-surface-container-lowest rounded-[16px] border border-neutral-gray-100 p-container-margin flex flex-col gap-sm shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
++              <div key={r.reservationId} className="bg-surface-container-lowest rounded-[16px] border border-neutral-gray-100 p-container-margin flex flex-col gap-sm shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
+                 <div className="flex items-start justify-between gap-2">
+-                  <div>
+-                    <h2 className="font-headline-md text-headline-md text-neutral-gray-900">{r.hospitalName}</h2>
+-                    <p className="font-body-md text-body-md text-neutral-gray-600 mt-0.5">{r.service}</p>
+-                  </div>
++                  <h2 className="font-headline-md text-headline-md text-neutral-gray-900">{r.hospitalName}</h2>
+                   <span className={`font-label-md text-label-md px-2.5 py-1 rounded-full flex-shrink-0 ${config.color}`}>{config.label}</span>
+                 </div>
+-                <div className="flex items-center gap-4 text-neutral-gray-600">
++                <div className="flex items-center gap-4 text-neutral-gray-600 flex-wrap">
+                   <div className="flex items-center gap-1.5">
+                     <span className="material-symbols-outlined text-[16px]">calendar_today</span>
+-                    <span className="font-body-md text-body-md">{r.date}</span>
++                    <span className="font-body-md text-body-md">{r.availableDate}</span>
+                   </div>
+                   <div className="flex items-center gap-1.5">
+                     <span className="material-symbols-outlined text-[16px]">schedule</span>
+-                    <span className="font-body-md text-body-md">{r.time}</span>
++                    <span className="font-body-md text-body-md">{formatTime(r.startTime)}〜{formatTime(r.endTime)}</span>
+                   </div>
+                   <div className="flex items-center gap-1.5">
+                     <span className="material-symbols-outlined text-[16px]">pets</span>
+                     <span className="font-body-md text-body-md">{r.petName}</span>
+                   </div>
+                 </div>
+-                {r.status === 'upcoming' && (
+-                  <div className="flex gap-sm pt-sm border-t border-neutral-gray-100">
+-                    <button className="flex-1 h-[40px] bg-error-red/10 text-error-red font-button-text text-button-text rounded-lg hover:bg-error-red/20 transition-colors">予約キャンセル</button>
+-                    <Link to={`/hospitals/${r.id}`} className="flex-1 h-[40px] bg-surface-container-low text-on-surface font-button-text text-button-text rounded-lg border border-neutral-gray-100 hover:bg-surface-container transition-colors flex items-center justify-center">
+-                      病院詳細
+-                    </Link>
+-                  </div>
++                {isOpen && (
++                  <p className="font-body-md text-body-md text-neutral-gray-900 whitespace-pre-wrap bg-neutral-gray-50 rounded-lg px-sm py-sm">
++                    {memos[r.reservationId] || 'メモはありません。'}
++                  </p>
+                 )}
+-                {r.status === 'completed' && (
+-                  <div className="pt-sm border-t border-neutral-gray-100">
+-                    <button className="w-full h-[40px] bg-surface-container-low text-primary font-button-text text-button-text rounded-lg border border-primary/20 hover:bg-primary/5 transition-colors">
+-                      レビューを書く
++                <div className="flex gap-sm pt-sm border-t border-neutral-gray-100">
++                  <button onClick={() => toggleDetail(r.reservationId)}
++                    className="flex-1 h-[40px] bg-surface-container-low text-on-surface font-button-text text-button-text rounded-lg border border-neutral-gray-100 hover:bg-surface-container transition-colors">
++                    {isOpen ? '詳細を閉じる' : '詳細'}
++                  </button>
++                  {(r.status === 'REQUESTED' || r.status === 'APPROVED') && (
++                    <button onClick={() => handleCancel(r.reservationId)}
++                      className="flex-1 h-[40px] bg-error-red/10 text-error-red font-button-text text-button-text rounded-lg hover:bg-error-red/20 transition-colors">
++                      予約キャンセル
+                     </button>
+-                  </div>
+-                )}
++                  )}
++                </div>
+               </div>
+             )
+           })}
+diff --git a/frontend/src/pages/ReservationPage.tsx b/frontend/src/pages/ReservationPage.tsx
+index 86a8e49..458aede 100644
+--- a/frontend/src/pages/ReservationPage.tsx
++++ b/frontend/src/pages/ReservationPage.tsx
+@@ -1,30 +1,100 @@
+-import { useState, FormEvent } from 'react'
+-import { useNavigate } from 'react-router-dom'
++import { useEffect, useState, FormEvent } from 'react'
++import { useNavigate, useParams } from 'react-router-dom'
+ import { usePetStore } from '../stores/petStore'
+-import { todayInJapan } from '../utils/date'
++import { hospitalApi } from '../api/hospital'
++import { reservationApi } from '../api/reservation'
++import { extractErrorMessage } from '../api/client'
++import { formatTime, isUpcoming } from '../utils/date'
++import type { HospitalDetail, HospitalSchedule } from '../types'
+ 
+ type Step = 1 | 2 | 3
+ 
++// 診療目的はAPIに項目が無いため、メモの先頭に添えて病院へ伝える
+ const services = ['健康診断', '予防接種', '皮膚科診察', '歯科診察', '外科手術', 'その他']
+-const timeSlots = ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30']
+-const bookedSlots = ['10:00', '10:30', '15:00']
+ 
++// 予約できる枠: AVAILABLE かつ開始がJSTの現在より後（バックエンドの RESERVATION-005 と同じ判定）
++const isBookable = (s: HospitalSchedule) => s.status === 'AVAILABLE' && isUpcoming(s.availableDate, s.startTime)
++
++// 病院が変わったら画面ごと作り直し、前の病院の枠・選択を持ち越さない（REVIEW-001 F-02）
+ export default function ReservationPage() {
++  const { hospitalId } = useParams()
++  return <ReservationForm key={hospitalId} hospitalId={Number(hospitalId)} />
++}
++
++function ReservationForm({ hospitalId }: { hospitalId: number }) {
+   const navigate = useNavigate()
+-  const { pets } = usePetStore()
++  const { pets, fetchPets } = usePetStore()
++  // 病院情報・予約枠はこの病院専用のローカル状態で持つ（共有ストアだと別病院の応答が混ざる）
++  const [hospital, setHospital] = useState<HospitalDetail | null>(null)
++  const [schedules, setSchedules] = useState<HospitalSchedule[]>([])
++  const [loadError, setLoadError] = useState<string | null>(null)
++  const [loadCount, setLoadCount] = useState(0)
+   const [step, setStep] = useState<Step>(1)
+   const [selectedPet, setSelectedPet] = useState<number | null>(null)
+   const [selectedService, setSelectedService] = useState<string | null>(null)
+   const [selectedDate, setSelectedDate] = useState('')
+-  const [selectedTime, setSelectedTime] = useState<string | null>(null)
++  const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null)
+   const [note, setNote] = useState('')
++  const [error, setError] = useState<string | null>(null)
++  const [isSubmitting, setIsSubmitting] = useState(false)
++
++  useEffect(() => {
++    fetchPets()
++  }, [fetchPets])
++
++  useEffect(() => {
++    // アンマウント後（別の病院へ移動後）に届いた応答は反映しない
++    let active = true
++    setLoadError(null)
++    Promise.all([hospitalApi.getDetail(hospitalId), hospitalApi.getScheduleList(hospitalId)])
++      .then(([detail, list]) => {
++        if (!active) return
++        setHospital(detail.data)
++        setSchedules(list.data ?? [])
++      })
++      .catch((err) => {
++        if (active) setLoadError(extractErrorMessage(err, '病院情報・予約枠の取得に失敗しました。'))
++      })
++    return () => {
++      active = false
++    }
++  }, [hospitalId, loadCount])
+ 
+-  const canGoStep2 = selectedPet !== null && selectedService !== null
+-  const canGoStep3 = selectedDate !== '' && selectedTime !== null
++  const reload = () => setLoadCount((c) => c + 1)
++  // 現在の病院の情報が取れるまでは先へ進めない
++  const isReady = hospital !== null
+ 
+-  const handleSubmit = (e: FormEvent) => {
++  const availableDates = [...new Set(schedules.filter(isBookable).map((s) => s.availableDate))].sort()
++  const slots = schedules
++    .filter((s) => s.availableDate === selectedDate)
++    .sort((a, b) => a.startTime.localeCompare(b.startTime))
++  const selectedSlot = schedules.find((s) => s.scheduleId === selectedScheduleId)
++
++  const canGoStep2 = isReady && selectedPet !== null
++  const canGoStep3 = selectedSlot !== undefined && isBookable(selectedSlot)
++
++  const handleSubmit = async (e: FormEvent) => {
+     e.preventDefault()
+-    navigate('/reservations')
++    if (selectedPet === null || !selectedSlot) return
++    setError(null)
++    // 確認画面にいる間に開始時刻を過ぎた枠は送らない
++    if (!isBookable(selectedSlot)) {
++      setError('選択した時間枠は受付を終了しました。日時を選び直してください。')
++      setSelectedScheduleId(null)
++      return
++    }
++    setIsSubmitting(true)
++    try {
++      const memo = [selectedService && `診療目的: ${selectedService}`, note.trim()].filter(Boolean).join('\n')
++      await reservationApi.create({ petId: selectedPet, hospitalId, scheduleId: selectedSlot.scheduleId, memo: memo || undefined })
++      navigate('/reservations')
++    } catch (err) {
++      setError(extractErrorMessage(err, '予約の申請に失敗しました。もう一度お試しください。'))
++      // 重複予約などで枠の状態が変わっている可能性があるため取り直す
++      reload()
++    } finally {
++      setIsSubmitting(false)
++    }
+   }
+ 
+   const stepLabels: Record<Step, string> = {
+@@ -48,6 +118,19 @@ export default function ReservationPage() {
+       </div>
+       <p className="font-body-md text-body-md text-neutral-gray-600 -mt-sm">{stepLabels[step]}</p>
+ 
++      {loadError ? (
++        <div className="flex items-center gap-2 bg-error-red/10 border border-error-red/20 text-error-red px-sm py-3 rounded-lg font-body-md text-body-md">
++          <span className="material-symbols-outlined text-[18px] flex-shrink-0">error</span>
++          <span className="flex-grow">{loadError}</span>
++          <button type="button" onClick={reload} className="font-button-text text-button-text underline flex-shrink-0">再試行</button>
++        </div>
++      ) : !isReady && (
++        <p className="flex items-center gap-2 font-body-md text-body-md text-neutral-gray-600">
++          <span className="material-symbols-outlined animate-spin text-primary text-[18px]">progress_activity</span>
++          病院情報と予約枠を読み込み中…
++        </p>
++      )}
++
+       {step === 1 && (
+         <div className="flex flex-col gap-lg">
+           <section className="flex flex-col gap-sm">
+@@ -74,10 +157,10 @@ export default function ReservationPage() {
+           </section>
+ 
+           <section className="flex flex-col gap-sm">
+-            <h2 className="font-headline-md text-headline-md text-neutral-gray-900">診療目的</h2>
++            <h2 className="font-headline-md text-headline-md text-neutral-gray-900">診療目的（任意）</h2>
+             <div className="grid grid-cols-2 gap-sm">
+               {services.map((s) => (
+-                <button key={s} type="button" onClick={() => setSelectedService(s)}
++                <button key={s} type="button" onClick={() => setSelectedService(selectedService === s ? null : s)}
+                   className={`py-3 px-4 rounded-xl border-2 font-body-md text-body-md text-left transition-all ${selectedService === s ? 'border-pet-green-vibrant bg-pet-green-vibrant/5 text-primary' : 'border-neutral-gray-100 bg-surface-container-lowest text-neutral-gray-900'}`}>
+                   {s}
+                 </button>
+@@ -96,30 +179,42 @@ export default function ReservationPage() {
+         <div className="flex flex-col gap-lg">
+           <section className="flex flex-col gap-sm">
+             <h2 className="font-headline-md text-headline-md text-neutral-gray-900">日付を選択</h2>
+-            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} min={todayInJapan()}
+-              className="w-full h-[52px] px-sm bg-neutral-gray-50 border border-neutral-gray-100 rounded-xl font-body-md text-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all" />
+-          </section>
+-
+-          <section className="flex flex-col gap-sm">
+-            <h2 className="font-headline-md text-headline-md text-neutral-gray-900">時間を選択</h2>
+-            <div className="grid grid-cols-4 gap-sm">
+-              {timeSlots.map((t) => {
+-                const isBooked = bookedSlots.includes(t)
+-                const isSelected = selectedTime === t
+-                return (
+-                  <button key={t} type="button" disabled={isBooked} onClick={() => setSelectedTime(t)}
+-                    className={`py-2.5 rounded-lg font-body-md text-body-md transition-all border-2 ${isBooked ? 'border-neutral-gray-100 bg-neutral-gray-50 text-neutral-gray-600/50 cursor-not-allowed line-through' : isSelected ? 'border-pet-green-vibrant bg-pet-green-vibrant/5 text-primary' : 'border-neutral-gray-100 bg-surface-container-lowest text-neutral-gray-900 hover:border-pet-green-vibrant/50'}`}>
+-                    {t}
++            {availableDates.length === 0 ? (
++              <p className="font-body-md text-body-md text-neutral-gray-600">現在予約できる枠がありません。</p>
++            ) : (
++              <div className="flex gap-sm flex-wrap">
++                {availableDates.map((d) => (
++                  <button key={d} type="button" onClick={() => { setSelectedDate(d); setSelectedScheduleId(null) }}
++                    className={`px-4 py-2.5 rounded-lg font-body-md text-body-md transition-all border-2 ${selectedDate === d ? 'border-pet-green-vibrant bg-pet-green-vibrant/5 text-primary' : 'border-neutral-gray-100 bg-surface-container-lowest text-neutral-gray-900 hover:border-pet-green-vibrant/50'}`}>
++                    {d}
+                   </button>
+-                )
+-              })}
+-            </div>
+-            <p className="font-label-md text-label-md text-neutral-gray-600 flex items-center gap-1">
+-              <span className="w-3 h-3 rounded bg-neutral-gray-50 border border-neutral-gray-100 inline-block" />
+-              打ち消し線 = 受付終了
+-            </p>
++                ))}
++              </div>
++            )}
+           </section>
+ 
++          {selectedDate && (
++            <section className="flex flex-col gap-sm">
++              <h2 className="font-headline-md text-headline-md text-neutral-gray-900">時間を選択</h2>
++              <div className="grid grid-cols-4 gap-sm">
++                {slots.map((s) => {
++                  const isBlocked = !isBookable(s)
++                  const isSelected = selectedScheduleId === s.scheduleId
++                  return (
++                    <button key={s.scheduleId} type="button" disabled={isBlocked} onClick={() => setSelectedScheduleId(s.scheduleId)}
++                      className={`py-2.5 rounded-lg font-body-md text-body-md transition-all border-2 ${isBlocked ? 'border-neutral-gray-100 bg-neutral-gray-50 text-neutral-gray-600/50 cursor-not-allowed line-through' : isSelected ? 'border-pet-green-vibrant bg-pet-green-vibrant/5 text-primary' : 'border-neutral-gray-100 bg-surface-container-lowest text-neutral-gray-900 hover:border-pet-green-vibrant/50'}`}>
++                      {formatTime(s.startTime)}
++                    </button>
++                  )
++                })}
++              </div>
++              <p className="font-label-md text-label-md text-neutral-gray-600 flex items-center gap-1">
++                <span className="w-3 h-3 rounded bg-neutral-gray-50 border border-neutral-gray-100 inline-block" />
++                打ち消し線 = 受付停止中・受付終了
++              </p>
++            </section>
++          )}
++
+           <div className="flex gap-sm">
+             <button type="button" onClick={() => setStep(1)} className="flex-1 h-[52px] bg-surface-container-low text-on-surface font-button-text text-button-text rounded-xl border border-neutral-gray-100 flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
+               <span className="material-symbols-outlined">arrow_back</span> 前へ
+@@ -137,10 +232,10 @@ export default function ReservationPage() {
+             <h2 className="font-headline-md text-headline-md text-neutral-gray-900">予約内容の確認</h2>
+             <div className="bg-surface-container-lowest rounded-[16px] border border-neutral-gray-100 shadow-[0px_4px_20px_rgba(0,0,0,0.05)] divide-y divide-neutral-gray-100">
+               {[
+-                { label: '病院', value: '幸せ動物病院' },
++                { label: '病院', value: hospital?.name ?? '—' },
+                 { label: 'ペット', value: pets.find((p) => p.id === selectedPet)?.name ?? '—' },
+                 { label: '診療目的', value: selectedService ?? '—' },
+-                { label: '予約日時', value: `${selectedDate} ${selectedTime}` },
++                { label: '予約日時', value: selectedSlot ? `${selectedSlot.availableDate} ${formatTime(selectedSlot.startTime)}〜${formatTime(selectedSlot.endTime)}` : '—' },
+               ].map(({ label, value }) => (
+                 <div key={label} className="flex justify-between items-center px-container-margin py-md">
+                   <span className="font-label-md text-label-md text-neutral-gray-600">{label}</span>
+@@ -156,12 +251,19 @@ export default function ReservationPage() {
+               className="w-full px-sm py-sm bg-neutral-gray-50 border border-neutral-gray-100 rounded-xl font-body-md text-body-md text-on-surface placeholder:text-neutral-gray-600 focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all resize-none" />
+           </section>
+ 
++          {error && (
++            <div className="flex items-center gap-2 bg-error-red/10 border border-error-red/20 text-error-red px-sm py-3 rounded-lg font-body-md text-body-md">
++              <span className="material-symbols-outlined text-[18px] flex-shrink-0">error</span>
++              {error}
++            </div>
++          )}
++
+           <div className="flex gap-sm">
+             <button type="button" onClick={() => setStep(2)} className="flex-1 h-[52px] bg-surface-container-low text-on-surface font-button-text text-button-text rounded-xl border border-neutral-gray-100 flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
+               <span className="material-symbols-outlined">arrow_back</span> 前へ
+             </button>
+-            <button type="submit" className="flex-[2] h-[52px] bg-pet-green-vibrant text-white font-button-text text-button-text rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-[0px_4px_12px_rgba(46,204,113,0.2)]">
+-              <span className="material-symbols-outlined">check</span> 予約を確定する
++            <button type="submit" disabled={isSubmitting} className="flex-[2] h-[52px] bg-pet-green-vibrant disabled:bg-neutral-gray-100 disabled:text-neutral-gray-600 text-white font-button-text text-button-text rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-[0px_4px_12px_rgba(46,204,113,0.2)]">
++              <span className="material-symbols-outlined">check</span> {isSubmitting ? '送信中…' : '予約を申請する'}
+             </button>
+           </div>
+         </div>
+diff --git a/frontend/src/pages/admin/AdminHospitalPage.tsx b/frontend/src/pages/admin/AdminHospitalPage.tsx
+index 26ad54f..bac2701 100644
+--- a/frontend/src/pages/admin/AdminHospitalPage.tsx
++++ b/frontend/src/pages/admin/AdminHospitalPage.tsx
+@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react'
+ import { useAuthStore } from '../../stores/authStore'
+ import { useHospitalStore } from '../../stores/hospitalStore'
+ import { hospitalApi } from '../../api/hospital'
++import { extractErrorMessage } from '../../api/client'
++import { formatTime } from '../../utils/date'
+ import type { DayOfWeek, HospitalBusinessHours, HospitalSchedule } from '../../types'
+ 
+ const DAY_ORDER: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
+@@ -31,12 +33,6 @@ const emptyBusinessHoursForm: BusinessHoursFormState = {
+   slotDurationMinutes: '30',
+ }
+ 
+-function extractErrorMessage(err: unknown, fallback: string): string {
+-  return (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback
+-}
+-
+-// バックエンドは "HH:mm:ss" 形式で返すため表示用に秒を落とす
+-const formatTime = (time: string) => time.slice(0, 5)
+ 
+ export default function AdminHospitalPage() {
+   const { user } = useAuthStore()
+diff --git a/frontend/src/stores/authStore.ts b/frontend/src/stores/authStore.ts
+index 22c650c..278530a 100644
+--- a/frontend/src/stores/authStore.ts
++++ b/frontend/src/stores/authStore.ts
+@@ -7,6 +7,9 @@ interface AuthState {
+   refreshToken: string | null
+   user: UserProfile | null
+   isAuthenticated: boolean
++  // ログインセッションの世代。clearAuthのたびに増える（永続化しない）。
++  // ユーザー固有のキャッシュはこれが変わったら破棄し、古い世代で始まった応答は反映しない
++  session: number
+   setTokens: (accessToken: string, refreshToken: string) => void
+   setUser: (user: UserProfile) => void
+   clearAuth: () => void
+@@ -19,6 +22,7 @@ export const useAuthStore = create<AuthState>()(
+       refreshToken: null,
+       user: null,
+       isAuthenticated: false,
++      session: 0,
+ 
+       setTokens: (accessToken, refreshToken) =>
+         set({ accessToken, refreshToken, isAuthenticated: true }),
+@@ -26,7 +30,7 @@ export const useAuthStore = create<AuthState>()(
+       setUser: (user) => set({ user }),
+ 
+       clearAuth: () =>
+-        set({ accessToken: null, refreshToken: null, user: null, isAuthenticated: false }),
++        set((state) => ({ accessToken: null, refreshToken: null, user: null, isAuthenticated: false, session: state.session + 1 })),
+     }),
+     {
+       name: 'daipetto-auth',
+diff --git a/frontend/src/stores/hospitalStore.ts b/frontend/src/stores/hospitalStore.ts
+index 30b3c9f..ffb98ca 100644
+--- a/frontend/src/stores/hospitalStore.ts
++++ b/frontend/src/stores/hospitalStore.ts
+@@ -15,6 +15,11 @@ interface HospitalState {
+   fetchBusinessHours: (hospitalId: number) => Promise<void>
+ }
+ 
++// 病院ごとのデータは、最後に要求した病院の応答だけを反映する。別の病院へ切り替えたときは
++// 前の病院のデータをすぐ消し、遅れて届いた前の病院の応答でも上書きしない（REVIEW-001 F-02）
++const latest = { hospitals: 0, detail: 0, schedules: 0, businessHours: 0 }
++const loadedFor = { detail: 0, schedules: 0, businessHours: 0 }
++
+ export const useHospitalStore = create<HospitalState>()((set) => ({
+   hospitals: [],
+   selectedHospital: null,
+@@ -24,52 +29,68 @@ export const useHospitalStore = create<HospitalState>()((set) => ({
+   error: null,
+ 
+   fetchHospitals: async (keyword, area) => {
++    const request = ++latest.hospitals
+     set({ isLoading: true, error: null })
+     try {
+       const res = await hospitalApi.getList(keyword, area)
+-      if (res.success) {
++      if (request === latest.hospitals && res.success) {
+         set({ hospitals: res.data ?? [] })
+       }
+     } catch {
+-      set({ error: '病院一覧の取得に失敗しました。' })
++      if (request === latest.hospitals) set({ error: '病院一覧の取得に失敗しました。' })
+     } finally {
+-      set({ isLoading: false })
++      if (request === latest.hospitals) set({ isLoading: false })
+     }
+   },
+ 
+   fetchHospitalDetail: async (hospitalId) => {
++    const request = ++latest.detail
++    if (loadedFor.detail !== hospitalId) {
++      loadedFor.detail = hospitalId
++      set({ selectedHospital: null })
++    }
+     set({ isLoading: true, error: null })
+     try {
+       const res = await hospitalApi.getDetail(hospitalId)
+-      if (res.success) {
++      if (request === latest.detail && res.success) {
+         set({ selectedHospital: res.data })
+       }
+     } catch {
+-      set({ error: '病院情報の取得に失敗しました。' })
++      if (request === latest.detail) set({ error: '病院情報の取得に失敗しました。' })
+     } finally {
+-      set({ isLoading: false })
++      if (request === latest.detail) set({ isLoading: false })
+     }
+   },
+ 
+   fetchSchedules: async (hospitalId) => {
++    const request = ++latest.schedules
++    if (loadedFor.schedules !== hospitalId) {
++      loadedFor.schedules = hospitalId
++      set({ schedules: [] })
++    }
+     try {
+       const res = await hospitalApi.getScheduleList(hospitalId)
+-      if (res.success) {
++      if (request === latest.schedules && res.success) {
+         set({ schedules: res.data ?? [] })
+       }
+     } catch {
+-      set({ error: '予約枠の取得に失敗しました。' })
++      if (request === latest.schedules) set({ error: '予約枠の取得に失敗しました。' })
+     }
+   },
+ 
+   fetchBusinessHours: async (hospitalId) => {
++    const request = ++latest.businessHours
++    if (loadedFor.businessHours !== hospitalId) {
++      loadedFor.businessHours = hospitalId
++      set({ businessHours: [] })
++    }
+     try {
+       const res = await hospitalApi.getBusinessHoursList(hospitalId)
+-      if (res.success) {
++      if (request === latest.businessHours && res.success) {
+         set({ businessHours: res.data ?? [] })
+       }
+     } catch {
+-      set({ error: '営業時間の取得に失敗しました。' })
++      if (request === latest.businessHours) set({ error: '営業時間の取得に失敗しました。' })
+     }
+   },
+ }))
+diff --git a/frontend/src/stores/petStore.ts b/frontend/src/stores/petStore.ts
+index a91477d..382c792 100644
+--- a/frontend/src/stores/petStore.ts
++++ b/frontend/src/stores/petStore.ts
+@@ -1,6 +1,7 @@
+ import { create } from 'zustand'
+ import type { Pet } from '../types'
+ import { petApi } from '../api/pet'
++import { useAuthStore } from './authStore'
+ 
+ interface PetState {
+   pets: Pet[]
+@@ -13,50 +14,61 @@ interface PetState {
+   removePet: (petId: number) => Promise<void>
+ }
+ 
++const initialState = { pets: [], selectedPet: null, isLoading: false, error: null }
++
++// 応答を反映してよいのは、要求したときと同じログインセッションの間だけ。
++// ログアウト・別アカウントでのログイン後に前のユーザーの応答が届いても捨てる（REVIEW-001 F-01）
++const currentSession = () => useAuthStore.getState().session
++
+ export const usePetStore = create<PetState>()((set, get) => ({
+-  pets: [],
+-  selectedPet: null,
+-  isLoading: false,
+-  error: null,
++  ...initialState,
+ 
+   fetchPets: async () => {
++    const session = currentSession()
+     set({ isLoading: true, error: null })
+     try {
+       const res = await petApi.getList()
+-      if (res.success) {
++      if (session === currentSession() && res.success) {
+         set({ pets: res.data ?? [] })
+       }
+     } catch {
+-      set({ error: 'ペット一覧の取得に失敗しました。' })
++      if (session === currentSession()) set({ error: 'ペット一覧の取得に失敗しました。' })
+     } finally {
+-      set({ isLoading: false })
++      if (session === currentSession()) set({ isLoading: false })
+     }
+   },
+ 
+   fetchPetDetail: async (petId) => {
++    const session = currentSession()
+     set({ isLoading: true, error: null })
+     try {
+       const res = await petApi.getDetail(petId)
+-      if (res.success) {
++      if (session === currentSession() && res.success) {
+         set({ selectedPet: res.data })
+       }
+     } catch {
+-      set({ error: 'ペット情報の取得に失敗しました。' })
++      if (session === currentSession()) set({ error: 'ペット情報の取得に失敗しました。' })
+     } finally {
+-      set({ isLoading: false })
++      if (session === currentSession()) set({ isLoading: false })
+     }
+   },
+ 
+   setSelectedPet: (pet) => set({ selectedPet: pet }),
+ 
+   removePet: async (petId) => {
++    const session = currentSession()
+     try {
+       const res = await petApi.remove(petId)
+-      if (res.success) {
++      if (session === currentSession() && res.success) {
+         set({ pets: get().pets.filter((p) => p.id !== petId) })
+       }
+     } catch {
+-      set({ error: 'ペットの削除に失敗しました。' })
++      if (session === currentSession()) set({ error: 'ペットの削除に失敗しました。' })
+     }
+   },
+ }))
++
++// セッションが変わったら前のユーザーのペット情報（一覧・選択中）を破棄する
++useAuthStore.subscribe((state, prev) => {
++  if (state.session !== prev.session) usePetStore.setState(initialState)
++})
+diff --git a/frontend/src/types/healthRecord.ts b/frontend/src/types/healthRecord.ts
+new file mode 100644
+index 0000000..63ca466
+--- /dev/null
++++ b/frontend/src/types/healthRecord.ts
+@@ -0,0 +1,15 @@
++export interface HealthRecord {
++  healthRecordId: number
++  weight?: number
++  symptom?: string
++  memo?: string
++  recordedDate: string
++}
++
++// PATCHでは未指定(undefined)の項目は既存値を維持し、symptom/memoは空文字で消去される（docs/07 §6-3）
++export interface HealthRecordRequest {
++  weight?: number
++  symptom?: string
++  memo?: string
++  recordedDate?: string
++}
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+index 3f7b616..07af987 100644
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -2,3 +2,6 @@ export * from './common'
+ export * from './auth'
+ export * from './pet'
+ export * from './hospital'
++export * from './reservation'
++export * from './healthRecord'
++export * from './notification'
+diff --git a/frontend/src/types/notification.ts b/frontend/src/types/notification.ts
+new file mode 100644
+index 0000000..27fd83a
+--- /dev/null
++++ b/frontend/src/types/notification.ts
+@@ -0,0 +1,10 @@
++export type NotificationType = 'RESERVATION_APPROVED' | 'RESERVATION_REJECTED' | 'TREATMENT_COMPLETED' | 'VACCINATION'
++
++export interface AppNotification {
++  notificationId: number
++  type: NotificationType
++  title: string
++  message: string
++  isRead: boolean
++  createdAt: string
++}
+diff --git a/frontend/src/types/pet.ts b/frontend/src/types/pet.ts
+index 6587742..b4bb608 100644
+--- a/frontend/src/types/pet.ts
++++ b/frontend/src/types/pet.ts
+@@ -35,3 +35,6 @@ export interface PetUpdateRequest {
+   neutered?: boolean
+   microchipNumber?: string
+ }
++
++// 一覧API（PetSummary）は品種・性別を返さないため、一覧では種別を表示する
++export const PET_SPECIES_LABEL: Record<PetSpecies, string> = { DOG: '犬', CAT: '猫', OTHER: 'その他' }
+diff --git a/frontend/src/types/reservation.ts b/frontend/src/types/reservation.ts
+new file mode 100644
+index 0000000..3b041c9
+--- /dev/null
++++ b/frontend/src/types/reservation.ts
+@@ -0,0 +1,22 @@
++export type ReservationStatus = 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED'
++
++export interface ReservationSummary {
++  reservationId: number
++  hospitalName: string
++  petName: string
++  availableDate: string
++  startTime: string
++  endTime: string
++  status: ReservationStatus
++}
++
++export interface ReservationDetail extends ReservationSummary {
++  memo?: string
++}
++
++export interface ReservationCreateRequest {
++  petId: number
++  hospitalId: number
++  scheduleId: number
++  memo?: string
++}
+diff --git a/frontend/src/utils/date.ts b/frontend/src/utils/date.ts
+index 33b5010..bad77e0 100644
+--- a/frontend/src/utils/date.ts
++++ b/frontend/src/utils/date.ts
+@@ -1,10 +1,32 @@
+-// サーバーと同じ基準タイムゾーン（JST）での今日の日付（YYYY-MM-DD）。
++// サーバーと同じ基準タイムゾーン（JST）での日時の各部分。
+ // toISOString() はUTCのため、日本時間0〜9時には前日になる
+-export function todayInJapan(): string {
+-  const parts = Object.fromEntries(
+-    new Intl.DateTimeFormat('en', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' })
+-      .formatToParts(new Date())
++function partsInJapan(now: Date): Record<string, string> {
++  return Object.fromEntries(
++    new Intl.DateTimeFormat('en', {
++      timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
++    })
++      .formatToParts(now)
+       .map(({ type, value }) => [type, value]),
+   )
+-  return `${parts.year}-${parts.month}-${parts.day}`
++}
++
++// JSTでの今日の日付（YYYY-MM-DD）
++export function todayInJapan(now: Date = new Date()): string {
++  const p = partsInJapan(now)
++  return `${p.year}-${p.month}-${p.day}`
++}
++
++// 予約枠の開始（YYYY-MM-DD + HH:mm[:ss]）がJSTの現在より後か。バックエンドの予約可否（RESERVATION-005）と同じ判定。
++// 開始時刻は分単位（秒は常に00）のため、分単位で比較する
++export function isUpcoming(date: string, startTime: string, now: Date = new Date()): boolean {
++  const p = partsInJapan(now)
++  return `${date}T${startTime.slice(0, 5)}` > `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`
++}
++
++// バックエンドは "HH:mm:ss" 形式で返すため表示用に秒を落とす
++export const formatTime = (time: string) => time.slice(0, 5)
++
++// YYYY-MM-DD 同士の日数差（今日=0）。どちらもUTC 0時として解釈するため端末のタイムゾーンに依存しない
++export function daysFromToday(date: string): number {
++  return Math.round((Date.parse(date) - Date.parse(todayInJapan())) / 86_400_000)
+ }

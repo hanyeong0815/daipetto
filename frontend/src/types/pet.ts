@@ -35,3 +35,6 @@ export interface PetUpdateRequest {
   neutered?: boolean
   microchipNumber?: string
 }
+
+// 一覧API（PetSummary）は品種・性別を返さないため、一覧では種別を表示する
+export const PET_SPECIES_LABEL: Record<PetSpecies, string> = { DOG: '犬', CAT: '猫', OTHER: 'その他' }

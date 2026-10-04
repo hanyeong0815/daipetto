@@ -2,6 +2,7 @@ import React, { useState, FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FaDog, FaCat, FaPaw } from 'react-icons/fa6'
 import { petApi } from '../api/pet'
+import { extractErrorMessage } from '../api/client'
 import { usePetStore } from '../stores/petStore'
 import type { PetSpecies, PetGender } from '../types'
 
@@ -43,10 +44,7 @@ export default function PetRegisterPage() {
       await fetchPets()
       setTimeout(() => navigate('/pets'), 2000)
     } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        ?? 'ペットの登録に失敗しました。もう一度お試しください。'
-      setError(message)
+      setError(extractErrorMessage(err, 'ペットの登録に失敗しました。もう一度お試しください。'))
     } finally {
       setIsLoading(false)
     }
