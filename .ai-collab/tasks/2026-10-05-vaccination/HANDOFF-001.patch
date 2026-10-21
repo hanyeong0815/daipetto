@@ -1,0 +1,3054 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 9852508..22f9618 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -12,7 +12,7 @@ This is the repository entry point for Codex and the canonical shared project po
+ - Agent-facing files in `.codex/` and `.ai-collab/` use concise English. User-facing replies remain Korean; product design docs and code comments retain the language rules below.
+ - Operational source of truth: `.ai-collab/PROTOCOL.md`. The original research corrections remain in `docs/codex-workflow/01_CORRECTIONS.md` for reference only.
+ 
+-Last updated: 2026-10-04 (branch `feat/react-api-integration`)
++Last updated: 2026-10-21 (branch `feat/spring/vaccination`)
+ 
+ ## 1. Areas
+ 
+@@ -101,7 +101,10 @@ Error messages in Japanese. New codes follow `{DOMAIN}-{seq}`; `{DOMAIN}-999` is
+ | HEALTH-002 | 存在しないペット / 他ユーザーのペット | 403 |
+ | NOTIFICATION-001 | 存在しない通知 | 404 |
+ | NOTIFICATION-002 | 受信者本人でない | 403 |
+-| AUTH/USER/PET/HOSPITAL/RESERVATION/HEALTH/NOTIFICATION-999 | domain default | 500 |
++| VACCINATION-001 | 存在しないワクチン接種予定 | 404 |
++| VACCINATION-002 | 存在しないペット / 他ユーザーのペット | 403 |
++| VACCINATION-003 | 不正な状態遷移（同時実行で負けた側を含む） | 409 |
++| AUTH/USER/PET/HOSPITAL/RESERVATION/HEALTH/NOTIFICATION/VACCINATION-999 | domain default | 500 |
+ | VALIDATION-001 | `@Valid` failure (GlobalExceptionHandler) | 400 |
+ | SERVER-001 | unhandled exception fallback | 500 |
+ 
+@@ -131,11 +134,10 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
+ ## 7. DB / Flyway
+ 
+ - DB changes only via Flyway; logical delete (`deleted_at`) is the default.
+-- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile), V9 health_records, V10 notifications.
+-- ⚠ Unmerged `feat/spring/pet-fields` also uses **V4** (`V4__alter_pets_add_columns.sql` — breed/neutered/microchip_number). Renumber one side at merge. New migrations start at **V11**; check every branch for number collisions before numbering.
+-- `notifications.vaccination_id` exists as a column with no FK yet; add the constraint when `vaccinations` is created (docs/06 §15 note).
++- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile), V9 health_records, V10 notifications, V11 vaccinations (+ FK `notifications.vaccination_id`).
++- ⚠ Unmerged `feat/spring/pet-fields` also uses **V4** (`V4__alter_pets_add_columns.sql` — breed/neutered/microchip_number). Renumber one side at merge. New migrations start at **V12**; check every branch for number collisions before numbering.
+ - ⚠ V8 fails on an existing database that already holds duplicate active reservations for one schedule; clean those rows before applying.
+-- Not created yet: vaccinations / hospital_admins (definitions in docs/06). Because `hospital_admins` is missing, admin APIs cannot verify "own hospital" — hospital-affiliation checks are intentionally skipped for now.
++- Not created yet: hospital_admins (definition in docs/06). Because `hospital_admins` is missing, admin APIs cannot verify "own hospital" — hospital-affiliation checks are intentionally skipped for now.
+ 
+ ## 8. Test rules
+ 
+@@ -145,7 +147,7 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
+ - Principal is `Long`: use `new UsernamePasswordAuthenticationToken(1L, null, authorities)` — `.with(user(...))` fails.
+ - Most unit tests mock repositories. H2 **is** available for `@DataJpaTest` (`application-test.yml`, `MODE=PostgreSQL`, `ddl-auto=create-drop`, Flyway disabled) — see `RefreshTokenPersistenceAdapterTest`; Testcontainers is not introduced.
+ - Mocked repositories prove neither real SQL nor concurrency. Null-tolerant `@Query` bugs escape them (docs/12 §3-10) and so do races (docs/12 §3-11). No PostgreSQL concurrency test exists yet.
+-- Verify: `./gradlew clean test` in `spring-api/` (209 green as of 2026-10-04).
++- Verify: `./gradlew clean test` in `spring-api/` (253 green as of 2026-10-21).
+ 
+ ## 9. Environment
+ 
+@@ -161,13 +163,15 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
+ Start: `docker compose up -d` (postgres) → `./gradlew bootRun` / `npm run dev`.
+ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (`VITE_API_BASE_URL_WEB` / `_ANDROID` / `_IOS`).
+ 
+-## 10. Status (2026-10-04)
++## 10. Status (2026-10-05)
++
++**Vaccination (2026-10-05, branch `feat/spring/vaccination`, stacked on `feat/react-api-integration`)**: register/list/complete/cancel/reschedule/delete APIs + daily 09:00 JST reminder Scheduler creating VACCINATION notifications (dedupe: no notification for the vaccination since its last `updated_at`). Task record `.ai-collab/tasks/2026-10-05-vaccination/`; awaiting Codex review. Frontend: SC-016 vaccination screen and the SC-006 upcoming-vaccination panel (2026-10-21).
+ 
+ **Frontend review (2026-10-04)**: API wiring is implemented, but review is CHANGES_REQUESTED in `.ai-collab/tasks/2026-10-04-frontend-api-integration/REVIEW-001.md`: F-01 private pet cache survives account changes, F-02 stale hospital schedules can overwrite the current hospital, F-03 same-day past slots remain selectable. Codex verified the frontend build and reproduced F-01/F-02 with the actual stores. Browser/Capacitor evidence remains implementer-reported; native runtime verification is pending in TODO.md. Codex owns only this review and the user-requested TODO/status update; application fixes remain with Claude. Claude fixed F-01..F-03 on 2026-10-04 (session-scoped pet store reset/guard, hospital-keyed reservation data with latest-response-wins hospital store, JST start-time rule `isUpcoming`); response in `HANDOFF-002.md`, ACCEPTED in `REVIEW-002.md` (2026-10-04). Browser and APK evidence there is implementer-reported.
+ 
+-**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · HealthRecord CRUD · Notification (list/read + generation on reservation approve/reject/complete, 2026-10-03) · Frontend all screens SC-001〜015 (auth·pet·hospital·reservation·health record·notification·dashboard·logout wired to real API, 2026-10-04) · ProtectedRoute + role guards · token restore on reload.
++**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · HealthRecord CRUD · Notification (list/read + generation on reservation approve/reject/complete, 2026-10-03) · Vaccination (register/list/complete/reschedule + reminder Scheduler, 2026-10-05) · Frontend all screens SC-001〜015 (auth·pet·hospital·reservation·health record·notification·dashboard·logout wired to real API, 2026-10-04) · ProtectedRoute + role guards · token restore on reload.
+ 
+-**Practice gaps** (user implements these personally — do NOT implement unless explicitly asked; list in TODO.md is authoritative): none outstanding. The user waived the gap for the HealthRecord/Notification round (2026-10-03); the §11 rule still applies to future domains unless they waive it again.
++**Practice gaps**: none open. The user asked on 2026-10-21 to finish all Spring work, so the Vaccination cancel/delete gaps (2026-10-05) were implemented by Claude Code. The same request covers the rest of this round (admin features, pet fields, schedule generation): no new gaps. Later new domains follow §11-1 again unless the user waives it.
+ 
+ **HealthRecord/Notification review (Codex REVIEW-001, 2026-10-03)** in `.ai-collab/tasks/2026-10-03-health-notification/`: partial PATCH erased omitted fields (R-01), and stale full-entity saves could resurrect deleted health records (R-02) or undo a hospital suspension (R-03, pre-existing). Fixed with column-specific conditional updates (§3 rule 5), applied also to the same pattern in Pet and HospitalBusinessHours updates. Response in `HANDOFF-002.md`. Re-review REVIEW-002 (2026-10-04) accepted those and found R-04: a concurrent partial PATCH still wrote back stale values of unsent fields; fixed by reading the health record with a row lock (§3 rule 5). Response in `HANDOFF-003.md`.
+ 
+@@ -175,7 +179,7 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
+ 
+ **Review round 2026-09-13** (Codex REVIEW-001 → fixes in `.ai-collab/tasks/2026-09-13-implementation-review/HANDOFF-002.md`): R-01〜R-08 addressed — refresh rotation now single-consumption (conditional revoke must affect exactly 1 row), refresh tokens carry `jti`, access/refresh separated by a `type` claim so a refresh token used as Bearer no longer throws inside the filter, reservations are protected by a DB-level partial unique index plus expected-status conditional updates, SUSPENDED hospitals reject new reservations (RESERVATION-009), deleted pets no longer break reservation history, and the frontend refresh queue settles every waiter on failure. **Still unverified**: real PostgreSQL concurrency runs for the race fixes.
+ 
+-**Not started**: Vaccination API (needed before the VACCINATION notification type and its reminder can work) · schedule auto-generation Scheduler (from `hospital_business_hours`) · vaccine reminder Scheduler · django-api entirely · frontend admin reservation screen (needs an admin reservation list API that neither Spring nor docs/07 defines — user decision pending) and admin user screen (backend not built).
++**Not started**: schedule auto-generation Scheduler (from `hospital_business_hours`) · django-api entirely · frontend admin reservation screen (needs an admin reservation list API that neither Spring nor docs/07 defines — user decision pending) and admin user screen (backend not built).
+ 
+ **Unmerged branches**: `feat/spring/pet-fields` (pet columns + docs 06/07 updates); verify current unmerged set with `git branch --all` and `git log` before relying on this line — not re-audited in this update.
+ 
+diff --git a/TODO.md b/TODO.md
+index 0eb683e..b8c6fa6 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -1,6 +1,6 @@
+ # Daipetto — 作業TODOリスト
+ 
+-最終更新: 2026-10-04
++最終更新: 2026-10-05
+ 
+ ---
+ 
+@@ -80,7 +80,7 @@
+ - [x] `V4__alter_pets_add_columns.sql` — `breed`, `neutered`, `microchip_number` カラム追加
+ - [x] `PetEntity` / `Pet` ドメイン / `PetMapper` / DTO / Service 反映
+ - [x] docs/06_ERD・07_API_Design 更新（同ブランチ内）
+-- [ ] **マージ時の必須作業**: migration 番号衝突の解消 — 現ブランチの `V4` は hospitals が使用中のため、`V4__alter_pets_add_columns.sql` を V8 以降へリナンバーする
++- [ ] **マージ時の必須作業**: migration 番号衝突の解消 — 現ブランチの `V4` は hospitals が使用中のため、`V4__alter_pets_add_columns.sql` を空き番号（V12 以降。V11 は vaccinations が使用）へリナンバーする
+ 
+ ### Hospital API（branch: `feat/spring/hospital`）
+ - [x] `Hospital` / `HospitalSchedule` ドメイン・エンティティ・テーブル作成
+@@ -116,6 +116,20 @@
+ - [x] `HOSPITAL-003`（存在しない営業時間）・`HOSPITAL-004`（曜日重複登録）エラーコード追加
+ - [x] テスト16件追加（Service 11件 + Controller 5件）、`./gradlew test`で全100件green
+ 
++### Vaccination API・リマインダーScheduler（2026-10-05実装、Claude Code、ブランチ `feat/spring/vaccination`）
++- [x] `Vaccination` ドメイン・エンティティ・テーブル作成（`V11__create_vaccinations.sql`。同migrationで`notifications.vaccination_id`のFKも追加）
++- [x] `POST /api/v1/pets/{petId}/vaccinations` — 接種予定登録（SCHEDULED）
++- [x] `GET /api/v1/pets/{petId}/vaccinations` — 一覧（接種予定日の昇順）
++- [x] `PATCH /api/v1/vaccinations/{id}/complete` — SCHEDULED→COMPLETED（`completedDate`省略時は当日、未来日不可）
++- [x] `PATCH /api/v1/vaccinations/{id}/reschedule` — CANCELLED→SCHEDULED（`08_State_Design` §7「再登録」、新しい予定日）
++- [x] `VACCINATION-001`（存在しない予定）・`002`（他ユーザーのペット）・`003`（不正な状態遷移）追加
++- [x] リマインダーScheduler（`VaccinationReminderScheduler`、毎日09:00 JST）→ `SendVaccinationRemindersService`。当日〜7日後のSCHEDULEDに飼い主宛VACCINATION通知を生成。予定の`updated_at`以降に通知済みなら生成しない（再登録後は再通知）
++- 検証: `./gradlew clean test` 239件green（新規30件）。実PostgreSQL（捨てDB `daipetto_vac`）でV1〜V11適用・`ddl-auto: validate`・抽出クエリ・重複防止・条件付きUPDATE・FKを確認（`.ai-collab/tasks/2026-10-05-vaccination/scripts/`）
++
++**練習用に残していた項目（2026-10-21、ユーザーの指示でClaude Codeが実装）:**
++- [x] `PATCH /api/v1/vaccinations/{id}/cancel` — SCHEDULED→CANCELLED（`docs/07` §6-9）。遷移元statusをWHEREに入れた条件付きUPDATE、0件ならVACCINATION-003。`updated_at`も進めるため再登録後は再通知される
++- [x] `DELETE /api/v1/vaccinations/{id}` — 論理削除（`docs/07` §6-11）。`deleted_at IS NULL`の条件付きUPDATE、同時削除で負けた側はVACCINATION-001
++
+ ### 予約枠自動生成バッチ（設計決定、未実装 — 2026-08-02）
+ > ユーザーとの設計議論の結論。`hospital_business_hours`管理APIは実装済みだが、これを元に`hospital_schedules`を自動生成するScheduler本体は未着手
+ 
+@@ -139,14 +153,14 @@
+ 
+ ### Notification API（2026-10-03実装、Claude Code）
+ - [x] `Notification` ドメイン・エンティティ・テーブル作成（`V10__create_notifications.sql`）
+-  - `vaccination_id`は列のみ作成しFKは保留（`vaccinations`未作成。`docs/06_ERD` §15注記）
++  - `vaccination_id`は列のみ作成し、FKは`V11__create_vaccinations.sql`で追加（2026-10-05）
+ - [x] `GET /api/v1/notifications` — 通知一覧（作成日時の降順、本人宛のみ）
+ - [x] `PATCH /api/v1/notifications/{id}/read` — 既読（未読のみを対象にした条件付きUPDATEで冪等）
+ - [x] 予約承認・却下・診療完了時の通知生成（`NotifyReservationEventUseCase`、`08_State_Design` §6-6）
+   - 状態遷移と同一トランザクション。遷移が成立しなかった場合は通知を作らない
+   - キャンセルは §6-6 に通知定義が無いため生成しない
+ - [x] `NOTIFICATION-001`（存在しない通知）・`NOTIFICATION-002`（受信者本人でない）追加
+-- [ ] 予防接種リマインダー Scheduler（`VACCINATION`種別。Vaccination ドメイン実装後）
++- [x] 予防接種リマインダー Scheduler（`VACCINATION`種別。2026-10-05、下記 Vaccination API 参照）
+ 
+ ### Health Record API（2026-10-03実装、Claude Code）
+ - [x] `HealthRecord` ドメイン・エンティティ・テーブル作成（`V9__create_health_records.sql`）
+@@ -221,6 +235,10 @@
+ - [ ] 管理者画面 `AdminReservationPage` — **要判断**: 承認/却下/完了APIはあるが、管理者が予約を一覧するAPIが無い（`docs/05` SC-013は一覧表示を定義、`docs/07`に該当APIなし）。Spring側に管理者用一覧APIを追加するか、ユーザー判断待ち
+ - [ ] 管理者画面 `AdminUserPage` — ユーザー管理API連動（バックエンド未実装のため連動不可）
+ 
++### Vaccination API 連動（2026-10-21 実装、Claude Code、ブランチ `feat/spring/vaccination`）
++- [x] ワクチン予定画面 (`VaccinationPage`、`/pets/:petId/vaccinations`、`docs/05` SC-016) — 一覧・登録・接種完了（接種日入力、未来日不可）・中止・再登録（新しい予定日）・削除。ペット切替時に前のペットの応答を反映しない
++- [x] ペット詳細 (`PetDetailPage`) — 「ワクチン予定」欄に直近のSCHEDULED（最大3件、残り日数）と一覧画面へのリンク（`docs/05` SC-006）
++
+ ### 状態管理追加
+ - [ ] `reservationStore.ts` / `notificationStore.ts` — 未作成。各画面がAPIを直接呼ぶ形で足りているため。未読数バッジなど複数画面で状態を共有する時に追加する
+ 
+diff --git a/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md b/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md
+index a23dd6c..74085da 100644
+--- a/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md	
++++ b/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md	
+@@ -236,7 +236,7 @@
+ 
+ ## **5-3. 健康記録機能**
+ 
+-## **FR-HEALTH-001（未実装）**
++## **FR-HEALTH-001**
+ 
+ ### **機能名**
+ 
+@@ -301,7 +301,7 @@ SYSTEM_ADMINは病院の登録・停止を行える。HOSPITAL_ADMIN・SYSTEM_AD
+ 
+ ### **内容**
+ 
+-ユーザーは予約枠を選択して予約を申請・閲覧・キャンセルできる。病院管理者は予約を承認・却下・診療完了へ遷移できる（状態遷移は`08_State_Design` §6準拠。却下APIは未実装 — `07_API_Design` §9-6参照）。
++ユーザーは予約枠を選択して予約を申請・閲覧・キャンセルできる。病院管理者は予約を承認・却下・診療完了へ遷移できる（状態遷移は`08_State_Design` §6準拠）。
+ 
+ ### **異常系**
+ 
+@@ -316,7 +316,7 @@ SYSTEM_ADMINは病院の登録・停止を行える。HOSPITAL_ADMIN・SYSTEM_AD
+ 
+ ## **5-6. 通知機能**
+ 
+-## **FR-NOTI-001（未実装）**
++## **FR-NOTI-001**
+ 
+ ### **機能名**
+ 
+diff --git a/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md b/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md
+index 8b634d0..b166e57 100644
+--- a/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md	
++++ b/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md	
+@@ -39,6 +39,7 @@
+ | SC-013 | 予約管理画面 | HOSPITAL_ADMIN |
+ | SC-014 | 病院管理画面 | SYSTEM_ADMIN |
+ | SC-015 | ユーザー管理画面 | SYSTEM_ADMIN |
++| SC-016 | ワクチン予定画面 | USER |
+ 
+ ---
+ 
+@@ -395,6 +396,37 @@ flowchart TB
+ | 編集 | ペット情報修正 |
+ | 健康記録 | 健康記録画面遷移 |
+ | 予約 | 病院予約画面遷移 |
++| ワクチン予定 | ワクチン予定画面（SC-016）遷移。詳細画面には直近のSCHEDULED（最大3件）を表示 |
++
++---
++
++# **10-1. SC-016 ワクチン予定画面**
++
++## **目的**
++
++ペットのワクチン接種予定を登録・管理する（`07_API_Design` §6-5〜6-11）。予定日の7日前から毎朝9時（JST）に通知される。
++
++---
++
++## **表示項目**
++
++| **項目** | **内容** |
++| --- | --- |
++| ワクチン名 | vaccineName |
++| 予定日 / 接種日 | scheduledDate（予定は残り日数を併記） / completedDate |
++| 状態 | 予定（SCHEDULED） / 接種済み（COMPLETED） / 中止（CANCELLED） |
++
++---
++
++## **操作**
++
++| **操作** | **対象の状態** | **内容** |
++| --- | --- | --- |
++| 予定を追加 | — | ワクチン名（必須・100文字以内）と接種予定日（必須） |
++| 接種完了 | 予定 | 接種日を入力（初期値は今日、未来日不可） |
++| 中止 | 予定 | 確認後にCANCELLEDへ |
++| 再登録 | 中止 | 新しい接種予定日を入力してSCHEDULEDへ |
++| 削除 | すべて | 確認後に論理削除 |
+ 
+ ---
+ 
+diff --git a/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md b/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md
+index b94f82e..7b249ba 100644
+--- a/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md	
++++ b/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md	
+@@ -10,7 +10,7 @@
+ | Document | ERD |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-10-03 |
++| Updated | 2026-10-05 |
+ 
+ ---
+ 
+@@ -191,7 +191,7 @@ erDiagram
+ | 予約 | reservations | 病院予約情報 | V7 |
+ | 病院管理者 | hospital_admins | 病院と管理者の紐付け | 未作成 |
+ | 健康記録 | health_records | ペットの健康記録 | V9 |
+-| ワクチン接種予定 | vaccinations | ワクチン接種予定・完了情報 | 未作成 |
++| ワクチン接種予定 | vaccinations | ワクチン接種予定・完了情報 | V11 |
+ | 通知 | notifications | ユーザー向け通知情報 | V10 |
+ 
+ ---
+@@ -439,7 +439,7 @@ Refresh Tokenを管理する。
+ | 作成日時 | created_at | TIMESTAMP |  |  | NO |  | CURRENT_TIMESTAMP | 作成日時 |
+ | 既読日時 | read_at | TIMESTAMP |  |  | YES |  | NULL | 既読日時 |
+ 
+-> **注記（2026-10-03 実装時点）:** `vaccination_id`は列のみ作成し、FK制約は付けていない（`vaccinations`テーブルが未作成のため）。Vaccination ドメイン実装時にFK制約を追加する。`V10__create_notifications.sql`参照。
++> **注記:** `vaccination_id`はV10で列のみ作成し、`vaccinations`作成時（`V11__create_vaccinations.sql`）にFK制約`fk_notifications_vaccination`を追加した。
+ 
+ ---
+ 
+@@ -501,7 +501,8 @@ Refresh Tokenを管理する。
+ | reservations | schedule_id | 予約枠重複確認 |
+ | reservations | schedule_id (部分UNIQUE: status IN ('REQUESTED','APPROVED') AND deleted_at IS NULL) | 同時リクエストによる二重予約の防止（`V8__add_reservations_active_schedule_unique_index.sql`） |
+ | health_records | pet_id | ペット別健康記録検索 |
+-| vaccinations | scheduled_date | Scheduler対象検索 |
++| vaccinations | pet_id | ペット別接種予定検索 |
++| vaccinations | status, scheduled_date | リマインダーScheduler対象検索（`V11`） |
+ | notifications | user_id | ユーザー別通知検索 |
+ | notifications | is_read | 未読通知検索 |
+ 
+diff --git a/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md b/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md
+index 1fba660..1a04ce6 100644
+--- a/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md	
++++ b/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md	
+@@ -10,7 +10,7 @@
+ | Document | API Design |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-10-03 |
++| Updated | 2026-10-05 |
+ 
+ ---
+ 
+@@ -609,6 +609,226 @@ DELETE /api/v1/health-records/{healthRecordId}
+ 
+ ---
+ 
++# **6-5. ワクチン接種予定API**
++
++ワクチン接種予定（`vaccinations`）も`pet_id`のみを持つため、所有者判定は健康記録と同じく対象ペット経由で行う（他ユーザーのペットはVACCINATION-002）。状態は`SCHEDULED`/`COMPLETED`/`CANCELLED`（`08_State_Design` §7）。状態遷移は遷移元の状態を`WHERE`条件にした列単位のUPDATEで書き込み、同時に別の遷移が先に確定していた場合は0件更新となりVACCINATION-003を返す。
++
++| **API** | **遷移** | **状態** |
++| --- | --- | --- |
++| 6-6 一覧取得 | — | 実装済 |
++| 6-7 登録 | → SCHEDULED | 実装済 |
++| 6-8 接種完了 | SCHEDULED → COMPLETED | 実装済 |
++| 6-9 中止 | SCHEDULED → CANCELLED | 実装済 |
++| 6-10 再登録 | CANCELLED → SCHEDULED | 実装済 |
++| 6-11 削除 | 論理削除 | 実装済 |
++
++---
++
++# **6-6. ワクチン接種予定一覧取得**
++
++## **Endpoint**
++
++```
++GET /api/v1/pets/{petId}/vaccinations
++```
++
++---
++
++## **説明**
++
++指定ペットの接種予定を接種予定日の昇順で返す。論理削除済みの予定は含まない。
++
++---
++
++## **Response**
++
++```json
++{
++  "success": true,
++  "data": [
++    {
++      "vaccinationId": 1,
++      "vaccineName": "混合ワクチン",
++      "scheduledDate": "2026-10-10",
++      "completedDate": null,
++      "status": "SCHEDULED"
++    }
++  ]
++}
++```
++
++---
++
++## **異常系**
++
++| **Code** | **内容** |
++| --- | --- |
++| VACCINATION-002 | 存在しないペット、または他ユーザーのペット |
++
++---
++
++# **6-7. ワクチン接種予定登録**
++
++## **Endpoint**
++
++```
++POST /api/v1/pets/{petId}/vaccinations
++```
++
++---
++
++## **Request**
++
++```json
++{
++  "vaccineName": "混合ワクチン",
++  "scheduledDate": "2026-10-10"
++}
++```
++
++`vaccineName`は必須・100文字以内、`scheduledDate`は必須。`SCHEDULED`で登録する。
++
++---
++
++## **Response**
++
++```json
++{
++  "success": true,
++  "data": {
++    "vaccinationId": 1
++  }
++}
++```
++
++---
++
++## **異常系**
++
++| **Code** | **内容** |
++| --- | --- |
++| VACCINATION-002 | 存在しないペット、または他ユーザーのペット |
++| VALIDATION-001 | `vaccineName`が空・100文字超過、または`scheduledDate`なし |
++
++---
++
++# **6-8. ワクチン接種完了**
++
++## **Endpoint**
++
++```
++PATCH /api/v1/vaccinations/{vaccinationId}/complete
++```
++
++---
++
++## **Request**
++
++```json
++{
++  "completedDate": "2026-10-10"
++}
++```
++
++Bodyは省略可能。`completedDate`省略時はサーバーの当日日付（JST）を接種完了日とする。未来日は指定できない。
++
++---
++
++## **異常系**
++
++| **Code** | **内容** |
++| --- | --- |
++| VACCINATION-001 | 存在しない接種予定 |
++| VACCINATION-002 | 対象ペットが他ユーザーのもの |
++| VACCINATION-003 | SCHEDULED以外からの完了、または同時実行で他の遷移が先に成立 |
++| VALIDATION-001 | `completedDate`が未来日 |
++
++---
++
++# **6-9. ワクチン接種予定中止**
++
++## **Endpoint**
++
++```
++PATCH /api/v1/vaccinations/{vaccinationId}/cancel
++```
++
++---
++
++## **説明**
++
++`SCHEDULED`の予定を`CANCELLED`にする。リクエストボディなし。中止した予定はリマインダー通知の対象外となる。`updated_at`も更新するため、後で再登録した予定は改めて通知対象になる。
++
++---
++
++## **異常系**
++
++| **Code** | **内容** |
++| --- | --- |
++| VACCINATION-001 | 存在しない接種予定 |
++| VACCINATION-002 | 対象ペットが他ユーザーのもの |
++| VACCINATION-003 | SCHEDULED以外からの中止、または同時実行で他の遷移が先に成立 |
++
++---
++
++# **6-10. ワクチン接種予定再登録**
++
++## **Endpoint**
++
++```
++PATCH /api/v1/vaccinations/{vaccinationId}/reschedule
++```
++
++---
++
++## **Request**
++
++```json
++{
++  "scheduledDate": "2026-11-01"
++}
++```
++
++`CANCELLED`の予定を新しい接種予定日で`SCHEDULED`に戻す（`08_State_Design` §7「再登録」）。`scheduledDate`は必須。再登録した予定は、以前に通知済みでも新しい予定日でリマインダー通知の対象になる（`08_State_Design` §11-1）。
++
++---
++
++## **異常系**
++
++| **Code** | **内容** |
++| --- | --- |
++| VACCINATION-001 | 存在しない接種予定 |
++| VACCINATION-002 | 対象ペットが他ユーザーのもの |
++| VACCINATION-003 | CANCELLED以外からの再登録、または同時実行で他の遷移が先に成立 |
++| VALIDATION-001 | `scheduledDate`なし |
++
++---
++
++# **6-11. ワクチン接種予定削除**
++
++## **Endpoint**
++
++```
++DELETE /api/v1/vaccinations/{vaccinationId}
++```
++
++---
++
++## **説明**
++
++論理削除を行う（`deleted_at`を設定）。状態に関係なく削除できる。削除後は一覧・リマインダー通知の対象に含まれない。同時に別のリクエストが先に削除していた場合はVACCINATION-001を返す。
++
++---
++
++## **異常系**
++
++| **Code** | **内容** |
++| --- | --- |
++| VACCINATION-001 | 存在しない接種予定 |
++| VACCINATION-002 | 対象ペットが他ユーザーのもの |
++
++---
++
+ # **7. 分析API（Django）（未実装）**
+ 
+ # **7-1. 健康分析取得**
+@@ -1300,10 +1520,12 @@ PATCH /api/v1/admin/reservations/{reservationId}/complete
+ | 予約承認（§9-5） | RESERVATION_APPROVED | 実装済 |
+ | 予約却下（§9-6） | RESERVATION_REJECTED | 実装済 |
+ | 診療完了（§9-7） | TREATMENT_COMPLETED | 実装済 |
+-| ワクチン接種リマインダー | VACCINATION | 未実装（Vaccination ドメインと Scheduler 実装後） |
++| ワクチン接種リマインダー（毎日09:00 JSTのScheduler、`08_State_Design` §11） | VACCINATION | 実装済 |
+ 
+ 予約の状態変更と通知生成は同一トランザクションで行う（`08_State_Design` §6-6）。状態遷移が成立しなかった場合は通知を作成しない。予約キャンセルは §6-6 に通知定義が無いため通知を生成しない。
+ 
++ワクチン接種リマインダーは、接種予定日が当日〜7日後の`SCHEDULED`の予定について飼い主へ1件ずつ生成する。本文は「{ペット名}の{ワクチン名}接種予定日（{予定日}）が近づいています。」。予定の最後の変更（`updated_at`）以降に同じ予定の通知があれば生成しない（重複防止）。論理削除されたペット・予定は対象外。
++
+ ---
+ 
+ # **10-1. 通知一覧取得**
+diff --git a/docs/08_State_Design 365d097bd4f7808f9b01de0aa34fa730.md b/docs/08_State_Design 365d097bd4f7808f9b01de0aa34fa730.md
+index e16b5c4..30a0c62 100644
+--- a/docs/08_State_Design 365d097bd4f7808f9b01de0aa34fa730.md	
++++ b/docs/08_State_Design 365d097bd4f7808f9b01de0aa34fa730.md	
+@@ -10,7 +10,7 @@
+ | Document | State Design |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-05-17 |
++| Updated | 2026-10-05 |
+ 
+ ---
+ 
+@@ -272,7 +272,19 @@ stateDiagram-v2
+ 
+ ---
+ 
+-# **7-3. 制約事項**
++# **7-3. 状態遷移ルール**
++
++| **現在状態** | **次状態** | **実行者** | **API** |
++| --- | --- | --- | --- |
++| SCHEDULED | COMPLETED | ペットの飼い主 | `PATCH /vaccinations/{id}/complete`（`07_API_Design` §6-8） |
++| SCHEDULED | CANCELLED | ペットの飼い主 | `PATCH /vaccinations/{id}/cancel`（`07_API_Design` §6-9） |
++| CANCELLED | SCHEDULED | ペットの飼い主 | `PATCH /vaccinations/{id}/reschedule`（§6-10、新しい接種予定日を指定） |
++
++上記以外の遷移（COMPLETED→SCHEDULED/CANCELLED など）は`Vaccination`ドメインモデルで拒否し、VACCINATION-003とする。永続化は遷移元の状態を`WHERE`条件にした条件付きUPDATEで行い、同時に他の遷移が先に成立した場合も0件更新としてVACCINATION-003を返す。
++
++---
++
++# **7-4. 制約事項**
+ 
+ | **条件** | **内容** |
+ | --- | --- |
+@@ -381,7 +393,10 @@ stateDiagram-v2
+ | --- | --- |
+ | vaccinations.status | SCHEDULED |
+ | scheduled_date | 7日以内 |
+-| notification未作成 | 重複通知防止 |
++| notification未作成 | 重複通知防止（予定の最後の変更`updated_at`以降に同じ予定の通知が無いこと。再登録で予定日が変わった場合は再通知する） |
++| 論理削除 | 予定・ペットとも`deleted_at IS NULL` |
++
++「7日以内」は当日〜7日後（両端含む、JST）とする。実装: `VaccinationReminderScheduler`（`@Scheduled(cron = "0 0 9 * * *", zone = "Asia/Tokyo")`）→ `SendVaccinationRemindersService`。
+ 
+ ---
+ 
+@@ -412,7 +427,7 @@ flowchart TB
+ | **状態** | **関連API** |
+ | --- | --- |
+ | reservations.status | Reservation API |
+-| vaccinations.status | Vaccination Scheduler |
++| vaccinations.status | Vaccination API / Vaccination Scheduler |
+ | notifications.is_read | Notification API |
+ | refresh_tokens.revoked | Auth API |
+ 
+diff --git a/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md b/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md
+index 4e36570..a24d4ea 100644
+--- a/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md	
++++ b/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md	
+@@ -10,7 +10,7 @@
+ | Document | Test Strategy |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-10-03 |
++| Updated | 2026-10-05 |
+ 
+ ---
+ 
+@@ -176,6 +176,18 @@ flowchart TB
+ 
+ > HEALTH-T008・T009の同時実行は単体テスト（モック）とH2では再現できない。単体テストは行ロック付き読み取りを使うこと、`@DataJpaTest`はその読み取りが論理削除済みを除外することまでを確認し、インターリーブ自体は実PostgreSQLの受け入れスクリプト（`.ai-collab/tasks/2026-10-03-health-notification/scripts/`）で確認している。
+ 
++### **ワクチン接種予定**
++
++| **Test ID** | **観点** | **期待結果** |
++| --- | --- | --- |
++| VAC-T001 | 接種予定登録・一覧 | SCHEDULEDで登録、予定日の昇順で取得 |
++| VAC-T002 | 他ユーザーのペットへの操作 | VACCINATION-002 |
++| VAC-T003 | SCHEDULED→COMPLETED / CANCELLED、CANCELLED→SCHEDULED | 遷移元の状態だけを条件付きUPDATEで更新 |
++| VAC-T004 | 許可されない遷移・同時実行で負けた遷移 | VACCINATION-003 |
++| VAC-T005 | 論理削除 | deleted_at設定、一覧・リマインダー対象外。同時削除で負けた側はVACCINATION-001 |
++
++> VAC-T001〜T005は`VaccinationServiceTest`（モック）・`VaccinationControllerTest`・`VaccinationPersistenceAdapterTest`（H2で条件付きUPDATEを実行）で確認する。
++
+ ---
+ 
+ # **6-5. 病院・予約枠テスト**
+@@ -246,6 +258,8 @@ flowchart TB
+ | SCHD-T004 | CANCELLEDワクチン | 通知対象外 |
+ | SCHD-T005 | 通知重複防止 | 重複作成なし |
+ 
++> **実装済みテスト（2026-10-05）:** SCHD-T001/T003/T004/T005は`VaccinationPersistenceAdapterTest`（H2の`@DataJpaTest`で抽出クエリを実行）、SCHD-T002は`VaccinationServiceTest`で検証する。Schedulerのcron起動そのものは自動テストしていない。
++
+ ---
+ 
+ # **6-10. Django Analysis APIテスト**
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 980d3d1..5f516bd 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -10,6 +10,7 @@ import MyPetPage from './pages/MyPetPage'
+ import PetRegisterPage from './pages/PetRegisterPage'
+ import PetDetailPage from './pages/PetDetailPage'
+ import HealthRecordPage from './pages/HealthRecordPage'
++import VaccinationPage from './pages/VaccinationPage'
+ import HospitalSearchPage from './pages/HospitalSearchPage'
+ import HospitalDetailPage from './pages/HospitalDetailPage'
+ import ReservationPage from './pages/ReservationPage'
+@@ -81,6 +82,7 @@ export default function App() {
+             <Route path="/pets/new" element={<PetRegisterPage />} />
+             <Route path="/pets/:petId" element={<PetDetailPage />} />
+             <Route path="/pets/:petId/health" element={<HealthRecordPage />} />
++            <Route path="/pets/:petId/vaccinations" element={<VaccinationPage />} />
+             <Route path="/hospitals/:hospitalId" element={<HospitalDetailPage />} />
+             <Route path="/hospitals/:hospitalId/reserve" element={<ReservationPage />} />
+           </Route>
+diff --git a/frontend/src/api/vaccination.ts b/frontend/src/api/vaccination.ts
+new file mode 100644
+index 0000000..3a15edd
+--- /dev/null
++++ b/frontend/src/api/vaccination.ts
+@@ -0,0 +1,28 @@
++import { apiClient } from './client'
++import type { ApiResponse, Vaccination, VaccinationCreateRequest } from '../types'
++
++export const vaccinationApi = {
++  getList: (petId: number) =>
++    apiClient.get<ApiResponse<Vaccination[]>>(`/api/v1/pets/${petId}/vaccinations`).then((r) => r.data),
++
++  create: (petId: number, body: VaccinationCreateRequest) =>
++    apiClient
++      .post<ApiResponse<{ vaccinationId: number }>>(`/api/v1/pets/${petId}/vaccinations`, body)
++      .then((r) => r.data),
++
++  complete: (vaccinationId: number, completedDate: string) =>
++    apiClient
++      .patch<ApiResponse<null>>(`/api/v1/vaccinations/${vaccinationId}/complete`, { completedDate })
++      .then((r) => r.data),
++
++  cancel: (vaccinationId: number) =>
++    apiClient.patch<ApiResponse<null>>(`/api/v1/vaccinations/${vaccinationId}/cancel`).then((r) => r.data),
++
++  reschedule: (vaccinationId: number, scheduledDate: string) =>
++    apiClient
++      .patch<ApiResponse<null>>(`/api/v1/vaccinations/${vaccinationId}/reschedule`, { scheduledDate })
++      .then((r) => r.data),
++
++  remove: (vaccinationId: number) =>
++    apiClient.delete<ApiResponse<null>>(`/api/v1/vaccinations/${vaccinationId}`).then((r) => r.data),
++}
+diff --git a/frontend/src/components/layout/DetailLayout.tsx b/frontend/src/components/layout/DetailLayout.tsx
+index e8132c5..8ca9804 100644
+--- a/frontend/src/components/layout/DetailLayout.tsx
++++ b/frontend/src/components/layout/DetailLayout.tsx
+@@ -11,6 +11,7 @@ const titleMap: Record<string, string> = {
+ function getTitle(pathname: string): string {
+   if (titleMap[pathname]) return titleMap[pathname]
+   if (pathname.includes('/health')) return '健康記録'
++  if (pathname.endsWith('/vaccinations')) return 'ワクチン予定'
+   if (pathname.includes('/reserve')) return '予約する'
+   if (pathname.includes('/hospitals/')) return '病院詳細'
+   if (pathname.includes('/pets/')) return 'ペット詳細'
+diff --git a/frontend/src/pages/PetDetailPage.tsx b/frontend/src/pages/PetDetailPage.tsx
+index afd9b8d..ed686ca 100644
+--- a/frontend/src/pages/PetDetailPage.tsx
++++ b/frontend/src/pages/PetDetailPage.tsx
+@@ -1,16 +1,35 @@
+-import { useEffect } from 'react'
++import { useEffect, useState } from 'react'
+ import { Link, useParams, useNavigate } from 'react-router-dom'
+ import { usePetStore } from '../stores/petStore'
++import { vaccinationApi } from '../api/vaccination'
++import { daysFromToday } from '../utils/date'
++import type { Vaccination } from '../types'
+ 
+ export default function PetDetailPage() {
+   const { petId } = useParams()
+   const navigate = useNavigate()
+   const { selectedPet, isLoading, fetchPetDetail, removePet } = usePetStore()
+ 
++  // 予定（SCHEDULED）のうち接種予定日が近いもの。API は予定日の昇順で返す
++  const [upcoming, setUpcoming] = useState<Vaccination[] | null>(null)
++
+   useEffect(() => {
+     if (petId) fetchPetDetail(Number(petId))
+   }, [petId, fetchPetDetail])
+ 
++  useEffect(() => {
++    if (!petId) return
++    let active = true
++    setUpcoming(null)
++    vaccinationApi
++      .getList(Number(petId))
++      .then((res) => active && setUpcoming((res.data ?? []).filter((v) => v.status === 'SCHEDULED').slice(0, 3)))
++      .catch(() => active && setUpcoming([]))
++    return () => {
++      active = false
++    }
++  }, [petId])
++
+   const handleDelete = async () => {
+     if (!petId || !window.confirm('このペットを削除してもよろしいですか？')) return
+     await removePet(Number(petId))
+@@ -77,6 +96,37 @@ export default function PetDetailPage() {
+           </div>
+         </section>
+ 
++        {/* ワクチン予定（SC-006） */}
++        <section className="bg-surface-container-lowest rounded-[16px] border border-neutral-gray-100 overflow-hidden shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
++          <div className="flex items-center justify-between px-container-margin py-md border-b border-neutral-gray-100">
++            <h2 className="font-headline-md text-headline-md text-neutral-gray-900">ワクチン予定</h2>
++            <Link to={`/pets/${petId}/vaccinations`} className="flex items-center gap-1 text-primary font-label-md text-label-md">
++              すべて見る
++              <span className="material-symbols-outlined text-[16px]">chevron_right</span>
++            </Link>
++          </div>
++          {upcoming === null ? (
++            <p className="px-container-margin py-sm font-body-md text-body-md text-neutral-gray-600">読み込み中…</p>
++          ) : upcoming.length === 0 ? (
++            <p className="px-container-margin py-sm font-body-md text-body-md text-neutral-gray-600">予定はありません。</p>
++          ) : (
++            <div className="divide-y divide-neutral-gray-100">
++              {upcoming.map((v) => {
++                const days = daysFromToday(v.scheduledDate)
++                return (
++                  <div key={v.vaccinationId} className="flex justify-between items-center px-container-margin py-sm">
++                    <span className="font-body-md text-body-md text-neutral-gray-900">{v.vaccineName}</span>
++                    <span className="font-label-md text-label-md text-neutral-gray-600">
++                      {v.scheduledDate}
++                      {days === 0 ? '（今日）' : days > 0 ? `（あと${days}日）` : ''}
++                    </span>
++                  </div>
++                )
++              })}
++            </div>
++          )}
++        </section>
++
+         {/* クイックアクション */}
+         <section className="grid grid-cols-2 gap-sm">
+           <Link
+diff --git a/frontend/src/pages/VaccinationPage.tsx b/frontend/src/pages/VaccinationPage.tsx
+new file mode 100644
+index 0000000..279741f
+--- /dev/null
++++ b/frontend/src/pages/VaccinationPage.tsx
+@@ -0,0 +1,231 @@
++import { useEffect, useState, FormEvent } from 'react'
++import { useParams } from 'react-router-dom'
++import { vaccinationApi } from '../api/vaccination'
++import { extractErrorMessage } from '../api/client'
++import { daysFromToday, todayInJapan } from '../utils/date'
++import type { Vaccination, VaccinationStatus } from '../types'
++
++const inputClass = 'w-full h-[48px] px-sm bg-neutral-gray-50 border border-neutral-gray-100 rounded-lg font-body-md text-body-md text-on-surface placeholder:text-neutral-gray-600 focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all'
++
++const STATUS_CONFIG: Record<VaccinationStatus, { label: string; color: string; icon: string }> = {
++  SCHEDULED: { label: '予定', color: 'text-success-blue bg-success-blue/10', icon: 'event' },
++  COMPLETED: { label: '接種済み', color: 'text-primary bg-primary/10', icon: 'check_circle' },
++  CANCELLED: { label: '中止', color: 'text-neutral-gray-600 bg-neutral-gray-100', icon: 'event_busy' },
++}
++
++function scheduleLabel(v: Vaccination): string {
++  if (v.status === 'COMPLETED') return `接種日 ${v.completedDate ?? '—'}`
++  if (v.status === 'CANCELLED') return `予定日 ${v.scheduledDate}`
++  const days = daysFromToday(v.scheduledDate)
++  if (days === 0) return `${v.scheduledDate}（今日）`
++  return days > 0 ? `${v.scheduledDate}（あと${days}日）` : `${v.scheduledDate}（${-days}日経過）`
++}
++
++// 接種完了・再登録は日付の入力が必要なため、対象の行にだけ入力欄を開く
++type DateAction = { vaccinationId: number; kind: 'complete' | 'reschedule'; date: string }
++
++export default function VaccinationPage() {
++  const petId = Number(useParams().petId)
++  const [items, setItems] = useState<Vaccination[]>([])
++  const [isLoading, setIsLoading] = useState(true)
++  const [error, setError] = useState<string | null>(null)
++  const [reloadKey, setReloadKey] = useState(0)
++  const [showForm, setShowForm] = useState(false)
++  const [form, setForm] = useState({ vaccineName: '', scheduledDate: todayInJapan() })
++  const [dateAction, setDateAction] = useState<DateAction | null>(null)
++  const [isSaving, setIsSaving] = useState(false)
++
++  useEffect(() => {
++    // ペット切替後に前のペットの応答が遅れて届いても反映しない
++    let active = true
++    setIsLoading(true)
++    vaccinationApi
++      .getList(petId)
++      .then((res) => active && setItems(res.data ?? []))
++      .catch((err) => active && setError(extractErrorMessage(err, 'ワクチン予定の取得に失敗しました。')))
++      .finally(() => active && setIsLoading(false))
++    return () => {
++      active = false
++    }
++  }, [petId, reloadKey])
++
++  const run = async (action: () => Promise<unknown>, fallback: string) => {
++    setError(null)
++    setIsSaving(true)
++    try {
++      await action()
++      setDateAction(null)
++      setReloadKey((k) => k + 1)
++      return true
++    } catch (err) {
++      setError(extractErrorMessage(err, fallback))
++      // 別の端末などで状態が変わっていた場合（409/404）に、画面の古い状態を最新に戻す
++      setReloadKey((k) => k + 1)
++      return false
++    } finally {
++      setIsSaving(false)
++    }
++  }
++
++  const handleCreate = async (e: FormEvent) => {
++    e.preventDefault()
++    const ok = await run(() => vaccinationApi.create(petId, { vaccineName: form.vaccineName.trim(), scheduledDate: form.scheduledDate }), 'ワクチン予定の登録に失敗しました。')
++    if (ok) {
++      setShowForm(false)
++      setForm({ vaccineName: '', scheduledDate: todayInJapan() })
++    }
++  }
++
++  const handleDateAction = (e: FormEvent) => {
++    e.preventDefault()
++    if (!dateAction) return
++    const { vaccinationId, kind, date } = dateAction
++    if (kind === 'complete') {
++      run(() => vaccinationApi.complete(vaccinationId, date), '接種完了の登録に失敗しました。')
++    } else {
++      run(() => vaccinationApi.reschedule(vaccinationId, date), '再登録に失敗しました。')
++    }
++  }
++
++  const handleCancel = (v: Vaccination) => {
++    if (!window.confirm(`「${v.vaccineName}」の予定を中止しますか？`)) return
++    run(() => vaccinationApi.cancel(v.vaccinationId), '予定の中止に失敗しました。')
++  }
++
++  const handleDelete = (v: Vaccination) => {
++    if (!window.confirm(`「${v.vaccineName}」を削除してもよろしいですか？`)) return
++    run(() => vaccinationApi.remove(v.vaccinationId), 'ワクチン予定の削除に失敗しました。')
++  }
++
++  return (
++    <div className="px-container-margin py-lg pb-xl flex flex-col gap-lg">
++      <div className="flex justify-between items-center">
++        <h1 className="font-headline-lg-mobile text-headline-lg-mobile text-neutral-gray-900">ワクチン予定</h1>
++        <button
++          onClick={() => setShowForm((s) => !s)}
++          className="flex items-center gap-1 bg-pet-green-vibrant text-white font-button-text text-button-text px-4 py-2.5 rounded-xl hover:bg-primary transition-colors active:scale-[0.98]"
++        >
++          <span className="material-symbols-outlined text-[18px]">{showForm ? 'close' : 'add'}</span>
++          {showForm ? 'キャンセル' : '予定を追加'}
++        </button>
++      </div>
++
++      <p className="font-body-md text-body-md text-neutral-gray-600">接種予定日の7日前から、毎朝9時に通知でお知らせします。</p>
++
++      {error && (
++        <div className="flex items-center gap-2 bg-error-red/10 border border-error-red/20 text-error-red px-sm py-3 rounded-lg font-body-md text-body-md">
++          <span className="material-symbols-outlined text-[18px] flex-shrink-0">error</span>
++          {error}
++        </div>
++      )}
++
++      {showForm && (
++        <form
++          onSubmit={handleCreate}
++          className="bg-surface-container-lowest rounded-[16px] border border-neutral-gray-100 p-container-margin flex flex-col gap-md shadow-[0px_4px_20px_rgba(0,0,0,0.05)]"
++        >
++          <h2 className="font-headline-md text-headline-md text-neutral-gray-900">新しい予定を追加</h2>
++          <div className="flex flex-col gap-xs">
++            <label htmlFor="vaccine-name" className="font-label-md text-label-md text-on-surface-variant">ワクチン名</label>
++            <input
++              id="vaccine-name"
++              type="text"
++              required
++              maxLength={100}
++              value={form.vaccineName}
++              onChange={(e) => setForm((f) => ({ ...f, vaccineName: e.target.value }))}
++              placeholder="例: 混合ワクチン、狂犬病"
++              className={inputClass}
++            />
++          </div>
++          <div className="flex flex-col gap-xs">
++            <label htmlFor="vaccine-date" className="font-label-md text-label-md text-on-surface-variant">接種予定日</label>
++            <input id="vaccine-date" type="date" required value={form.scheduledDate} onChange={(e) => setForm((f) => ({ ...f, scheduledDate: e.target.value }))} className={inputClass} />
++          </div>
++          <button type="submit" disabled={isSaving || !form.vaccineName.trim()} className="w-full h-[48px] bg-pet-green-vibrant hover:bg-primary disabled:bg-neutral-gray-100 disabled:text-neutral-gray-600 text-white font-button-text text-button-text rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
++            <span className="material-symbols-outlined">check</span>
++            {isSaving ? '保存中…' : '登録'}
++          </button>
++        </form>
++      )}
++
++      {isLoading ? (
++        <div className="flex items-center justify-center py-xl">
++          <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
++        </div>
++      ) : items.length === 0 ? (
++        <p className="font-body-md text-body-md text-neutral-gray-600 text-center py-xl">ワクチン予定はまだありません。</p>
++      ) : (
++        <div className="flex flex-col gap-sm">
++          {items.map((v) => {
++            const config = STATUS_CONFIG[v.status]
++            const isOpen = dateAction?.vaccinationId === v.vaccinationId
++            return (
++              <div key={v.vaccinationId} className="bg-surface-container-lowest rounded-xl border border-neutral-gray-100 px-container-margin py-md flex flex-col gap-sm shadow-[0px_2px_8px_rgba(0,0,0,0.03)]">
++                <div className="flex items-start gap-3">
++                  <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${config.color}`}>
++                    <span className="material-symbols-outlined icon-fill text-[18px]">{config.icon}</span>
++                  </div>
++                  <div className="flex-grow min-w-0">
++                    <div className="flex items-center justify-between gap-2">
++                      <p className="font-body-lg text-body-lg text-neutral-gray-900 font-medium truncate">{v.vaccineName}</p>
++                      <span className={`font-label-md text-label-md px-2 py-0.5 rounded-full flex-shrink-0 ${config.color}`}>{config.label}</span>
++                    </div>
++                    <p className="font-label-md text-label-md text-neutral-gray-600 mt-1">{scheduleLabel(v)}</p>
++                  </div>
++                </div>
++
++                <div className="flex flex-wrap gap-xs justify-end">
++                  {v.status === 'SCHEDULED' && (
++                    <>
++                      <button onClick={() => setDateAction({ vaccinationId: v.vaccinationId, kind: 'complete', date: todayInJapan() })} disabled={isSaving} className="font-label-md text-label-md px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50">
++                        接種完了
++                      </button>
++                      <button onClick={() => handleCancel(v)} disabled={isSaving} className="font-label-md text-label-md px-3 py-1.5 rounded-lg bg-neutral-gray-100 text-neutral-gray-600 hover:bg-neutral-gray-50 disabled:opacity-50">
++                        中止
++                      </button>
++                    </>
++                  )}
++                  {v.status === 'CANCELLED' && (
++                    <button onClick={() => setDateAction({ vaccinationId: v.vaccinationId, kind: 'reschedule', date: todayInJapan() })} disabled={isSaving} className="font-label-md text-label-md px-3 py-1.5 rounded-lg bg-success-blue/10 text-success-blue hover:bg-success-blue/20 disabled:opacity-50">
++                      再登録
++                    </button>
++                  )}
++                  <button onClick={() => handleDelete(v)} disabled={isSaving} aria-label={`${v.vaccineName}を削除`} className="font-label-md text-label-md px-3 py-1.5 rounded-lg text-error-red hover:bg-error-red/10 disabled:opacity-50">
++                    削除
++                  </button>
++                </div>
++
++                {isOpen && dateAction && (
++                  <form onSubmit={handleDateAction} className="flex items-end gap-xs border-t border-neutral-gray-100 pt-sm">
++                    <div className="flex-grow flex flex-col gap-xs">
++                      <label htmlFor={`action-date-${v.vaccinationId}`} className="font-label-md text-label-md text-on-surface-variant">
++                        {dateAction.kind === 'complete' ? '接種日' : '新しい接種予定日'}
++                      </label>
++                      <input
++                        id={`action-date-${v.vaccinationId}`}
++                        type="date"
++                        required
++                        // 接種日は未来日不可（API側も@PastOrPresentで検証）
++                        max={dateAction.kind === 'complete' ? todayInJapan() : undefined}
++                        value={dateAction.date}
++                        onChange={(e) => setDateAction({ ...dateAction, date: e.target.value })}
++                        className={inputClass}
++                      />
++                    </div>
++                    <button type="submit" disabled={isSaving} className="h-[48px] px-4 bg-pet-green-vibrant hover:bg-primary disabled:bg-neutral-gray-100 text-white font-button-text text-button-text rounded-lg">
++                      確定
++                    </button>
++                    <button type="button" onClick={() => setDateAction(null)} className="h-[48px] px-3 text-neutral-gray-600 font-button-text text-button-text rounded-lg hover:bg-neutral-gray-50">
++                      戻る
++                    </button>
++                  </form>
++                )}
++              </div>
++            )
++          })}
++        </div>
++      )}
++    </div>
++  )
++}
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+index 07af987..9778579 100644
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -5,3 +5,4 @@ export * from './hospital'
+ export * from './reservation'
+ export * from './healthRecord'
+ export * from './notification'
++export * from './vaccination'
+diff --git a/frontend/src/types/vaccination.ts b/frontend/src/types/vaccination.ts
+new file mode 100644
+index 0000000..bc55a1c
+--- /dev/null
++++ b/frontend/src/types/vaccination.ts
+@@ -0,0 +1,14 @@
++export type VaccinationStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELLED'
++
++export interface Vaccination {
++  vaccinationId: number
++  vaccineName: string
++  scheduledDate: string
++  completedDate?: string
++  status: VaccinationStatus
++}
++
++export interface VaccinationCreateRequest {
++  vaccineName: string
++  scheduledDate: string
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/dto/VaccinationDto.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/dto/VaccinationDto.java
+new file mode 100644
+index 0000000..50f233d
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/dto/VaccinationDto.java
+@@ -0,0 +1,45 @@
++package koh.portfolio.springapi.application.vaccination.dto;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.PastOrPresent;
++import jakarta.validation.constraints.Size;
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationStatus;
++import lombok.Builder;
++
++import java.time.LocalDate;
++
++public record VaccinationDto() {
++    public record CreateVaccinationRequest(
++            @NotBlank
++            @Size(max = 100)
++            String vaccineName,
++            @NotNull
++            LocalDate scheduledDate
++    ) {}
++
++    @Builder
++    public record CreateVaccinationResponse(
++            Long vaccinationId
++    ) {}
++
++    public record CompleteVaccinationRequest(
++            // 省略時は当日
++            @PastOrPresent
++            LocalDate completedDate
++    ) {}
++
++    public record RescheduleVaccinationRequest(
++            @NotNull
++            LocalDate scheduledDate
++    ) {}
++
++    @Builder
++    public record VaccinationResponse(
++            Long vaccinationId,
++            String vaccineName,
++            LocalDate scheduledDate,
++            LocalDate completedDate,
++            VaccinationStatus status
++    ) {}
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/CancelVaccinationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/CancelVaccinationService.java
+new file mode 100644
+index 0000000..f7be538
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/CancelVaccinationService.java
+@@ -0,0 +1,40 @@
++package koh.portfolio.springapi.application.vaccination.service;
++
++import koh.portfolio.springapi.application.vaccination.usecase.CancelVaccinationUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.pet.model.Pet;
++import koh.portfolio.springapi.domain.pet.port.PetRepository;
++import koh.portfolio.springapi.domain.vaccination.exception.VaccinationErrorCode;
++import koh.portfolio.springapi.domain.vaccination.model.Vaccination;
++import koh.portfolio.springapi.domain.vaccination.port.VaccinationRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++@Service
++@RequiredArgsConstructor
++public class CancelVaccinationService implements CancelVaccinationUseCase {
++    private final VaccinationRepository vaccinationRepository;
++    private final PetRepository petRepository;
++
++    @Override
++    @Transactional
++    public void execute(Long userId, Long vaccinationId) {
++        Vaccination vaccination = vaccinationRepository.findById(vaccinationId)
++                .orElseThrow(VaccinationErrorCode.VACCINATION_NOT_FOUND::defaultException);
++
++        Pet pet = petRepository.findById(vaccination.getPetId()).orElse(null);
++        Preconditions.validate(
++                pet != null && pet.getUserId().equals(userId),
++                VaccinationErrorCode.NOT_PET_OWNER
++        );
++
++        Vaccination cancelled = vaccination.cancel();
++
++        // updated_at も進めるため、後で再登録した予定は改めてリマインダー対象になる
++        Preconditions.validate(
++                vaccinationRepository.cancel(cancelled.getId(), cancelled.getUpdatedAt()),
++                VaccinationErrorCode.INVALID_STATE_TRANSITION
++        );
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/CompleteVaccinationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/CompleteVaccinationService.java
+new file mode 100644
+index 0000000..8f9e7c7
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/CompleteVaccinationService.java
+@@ -0,0 +1,43 @@
++package koh.portfolio.springapi.application.vaccination.service;
++
++import koh.portfolio.springapi.application.vaccination.usecase.CompleteVaccinationUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.pet.model.Pet;
++import koh.portfolio.springapi.domain.pet.port.PetRepository;
++import koh.portfolio.springapi.domain.vaccination.exception.VaccinationErrorCode;
++import koh.portfolio.springapi.domain.vaccination.model.Vaccination;
++import koh.portfolio.springapi.domain.vaccination.port.VaccinationRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.time.LocalDate;
++
++@Service
++@RequiredArgsConstructor
++public class CompleteVaccinationService implements CompleteVaccinationUseCase {
++    private final VaccinationRepository vaccinationRepository;
++    private final PetRepository petRepository;
++
++    @Override
++    @Transactional
++    public void execute(Long userId, Long vaccinationId, LocalDate completedDate) {
++        Vaccination vaccination = vaccinationRepository.findById(vaccinationId)
++                .orElseThrow(VaccinationErrorCode.VACCINATION_NOT_FOUND::defaultException);
++
++        Pet pet = petRepository.findById(vaccination.getPetId()).orElse(null);
++        Preconditions.validate(
++                pet != null && pet.getUserId().equals(userId),
++                VaccinationErrorCode.NOT_PET_OWNER
++        );
++
++        Vaccination completed = vaccination.complete(completedDate != null ? completedDate : LocalDate.now());
++
++        // 読み取り後に別の遷移が確定していた場合は0件となり、その遷移を上書きしない
++        Preconditions.validate(
++                vaccinationRepository.markCompleted(
++                        completed.getId(), completed.getCompletedDate(), completed.getUpdatedAt()),
++                VaccinationErrorCode.INVALID_STATE_TRANSITION
++        );
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/DeleteVaccinationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/DeleteVaccinationService.java
+new file mode 100644
+index 0000000..6da6f78
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/DeleteVaccinationService.java
+@@ -0,0 +1,40 @@
++package koh.portfolio.springapi.application.vaccination.service;
++
++import koh.portfolio.springapi.application.vaccination.usecase.DeleteVaccinationUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.pet.model.Pet;
++import koh.portfolio.springapi.domain.pet.port.PetRepository;
++import koh.portfolio.springapi.domain.vaccination.exception.VaccinationErrorCode;
++import koh.portfolio.springapi.domain.vaccination.model.Vaccination;
++import koh.portfolio.springapi.domain.vaccination.port.VaccinationRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.time.LocalDateTime;
++
++@Service
++@RequiredArgsConstructor
++public class DeleteVaccinationService implements DeleteVaccinationUseCase {
++    private final VaccinationRepository vaccinationRepository;
++    private final PetRepository petRepository;
++
++    @Override
++    @Transactional
++    public void execute(Long userId, Long vaccinationId) {
++        Vaccination vaccination = vaccinationRepository.findById(vaccinationId)
++                .orElseThrow(VaccinationErrorCode.VACCINATION_NOT_FOUND::defaultException);
++
++        Pet pet = petRepository.findById(vaccination.getPetId()).orElse(null);
++        Preconditions.validate(
++                pet != null && pet.getUserId().equals(userId),
++                VaccinationErrorCode.NOT_PET_OWNER
++        );
++
++        // 読み取り後に別リクエストが削除していた場合は0件となり、存在しない予定として扱う
++        Preconditions.validate(
++                vaccinationRepository.softDelete(vaccinationId, LocalDateTime.now()),
++                VaccinationErrorCode.VACCINATION_NOT_FOUND
++        );
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/RescheduleVaccinationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/RescheduleVaccinationService.java
+new file mode 100644
+index 0000000..0ad34cf
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/RescheduleVaccinationService.java
+@@ -0,0 +1,42 @@
++package koh.portfolio.springapi.application.vaccination.service;
++
++import koh.portfolio.springapi.application.vaccination.usecase.RescheduleVaccinationUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.pet.model.Pet;
++import koh.portfolio.springapi.domain.pet.port.PetRepository;
++import koh.portfolio.springapi.domain.vaccination.exception.VaccinationErrorCode;
++import koh.portfolio.springapi.domain.vaccination.model.Vaccination;
++import koh.portfolio.springapi.domain.vaccination.port.VaccinationRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.time.LocalDate;
++
++@Service
++@RequiredArgsConstructor
++public class RescheduleVaccinationService implements RescheduleVaccinationUseCase {
++    private final VaccinationRepository vaccinationRepository;
++    private final PetRepository petRepository;
++
++    @Override
++    @Transactional
++    public void execute(Long userId, Long vaccinationId, LocalDate scheduledDate) {
++        Vaccination vaccination = vaccinationRepository.findById(vaccinationId)
++                .orElseThrow(VaccinationErrorCode.VACCINATION_NOT_FOUND::defaultException);
++
++        Pet pet = petRepository.findById(vaccination.getPetId()).orElse(null);
++        Preconditions.validate(
++                pet != null && pet.getUserId().equals(userId),
++                VaccinationErrorCode.NOT_PET_OWNER
++        );
++
++        Vaccination rescheduled = vaccination.reschedule(scheduledDate);
++
++        Preconditions.validate(
++                vaccinationRepository.reschedule(
++                        rescheduled.getId(), rescheduled.getScheduledDate(), rescheduled.getUpdatedAt()),
++                VaccinationErrorCode.INVALID_STATE_TRANSITION
++        );
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/SendVaccinationRemindersService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/SendVaccinationRemindersService.java
+new file mode 100644
+index 0000000..fa44be9
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/SendVaccinationRemindersService.java
+@@ -0,0 +1,39 @@
++package koh.portfolio.springapi.application.vaccination.service;
++
++import koh.portfolio.springapi.application.vaccination.usecase.SendVaccinationRemindersUseCase;
++import koh.portfolio.springapi.domain.notification.model.Notification;
++import koh.portfolio.springapi.domain.notification.port.NotificationRepository;
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationReminderTarget;
++import koh.portfolio.springapi.domain.vaccination.port.VaccinationRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.time.LocalDate;
++import java.util.List;
++
++@Service
++@RequiredArgsConstructor
++public class SendVaccinationRemindersService implements SendVaccinationRemindersUseCase {
++    // 08_State_Design §11-1: 接種予定日が7日以内
++    static final int REMIND_DAYS_BEFORE = 7;
++
++    private final VaccinationRepository vaccinationRepository;
++    private final NotificationRepository notificationRepository;
++
++    @Override
++    @Transactional
++    public int execute(LocalDate today) {
++        List<VaccinationReminderTarget> targets =
++                vaccinationRepository.findReminderTargets(today, today.plusDays(REMIND_DAYS_BEFORE));
++
++        targets.forEach(target -> notificationRepository.save(Notification.forVaccination(
++                target.userId(),
++                target.vaccinationId(),
++                "%sの%s接種予定日（%s）が近づいています。".formatted(
++                        target.petName(), target.vaccineName(), target.scheduledDate())
++        )));
++
++        return targets.size();
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/VaccinationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/VaccinationService.java
+new file mode 100644
+index 0000000..faa1562
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/service/VaccinationService.java
+@@ -0,0 +1,63 @@
++package koh.portfolio.springapi.application.vaccination.service;
++
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.CreateVaccinationRequest;
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.CreateVaccinationResponse;
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.VaccinationResponse;
++import koh.portfolio.springapi.application.vaccination.usecase.CreateVaccinationUseCase;
++import koh.portfolio.springapi.application.vaccination.usecase.GetVaccinationListUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.pet.model.Pet;
++import koh.portfolio.springapi.domain.pet.port.PetRepository;
++import koh.portfolio.springapi.domain.vaccination.exception.VaccinationErrorCode;
++import koh.portfolio.springapi.domain.vaccination.model.Vaccination;
++import koh.portfolio.springapi.domain.vaccination.port.VaccinationRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.util.List;
++
++@Service
++@RequiredArgsConstructor
++public class VaccinationService implements CreateVaccinationUseCase, GetVaccinationListUseCase {
++    private final VaccinationRepository vaccinationRepository;
++    private final PetRepository petRepository;
++
++    @Override
++    @Transactional
++    public CreateVaccinationResponse execute(Long userId, Long petId, CreateVaccinationRequest request) {
++        validatePetOwner(userId, petId);
++
++        Vaccination savedVaccination = vaccinationRepository.save(
++                Vaccination.create(petId, request.vaccineName(), request.scheduledDate()));
++
++        return CreateVaccinationResponse.builder()
++                .vaccinationId(savedVaccination.getId())
++                .build();
++    }
++
++    @Override
++    public List<VaccinationResponse> execute(Long userId, Long petId) {
++        validatePetOwner(userId, petId);
++
++        return vaccinationRepository.findAllByPetId(petId).stream()
++                .map(vaccination -> VaccinationResponse.builder()
++                        .vaccinationId(vaccination.getId())
++                        .vaccineName(vaccination.getVaccineName())
++                        .scheduledDate(vaccination.getScheduledDate())
++                        .completedDate(vaccination.getCompletedDate())
++                        .status(vaccination.getStatus())
++                        .build())
++                .toList();
++    }
++
++    // ワクチン接種予定はペット経由で所有者を判定する（予定自体はuserIdを持たない）
++    private void validatePetOwner(Long userId, Long petId) {
++        Pet pet = petRepository.findById(petId).orElse(null);
++
++        Preconditions.validate(
++                pet != null && pet.getUserId().equals(userId),
++                VaccinationErrorCode.NOT_PET_OWNER
++        );
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/CancelVaccinationUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/CancelVaccinationUseCase.java
+new file mode 100644
+index 0000000..d6d2c92
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/CancelVaccinationUseCase.java
+@@ -0,0 +1,5 @@
++package koh.portfolio.springapi.application.vaccination.usecase;
++
++public interface CancelVaccinationUseCase {
++    void execute(Long userId, Long vaccinationId);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/CompleteVaccinationUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/CompleteVaccinationUseCase.java
+new file mode 100644
+index 0000000..4f87d72
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/CompleteVaccinationUseCase.java
+@@ -0,0 +1,7 @@
++package koh.portfolio.springapi.application.vaccination.usecase;
++
++import java.time.LocalDate;
++
++public interface CompleteVaccinationUseCase {
++    void execute(Long userId, Long vaccinationId, LocalDate completedDate);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/CreateVaccinationUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/CreateVaccinationUseCase.java
+new file mode 100644
+index 0000000..6b043b1
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/CreateVaccinationUseCase.java
+@@ -0,0 +1,8 @@
++package koh.portfolio.springapi.application.vaccination.usecase;
++
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.CreateVaccinationRequest;
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.CreateVaccinationResponse;
++
++public interface CreateVaccinationUseCase {
++    CreateVaccinationResponse execute(Long userId, Long petId, CreateVaccinationRequest request);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/DeleteVaccinationUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/DeleteVaccinationUseCase.java
+new file mode 100644
+index 0000000..96e1c66
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/DeleteVaccinationUseCase.java
+@@ -0,0 +1,5 @@
++package koh.portfolio.springapi.application.vaccination.usecase;
++
++public interface DeleteVaccinationUseCase {
++    void execute(Long userId, Long vaccinationId);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/GetVaccinationListUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/GetVaccinationListUseCase.java
+new file mode 100644
+index 0000000..040e355
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/GetVaccinationListUseCase.java
+@@ -0,0 +1,9 @@
++package koh.portfolio.springapi.application.vaccination.usecase;
++
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.VaccinationResponse;
++
++import java.util.List;
++
++public interface GetVaccinationListUseCase {
++    List<VaccinationResponse> execute(Long userId, Long petId);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/RescheduleVaccinationUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/RescheduleVaccinationUseCase.java
+new file mode 100644
+index 0000000..62faa52
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/RescheduleVaccinationUseCase.java
+@@ -0,0 +1,7 @@
++package koh.portfolio.springapi.application.vaccination.usecase;
++
++import java.time.LocalDate;
++
++public interface RescheduleVaccinationUseCase {
++    void execute(Long userId, Long vaccinationId, LocalDate scheduledDate);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/SendVaccinationRemindersUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/SendVaccinationRemindersUseCase.java
+new file mode 100644
+index 0000000..860ed7c
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/vaccination/usecase/SendVaccinationRemindersUseCase.java
+@@ -0,0 +1,9 @@
++package koh.portfolio.springapi.application.vaccination.usecase;
++
++import java.time.LocalDate;
++
++// 接種予定日が近い SCHEDULED の予定に VACCINATION 通知を生成する（08_State_Design §11）。
++// 公開APIは持たず、Scheduler から呼ばれる。生成した通知の件数を返す
++public interface SendVaccinationRemindersUseCase {
++    int execute(LocalDate today);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/Notification.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/Notification.java
+index dcfa519..44b4300 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/Notification.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/Notification.java
+@@ -23,4 +23,10 @@ public class Notification {
+         return new Notification(null, userId, reservationId, null, notificationType,
+                 notificationType.getTitle(), notificationType.getMessage(), false, LocalDateTime.now(), null);
+     }
++
++    // 本文にペット名・ワクチン名・予定日を含めるため、種別の既定文面ではなく呼び出し側の文面を使う
++    public static Notification forVaccination(Long userId, Long vaccinationId, String message) {
++        return new Notification(null, userId, null, vaccinationId, NotificationType.VACCINATION,
++                NotificationType.VACCINATION.getTitle(), message, false, LocalDateTime.now(), null);
++    }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/NotificationType.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/NotificationType.java
+index d53df9c..420b5a5 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/NotificationType.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/notification/model/NotificationType.java
+@@ -9,7 +9,7 @@ public enum NotificationType {
+     RESERVATION_APPROVED("予約が承認されました", "ご予約が承認されました。予約内容をご確認ください。"),
+     RESERVATION_REJECTED("予約が却下されました", "ご予約が却下されました。別の予約枠をご確認ください。"),
+     TREATMENT_COMPLETED("診療が完了しました", "診療が完了しました。健康記録の登録をおすすめします。"),
+-    // Vaccination ドメイン未実装のため現在は生成されない（08_State_Design §7、文面は07_API_Design §10-1の例に合わせる）
++    // ワクチン接種リマインダーScheduler が生成する（08_State_Design §11）。本文は対象ごとに組み立てる
+     VACCINATION("ワクチン接種予定", "ワクチン接種予定日が近づいています。");
+ 
+     private final String title;
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/exception/VaccinationErrorCode.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/exception/VaccinationErrorCode.java
+new file mode 100644
+index 0000000..b41ef3a
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/exception/VaccinationErrorCode.java
+@@ -0,0 +1,42 @@
++package koh.portfolio.springapi.domain.vaccination.exception;
++
++import koh.portfolio.springapi.common.exception.ErrorCode;
++import lombok.RequiredArgsConstructor;
++import org.springframework.http.HttpStatus;
++
++@RequiredArgsConstructor
++public enum VaccinationErrorCode implements ErrorCode {
++    VACCINATION_NOT_FOUND("VACCINATION-001", "存在しないワクチン接種予定です。", HttpStatus.NOT_FOUND),
++    NOT_PET_OWNER("VACCINATION-002", "存在しないペット、または他のユーザーのペットです。", HttpStatus.FORBIDDEN),
++    INVALID_STATE_TRANSITION("VACCINATION-003", "現在の状態では変更できません。", HttpStatus.CONFLICT),
++    DEFAULT("VACCINATION-999", "ワクチン接種関連エラーです。", HttpStatus.INTERNAL_SERVER_ERROR);
++
++    private final String code;
++    private final String message;
++    private final HttpStatus status;
++
++    @Override
++    public String code() {
++        return code;
++    }
++
++    @Override
++    public HttpStatus defaultHttpStatus() {
++        return status;
++    }
++
++    @Override
++    public String defaultMessage() {
++        return message;
++    }
++
++    @Override
++    public RuntimeException defaultException() {
++        return new VaccinationException(this);
++    }
++
++    @Override
++    public RuntimeException defaultException(Throwable cause) {
++        return new VaccinationException(this, cause);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/exception/VaccinationException.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/exception/VaccinationException.java
+new file mode 100644
+index 0000000..abcc4a8
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/exception/VaccinationException.java
+@@ -0,0 +1,14 @@
++package koh.portfolio.springapi.domain.vaccination.exception;
++
++import koh.portfolio.springapi.common.exception.CustomException;
++import koh.portfolio.springapi.common.exception.ErrorCode;
++
++public class VaccinationException extends CustomException {
++    public VaccinationException(ErrorCode errorCode) {
++        super(errorCode);
++    }
++
++    public VaccinationException(ErrorCode errorCode, Throwable cause) {
++        super(errorCode, cause);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/model/Vaccination.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/model/Vaccination.java
+new file mode 100644
+index 0000000..5446e48
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/model/Vaccination.java
+@@ -0,0 +1,52 @@
++package koh.portfolio.springapi.domain.vaccination.model;
++
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.vaccination.exception.VaccinationErrorCode;
++import lombok.AllArgsConstructor;
++import lombok.Getter;
++
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++
++@Getter
++@AllArgsConstructor
++public class Vaccination {
++    private Long id;
++    private Long petId;
++    private String vaccineName;
++    private LocalDate scheduledDate;
++    private LocalDate completedDate;
++    private VaccinationStatus status;
++    private LocalDateTime createdAt;
++    private LocalDateTime updatedAt;
++    private LocalDateTime deletedAt;
++
++    public static Vaccination create(Long petId, String vaccineName, LocalDate scheduledDate) {
++        LocalDateTime now = LocalDateTime.now();
++
++        return new Vaccination(null, petId, vaccineName, scheduledDate, null,
++                VaccinationStatus.SCHEDULED, now, now, null);
++    }
++
++    public Vaccination complete(LocalDate completedDate) {
++        Preconditions.validate(this.status == VaccinationStatus.SCHEDULED, VaccinationErrorCode.INVALID_STATE_TRANSITION);
++
++        return new Vaccination(this.id, this.petId, this.vaccineName, this.scheduledDate, completedDate,
++                VaccinationStatus.COMPLETED, this.createdAt, LocalDateTime.now(), this.deletedAt);
++    }
++
++    public Vaccination cancel() {
++        Preconditions.validate(this.status == VaccinationStatus.SCHEDULED, VaccinationErrorCode.INVALID_STATE_TRANSITION);
++
++        return new Vaccination(this.id, this.petId, this.vaccineName, this.scheduledDate, null,
++                VaccinationStatus.CANCELLED, this.createdAt, LocalDateTime.now(), this.deletedAt);
++    }
++
++    // 08_State_Design §7「再登録」: 中止した予定を新しい接種予定日で SCHEDULED に戻す
++    public Vaccination reschedule(LocalDate scheduledDate) {
++        Preconditions.validate(this.status == VaccinationStatus.CANCELLED, VaccinationErrorCode.INVALID_STATE_TRANSITION);
++
++        return new Vaccination(this.id, this.petId, this.vaccineName, scheduledDate, null,
++                VaccinationStatus.SCHEDULED, this.createdAt, LocalDateTime.now(), this.deletedAt);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/model/VaccinationReminderTarget.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/model/VaccinationReminderTarget.java
+new file mode 100644
+index 0000000..b49a296
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/model/VaccinationReminderTarget.java
+@@ -0,0 +1,12 @@
++package koh.portfolio.springapi.domain.vaccination.model;
++
++import java.time.LocalDate;
++
++// リマインダー通知の送信対象（通知先ユーザーはペットの飼い主）
++public record VaccinationReminderTarget(
++        Long vaccinationId,
++        Long userId,
++        String petName,
++        String vaccineName,
++        LocalDate scheduledDate
++) {}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/model/VaccinationStatus.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/model/VaccinationStatus.java
+new file mode 100644
+index 0000000..6fc7ff0
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/model/VaccinationStatus.java
+@@ -0,0 +1,7 @@
++package koh.portfolio.springapi.domain.vaccination.model;
++
++public enum VaccinationStatus {
++    SCHEDULED,
++    COMPLETED,
++    CANCELLED
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/port/VaccinationRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/port/VaccinationRepository.java
+new file mode 100644
+index 0000000..439f4b0
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/vaccination/port/VaccinationRepository.java
+@@ -0,0 +1,27 @@
++package koh.portfolio.springapi.domain.vaccination.port;
++
++import koh.portfolio.springapi.domain.vaccination.model.Vaccination;
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationReminderTarget;
++
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++import java.util.List;
++import java.util.Optional;
++
++public interface VaccinationRepository {
++    Vaccination save(Vaccination vaccination);
++    Optional<Vaccination> findById(Long id);
++    List<Vaccination> findAllByPetId(Long petId);
++
++    // 状態遷移は遷移元の状態を WHERE 条件にした列単位のUPDATEで書き込み、更新できたかを返す。
++    // 同時に別の遷移が成立していた場合は false となる（エンティティ全体の保存はしない）
++    boolean markCompleted(Long id, LocalDate completedDate, LocalDateTime updatedAt);
++    boolean reschedule(Long id, LocalDate scheduledDate, LocalDateTime updatedAt);
++    boolean cancel(Long id, LocalDateTime updatedAt);
++
++    // 論理削除されていない行だけを削除する。同時に削除済みなら false
++    boolean softDelete(Long id, LocalDateTime deletedAt);
++
++    // 接種予定日が from〜to の SCHEDULED のうち、最後の変更以降にまだ通知していないもの
++    List<VaccinationReminderTarget> findReminderTargets(LocalDate from, LocalDate to);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationEntity.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationEntity.java
+new file mode 100644
+index 0000000..62f7e62
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationEntity.java
+@@ -0,0 +1,29 @@
++package koh.portfolio.springapi.infrastructure.persistence.vaccination;
++
++import jakarta.persistence.*;
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationStatus;
++import lombok.*;
++
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++
++@Getter
++@Entity
++@Table(name = "vaccinations")
++@NoArgsConstructor(access = AccessLevel.PROTECTED)
++@AllArgsConstructor(access = AccessLevel.PRIVATE)
++@Builder
++public class VaccinationEntity {
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++    private Long petId;
++    private String vaccineName;
++    private LocalDate scheduledDate;
++    private LocalDate completedDate;
++    @Enumerated(EnumType.STRING)
++    private VaccinationStatus status;
++    private LocalDateTime createdAt;
++    private LocalDateTime updatedAt;
++    private LocalDateTime deletedAt;
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationJpaRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationJpaRepository.java
+new file mode 100644
+index 0000000..267f65c
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationJpaRepository.java
+@@ -0,0 +1,70 @@
++package koh.portfolio.springapi.infrastructure.persistence.vaccination;
++
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationReminderTarget;
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationStatus;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Modifying;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
++
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++import java.util.List;
++import java.util.Optional;
++
++public interface VaccinationJpaRepository extends JpaRepository<VaccinationEntity, Long> {
++    Optional<VaccinationEntity> findByIdAndDeletedAtIsNull(Long id);
++
++    List<VaccinationEntity> findAllByPetIdAndDeletedAtIsNullOrderByScheduledDateAsc(Long petId);
++
++    @Modifying(clearAutomatically = true, flushAutomatically = true)
++    @Query("update VaccinationEntity set status = :newStatus, completedDate = :completedDate, updatedAt = :updatedAt "
++            + "where id = :id and status = :expectedStatus and deletedAt is null")
++    int markCompleted(
++            @Param("id") Long id,
++            @Param("expectedStatus") VaccinationStatus expectedStatus,
++            @Param("newStatus") VaccinationStatus newStatus,
++            @Param("completedDate") LocalDate completedDate,
++            @Param("updatedAt") LocalDateTime updatedAt
++    );
++
++    @Modifying(clearAutomatically = true, flushAutomatically = true)
++    @Query("update VaccinationEntity set status = :newStatus, scheduledDate = :scheduledDate, completedDate = null, "
++            + "updatedAt = :updatedAt where id = :id and status = :expectedStatus and deletedAt is null")
++    int reschedule(
++            @Param("id") Long id,
++            @Param("expectedStatus") VaccinationStatus expectedStatus,
++            @Param("newStatus") VaccinationStatus newStatus,
++            @Param("scheduledDate") LocalDate scheduledDate,
++            @Param("updatedAt") LocalDateTime updatedAt
++    );
++
++    @Modifying(clearAutomatically = true, flushAutomatically = true)
++    @Query("update VaccinationEntity set status = :newStatus, updatedAt = :updatedAt "
++            + "where id = :id and status = :expectedStatus and deletedAt is null")
++    int cancel(
++            @Param("id") Long id,
++            @Param("expectedStatus") VaccinationStatus expectedStatus,
++            @Param("newStatus") VaccinationStatus newStatus,
++            @Param("updatedAt") LocalDateTime updatedAt
++    );
++
++    @Modifying(clearAutomatically = true, flushAutomatically = true)
++    @Query("update VaccinationEntity set deletedAt = :deletedAt where id = :id and deletedAt is null")
++    int softDelete(@Param("id") Long id, @Param("deletedAt") LocalDateTime deletedAt);
++
++    // 再登録は updated_at を進めるため、それ以降に作られた通知が無ければ新しい予定日として再通知される
++    @Query("select new koh.portfolio.springapi.domain.vaccination.model.VaccinationReminderTarget("
++            + "v.id, p.userId, p.name, v.vaccineName, v.scheduledDate) "
++            + "from VaccinationEntity v join PetEntity p on p.id = v.petId "
++            + "where v.status = :status and v.deletedAt is null and p.deletedAt is null "
++            + "and v.scheduledDate between :from and :to "
++            + "and not exists (select 1 from NotificationEntity n "
++            + "where n.vaccinationId = v.id and n.createdAt >= v.updatedAt) "
++            + "order by v.scheduledDate, v.id")
++    List<VaccinationReminderTarget> findReminderTargets(
++            @Param("status") VaccinationStatus status,
++            @Param("from") LocalDate from,
++            @Param("to") LocalDate to
++    );
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationMapper.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationMapper.java
+new file mode 100644
+index 0000000..8228905
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationMapper.java
+@@ -0,0 +1,9 @@
++package koh.portfolio.springapi.infrastructure.persistence.vaccination;
++
++import koh.portfolio.springapi.domain.vaccination.model.Vaccination;
++import koh.portfolio.springapi.infrastructure.mapper.DomainEntityMapper;
++import org.mapstruct.Mapper;
++
++@Mapper
++public interface VaccinationMapper extends DomainEntityMapper<Vaccination, VaccinationEntity> {
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationPersistenceAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationPersistenceAdapter.java
+new file mode 100644
+index 0000000..f62455f
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationPersistenceAdapter.java
+@@ -0,0 +1,67 @@
++package koh.portfolio.springapi.infrastructure.persistence.vaccination;
++
++import koh.portfolio.springapi.domain.vaccination.model.Vaccination;
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationReminderTarget;
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationStatus;
++import koh.portfolio.springapi.domain.vaccination.port.VaccinationRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Repository;
++
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++import java.util.List;
++import java.util.Optional;
++
++@Repository
++@RequiredArgsConstructor
++public class VaccinationPersistenceAdapter implements VaccinationRepository {
++    private final VaccinationJpaRepository vaccinationJpaRepository;
++    private final VaccinationMapper vaccinationMapper;
++
++    @Override
++    public Vaccination save(Vaccination vaccination) {
++        VaccinationEntity savedEntity = vaccinationJpaRepository.save(vaccinationMapper.toEntity(vaccination));
++
++        return vaccinationMapper.toDomain(savedEntity);
++    }
++
++    @Override
++    public Optional<Vaccination> findById(Long id) {
++        return vaccinationJpaRepository.findByIdAndDeletedAtIsNull(id)
++                .map(vaccinationMapper::toDomain);
++    }
++
++    @Override
++    public List<Vaccination> findAllByPetId(Long petId) {
++        return vaccinationJpaRepository.findAllByPetIdAndDeletedAtIsNullOrderByScheduledDateAsc(petId)
++                .stream().map(vaccinationMapper::toDomain).toList();
++    }
++
++    @Override
++    public boolean markCompleted(Long id, LocalDate completedDate, LocalDateTime updatedAt) {
++        return vaccinationJpaRepository.markCompleted(
++                id, VaccinationStatus.SCHEDULED, VaccinationStatus.COMPLETED, completedDate, updatedAt) == 1;
++    }
++
++    @Override
++    public boolean reschedule(Long id, LocalDate scheduledDate, LocalDateTime updatedAt) {
++        return vaccinationJpaRepository.reschedule(
++                id, VaccinationStatus.CANCELLED, VaccinationStatus.SCHEDULED, scheduledDate, updatedAt) == 1;
++    }
++
++    @Override
++    public boolean cancel(Long id, LocalDateTime updatedAt) {
++        return vaccinationJpaRepository.cancel(
++                id, VaccinationStatus.SCHEDULED, VaccinationStatus.CANCELLED, updatedAt) == 1;
++    }
++
++    @Override
++    public boolean softDelete(Long id, LocalDateTime deletedAt) {
++        return vaccinationJpaRepository.softDelete(id, deletedAt) == 1;
++    }
++
++    @Override
++    public List<VaccinationReminderTarget> findReminderTargets(LocalDate from, LocalDate to) {
++        return vaccinationJpaRepository.findReminderTargets(VaccinationStatus.SCHEDULED, from, to);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/scheduler/VaccinationReminderScheduler.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/scheduler/VaccinationReminderScheduler.java
+new file mode 100644
+index 0000000..de1aa85
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/scheduler/VaccinationReminderScheduler.java
+@@ -0,0 +1,26 @@
++package koh.portfolio.springapi.infrastructure.scheduler;
++
++import koh.portfolio.springapi.application.vaccination.usecase.SendVaccinationRemindersUseCase;
++import koh.portfolio.springapi.common.time.ServerTime;
++import lombok.RequiredArgsConstructor;
++import lombok.extern.slf4j.Slf4j;
++import org.springframework.scheduling.annotation.EnableScheduling;
++import org.springframework.scheduling.annotation.Scheduled;
++import org.springframework.stereotype.Component;
++
++import java.time.LocalDate;
++
++@Slf4j
++@Component
++@EnableScheduling
++@RequiredArgsConstructor
++public class VaccinationReminderScheduler {
++    private final SendVaccinationRemindersUseCase sendVaccinationRemindersUseCase;
++
++    // 08_State_Design §11-1: 毎日 09:00（JST）
++    @Scheduled(cron = "0 0 9 * * *", zone = "Asia/Tokyo")
++    public void remind() {
++        int created = sendVaccinationRemindersUseCase.execute(LocalDate.now(ServerTime.ZONE_ID));
++        log.info("ワクチン接種リマインダー通知を{}件作成しました", created);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/presentation/vaccination/VaccinationController.java b/spring-api/src/main/java/koh/portfolio/springapi/presentation/vaccination/VaccinationController.java
+new file mode 100644
+index 0000000..286aa35
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/presentation/vaccination/VaccinationController.java
+@@ -0,0 +1,106 @@
++package koh.portfolio.springapi.presentation.vaccination;
++
++import jakarta.validation.Valid;
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.CompleteVaccinationRequest;
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.CreateVaccinationRequest;
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.CreateVaccinationResponse;
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.RescheduleVaccinationRequest;
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.VaccinationResponse;
++import koh.portfolio.springapi.application.vaccination.usecase.CancelVaccinationUseCase;
++import koh.portfolio.springapi.application.vaccination.usecase.CompleteVaccinationUseCase;
++import koh.portfolio.springapi.application.vaccination.usecase.CreateVaccinationUseCase;
++import koh.portfolio.springapi.application.vaccination.usecase.DeleteVaccinationUseCase;
++import koh.portfolio.springapi.application.vaccination.usecase.GetVaccinationListUseCase;
++import koh.portfolio.springapi.application.vaccination.usecase.RescheduleVaccinationUseCase;
++import koh.portfolio.springapi.common.response.ApiResponse;
++import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
++import lombok.RequiredArgsConstructor;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++import org.springframework.security.core.Authentication;
++import org.springframework.web.bind.annotation.*;
++
++import java.util.List;
++
++@RestController
++@RequestMapping("/api/v1")
++@RequiredArgsConstructor
++public class VaccinationController {
++    private final CreateVaccinationUseCase createVaccinationUseCase;
++    private final GetVaccinationListUseCase getVaccinationListUseCase;
++    private final CompleteVaccinationUseCase completeVaccinationUseCase;
++    private final RescheduleVaccinationUseCase rescheduleVaccinationUseCase;
++    private final CancelVaccinationUseCase cancelVaccinationUseCase;
++    private final DeleteVaccinationUseCase deleteVaccinationUseCase;
++
++    @PostMapping("/pets/{petId}/vaccinations")
++    public ResponseEntity<ApiResponse<CreateVaccinationResponse>> createVaccination(
++            Authentication authentication,
++            @PathVariable Long petId,
++            @Valid @RequestBody CreateVaccinationRequest request
++    ) {
++        Long userId = extractUserId(authentication);
++        return ResponseEntity
++                .status(HttpStatus.CREATED)
++                .body(ApiResponse.success(createVaccinationUseCase.execute(userId, petId, request)));
++    }
++
++    @GetMapping("/pets/{petId}/vaccinations")
++    public ResponseEntity<ApiResponse<List<VaccinationResponse>>> getVaccinationList(
++            Authentication authentication,
++            @PathVariable Long petId
++    ) {
++        Long userId = extractUserId(authentication);
++        return ResponseEntity.ok(ApiResponse.success(getVaccinationListUseCase.execute(userId, petId)));
++    }
++
++    // body省略時は当日を接種完了日とする
++    @PatchMapping("/vaccinations/{vaccinationId}/complete")
++    public ResponseEntity<ApiResponse<Void>> completeVaccination(
++            Authentication authentication,
++            @PathVariable Long vaccinationId,
++            @Valid @RequestBody(required = false) CompleteVaccinationRequest request
++    ) {
++        Long userId = extractUserId(authentication);
++        completeVaccinationUseCase.execute(userId, vaccinationId, request != null ? request.completedDate() : null);
++        return ResponseEntity.ok(ApiResponse.success(null));
++    }
++
++    @PatchMapping("/vaccinations/{vaccinationId}/reschedule")
++    public ResponseEntity<ApiResponse<Void>> rescheduleVaccination(
++            Authentication authentication,
++            @PathVariable Long vaccinationId,
++            @Valid @RequestBody RescheduleVaccinationRequest request
++    ) {
++        Long userId = extractUserId(authentication);
++        rescheduleVaccinationUseCase.execute(userId, vaccinationId, request.scheduledDate());
++        return ResponseEntity.ok(ApiResponse.success(null));
++    }
++
++    @PatchMapping("/vaccinations/{vaccinationId}/cancel")
++    public ResponseEntity<ApiResponse<Void>> cancelVaccination(
++            Authentication authentication,
++            @PathVariable Long vaccinationId
++    ) {
++        Long userId = extractUserId(authentication);
++        cancelVaccinationUseCase.execute(userId, vaccinationId);
++        return ResponseEntity.ok(ApiResponse.success(null));
++    }
++
++    @DeleteMapping("/vaccinations/{vaccinationId}")
++    public ResponseEntity<ApiResponse<Void>> deleteVaccination(
++            Authentication authentication,
++            @PathVariable Long vaccinationId
++    ) {
++        Long userId = extractUserId(authentication);
++        deleteVaccinationUseCase.execute(userId, vaccinationId);
++        return ResponseEntity.ok(ApiResponse.success(null));
++    }
++
++    private Long extractUserId(Authentication authentication) {
++        if (authentication == null || !(authentication.getPrincipal() instanceof Long userId)) {
++            throw AuthErrorCode.AUTH_FAILED.defaultException();
++        }
++        return userId;
++    }
++}
+diff --git a/spring-api/src/main/resources/db/migration/V11__create_vaccinations.sql b/spring-api/src/main/resources/db/migration/V11__create_vaccinations.sql
+new file mode 100644
+index 0000000..f01596a
+--- /dev/null
++++ b/spring-api/src/main/resources/db/migration/V11__create_vaccinations.sql
+@@ -0,0 +1,25 @@
++CREATE TABLE vaccinations (
++    id             BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    pet_id         BIGINT       NOT NULL,
++    vaccine_name   VARCHAR(100) NOT NULL,
++    scheduled_date DATE         NOT NULL,
++    completed_date DATE         NULL,
++    status         VARCHAR(30)  NOT NULL DEFAULT 'SCHEDULED',
++    created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    deleted_at     TIMESTAMP    NULL,
++
++    CONSTRAINT fk_vaccinations_pet
++        FOREIGN KEY (pet_id)
++            REFERENCES pets (id)
++);
++
++CREATE INDEX idx_vaccinations_pet_id ON vaccinations (pet_id);
++-- リマインダーSchedulerの抽出条件（status・接種予定日）
++CREATE INDEX idx_vaccinations_status_scheduled_date ON vaccinations (status, scheduled_date);
++
++-- V10 で列だけ作成していた notifications.vaccination_id にFK制約を追加する（06_ERD §15）
++ALTER TABLE notifications
++    ADD CONSTRAINT fk_notifications_vaccination
++        FOREIGN KEY (vaccination_id)
++            REFERENCES vaccinations (id);
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/vaccination/service/VaccinationServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/vaccination/service/VaccinationServiceTest.java
+new file mode 100644
+index 0000000..ca7e57c
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/vaccination/service/VaccinationServiceTest.java
+@@ -0,0 +1,430 @@
++package koh.portfolio.springapi.application.vaccination.service;
++
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.CreateVaccinationRequest;
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.CreateVaccinationResponse;
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.VaccinationResponse;
++import koh.portfolio.springapi.common.exception.CustomException;
++import koh.portfolio.springapi.domain.notification.model.Notification;
++import koh.portfolio.springapi.domain.notification.model.NotificationType;
++import koh.portfolio.springapi.domain.notification.port.NotificationRepository;
++import koh.portfolio.springapi.domain.pet.model.Pet;
++import koh.portfolio.springapi.domain.pet.model.PetGender;
++import koh.portfolio.springapi.domain.pet.model.PetType;
++import koh.portfolio.springapi.domain.pet.port.PetRepository;
++import koh.portfolio.springapi.domain.vaccination.exception.VaccinationErrorCode;
++import koh.portfolio.springapi.domain.vaccination.model.Vaccination;
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationReminderTarget;
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationStatus;
++import koh.portfolio.springapi.domain.vaccination.port.VaccinationRepository;
++import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.mockito.ArgumentCaptor;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++import java.util.List;
++import java.util.Optional;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.anyLong;
++import static org.mockito.ArgumentMatchers.eq;
++import static org.mockito.Mockito.*;
++
++class VaccinationServiceTest {
++
++    private VaccinationRepository vaccinationRepository;
++    private PetRepository petRepository;
++    private NotificationRepository notificationRepository;
++    private VaccinationService vaccinationService;
++    private CompleteVaccinationService completeVaccinationService;
++    private RescheduleVaccinationService rescheduleVaccinationService;
++    private CancelVaccinationService cancelVaccinationService;
++    private DeleteVaccinationService deleteVaccinationService;
++    private SendVaccinationRemindersService sendVaccinationRemindersService;
++
++    private final Long userId = 1L;
++    private final Long petId = 10L;
++    private final Long vaccinationId = 100L;
++
++    @BeforeEach
++    void setUp() {
++        vaccinationRepository = mock(VaccinationRepository.class);
++        petRepository = mock(PetRepository.class);
++        notificationRepository = mock(NotificationRepository.class);
++        vaccinationService = new VaccinationService(vaccinationRepository, petRepository);
++        completeVaccinationService = new CompleteVaccinationService(vaccinationRepository, petRepository);
++        rescheduleVaccinationService = new RescheduleVaccinationService(vaccinationRepository, petRepository);
++        cancelVaccinationService = new CancelVaccinationService(vaccinationRepository, petRepository);
++        deleteVaccinationService = new DeleteVaccinationService(vaccinationRepository, petRepository);
++        sendVaccinationRemindersService = new SendVaccinationRemindersService(vaccinationRepository, notificationRepository);
++    }
++
++    private Pet pet(Long ownerId) {
++        LocalDateTime now = LocalDateTime.now();
++        return new Pet(petId, ownerId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE,
++                new BigDecimal("4.50"), now, now, null);
++    }
++
++    private Vaccination vaccination(VaccinationStatus status) {
++        LocalDateTime now = LocalDateTime.now();
++        return new Vaccination(vaccinationId, petId, "混合ワクチン", LocalDate.of(2026, 10, 10),
++                status == VaccinationStatus.COMPLETED ? LocalDate.of(2026, 10, 10) : null,
++                status, now, now, null);
++    }
++
++    private void givenOwnedVaccination(VaccinationStatus status) {
++        when(vaccinationRepository.findById(vaccinationId)).thenReturn(Optional.of(vaccination(status)));
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(userId)));
++    }
++
++    private void assertErrorCode(ThrowingCallable call, VaccinationErrorCode errorCode) {
++        assertThatThrownBy(call)
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code()).isEqualTo(errorCode.code()));
++    }
++
++    // ------------------------------------------------------------------ create
++
++    @Test
++    @DisplayName("接種予定登録成功時、SCHEDULEDで保存しvaccinationIdを返却する")
++    void create_vaccination_success() {
++        // given
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(userId)));
++        when(vaccinationRepository.save(any(Vaccination.class))).thenAnswer(invocation -> {
++            Vaccination arg = invocation.getArgument(0);
++            return new Vaccination(vaccinationId, arg.getPetId(), arg.getVaccineName(), arg.getScheduledDate(),
++                    arg.getCompletedDate(), arg.getStatus(), arg.getCreatedAt(), arg.getUpdatedAt(), arg.getDeletedAt());
++        });
++
++        // when
++        CreateVaccinationResponse response = vaccinationService.execute(userId, petId,
++                new CreateVaccinationRequest("混合ワクチン", LocalDate.of(2026, 10, 10)));
++
++        // then
++        assertThat(response.vaccinationId()).isEqualTo(vaccinationId);
++
++        ArgumentCaptor<Vaccination> captor = ArgumentCaptor.forClass(Vaccination.class);
++        verify(vaccinationRepository).save(captor.capture());
++        assertThat(captor.getValue().getStatus()).isEqualTo(VaccinationStatus.SCHEDULED);
++        assertThat(captor.getValue().getCompletedDate()).isNull();
++        assertThat(captor.getValue().getScheduledDate()).isEqualTo(LocalDate.of(2026, 10, 10));
++    }
++
++    @Test
++    @DisplayName("他ユーザーのペットへの登録時、VACCINATION-002例外が発生する")
++    void create_vaccination_fail_when_not_pet_owner() {
++        // given
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(999L)));
++
++        // when & then
++        assertErrorCode(() -> vaccinationService.execute(userId, petId,
++                new CreateVaccinationRequest("混合ワクチン", LocalDate.of(2026, 10, 10))),
++                VaccinationErrorCode.NOT_PET_OWNER);
++
++        verify(vaccinationRepository, never()).save(any(Vaccination.class));
++    }
++
++    // ---------------------------------------------------------------- getList
++
++    @Test
++    @DisplayName("接種予定一覧取得成功時、登録済データを返却する")
++    void get_vaccination_list_success() {
++        // given
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(userId)));
++        when(vaccinationRepository.findAllByPetId(petId)).thenReturn(List.of(vaccination(VaccinationStatus.SCHEDULED)));
++
++        // when
++        List<VaccinationResponse> result = vaccinationService.execute(userId, petId);
++
++        // then
++        assertThat(result).hasSize(1);
++        assertThat(result.get(0).vaccinationId()).isEqualTo(vaccinationId);
++        assertThat(result.get(0).vaccineName()).isEqualTo("混合ワクチン");
++        assertThat(result.get(0).status()).isEqualTo(VaccinationStatus.SCHEDULED);
++    }
++
++    @Test
++    @DisplayName("存在しないペットの一覧取得時、VACCINATION-002例外が発生する")
++    void get_vaccination_list_fail_when_pet_not_found() {
++        // given
++        when(petRepository.findById(petId)).thenReturn(Optional.empty());
++
++        // when & then
++        assertErrorCode(() -> vaccinationService.execute(userId, petId), VaccinationErrorCode.NOT_PET_OWNER);
++        verify(vaccinationRepository, never()).findAllByPetId(anyLong());
++    }
++
++    // --------------------------------------------------------------- complete
++
++    @Test
++    @DisplayName("SCHEDULED→COMPLETED: 指定した接種完了日で遷移元条件付き更新を行う")
++    void complete_vaccination_success() {
++        // given
++        givenOwnedVaccination(VaccinationStatus.SCHEDULED);
++        when(vaccinationRepository.markCompleted(eq(vaccinationId), any(), any())).thenReturn(true);
++
++        // when
++        completeVaccinationService.execute(userId, vaccinationId, LocalDate.of(2026, 10, 9));
++
++        // then
++        verify(vaccinationRepository).markCompleted(eq(vaccinationId), eq(LocalDate.of(2026, 10, 9)), any(LocalDateTime.class));
++        verify(vaccinationRepository, never()).save(any(Vaccination.class));
++    }
++
++    @Test
++    @DisplayName("接種完了日省略時、当日を接種完了日とする")
++    void complete_vaccination_defaults_completed_date_to_today() {
++        // given
++        givenOwnedVaccination(VaccinationStatus.SCHEDULED);
++        when(vaccinationRepository.markCompleted(eq(vaccinationId), any(), any())).thenReturn(true);
++
++        // when
++        completeVaccinationService.execute(userId, vaccinationId, null);
++
++        // then
++        verify(vaccinationRepository).markCompleted(eq(vaccinationId), eq(LocalDate.now()), any(LocalDateTime.class));
++    }
++
++    @Test
++    @DisplayName("COMPLETED・CANCELLEDからの接種完了はVACCINATION-003例外が発生する")
++    void complete_vaccination_fail_when_not_scheduled() {
++        for (VaccinationStatus status : List.of(VaccinationStatus.COMPLETED, VaccinationStatus.CANCELLED)) {
++            // given
++            givenOwnedVaccination(status);
++
++            // when & then
++            assertErrorCode(() -> completeVaccinationService.execute(userId, vaccinationId, null),
++                    VaccinationErrorCode.INVALID_STATE_TRANSITION);
++        }
++        verify(vaccinationRepository, never()).markCompleted(anyLong(), any(), any());
++    }
++
++    @Test
++    @DisplayName("読み取り後に別の遷移が確定し更新0件の場合、VACCINATION-003例外が発生する")
++    void complete_vaccination_fail_when_transition_lost() {
++        // given
++        givenOwnedVaccination(VaccinationStatus.SCHEDULED);
++        when(vaccinationRepository.markCompleted(eq(vaccinationId), any(), any())).thenReturn(false);
++
++        // when & then
++        assertErrorCode(() -> completeVaccinationService.execute(userId, vaccinationId, null),
++                VaccinationErrorCode.INVALID_STATE_TRANSITION);
++    }
++
++    @Test
++    @DisplayName("存在しない接種予定の完了時、VACCINATION-001例外が発生する")
++    void complete_vaccination_fail_when_not_found() {
++        // given
++        when(vaccinationRepository.findById(vaccinationId)).thenReturn(Optional.empty());
++
++        // when & then
++        assertErrorCode(() -> completeVaccinationService.execute(userId, vaccinationId, null),
++                VaccinationErrorCode.VACCINATION_NOT_FOUND);
++    }
++
++    @Test
++    @DisplayName("他ユーザーのペットの接種完了時、VACCINATION-002例外が発生する")
++    void complete_vaccination_fail_when_not_pet_owner() {
++        // given
++        when(vaccinationRepository.findById(vaccinationId)).thenReturn(Optional.of(vaccination(VaccinationStatus.SCHEDULED)));
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(999L)));
++
++        // when & then
++        assertErrorCode(() -> completeVaccinationService.execute(userId, vaccinationId, null),
++                VaccinationErrorCode.NOT_PET_OWNER);
++        verify(vaccinationRepository, never()).markCompleted(anyLong(), any(), any());
++    }
++
++    // ------------------------------------------------------------- reschedule
++
++    @Test
++    @DisplayName("CANCELLED→SCHEDULED: 新しい接種予定日で再登録する")
++    void reschedule_vaccination_success() {
++        // given
++        givenOwnedVaccination(VaccinationStatus.CANCELLED);
++        when(vaccinationRepository.reschedule(eq(vaccinationId), any(), any())).thenReturn(true);
++
++        // when
++        rescheduleVaccinationService.execute(userId, vaccinationId, LocalDate.of(2026, 11, 1));
++
++        // then
++        verify(vaccinationRepository).reschedule(eq(vaccinationId), eq(LocalDate.of(2026, 11, 1)), any(LocalDateTime.class));
++    }
++
++    @Test
++    @DisplayName("SCHEDULED・COMPLETEDからの再登録はVACCINATION-003例外が発生する")
++    void reschedule_vaccination_fail_when_not_cancelled() {
++        for (VaccinationStatus status : List.of(VaccinationStatus.SCHEDULED, VaccinationStatus.COMPLETED)) {
++            // given
++            givenOwnedVaccination(status);
++
++            // when & then
++            assertErrorCode(() -> rescheduleVaccinationService.execute(userId, vaccinationId, LocalDate.of(2026, 11, 1)),
++                    VaccinationErrorCode.INVALID_STATE_TRANSITION);
++        }
++        verify(vaccinationRepository, never()).reschedule(anyLong(), any(), any());
++    }
++
++    @Test
++    @DisplayName("他ユーザーのペットの再登録時、VACCINATION-002例外が発生する")
++    void reschedule_vaccination_fail_when_not_pet_owner() {
++        // given
++        when(vaccinationRepository.findById(vaccinationId)).thenReturn(Optional.of(vaccination(VaccinationStatus.CANCELLED)));
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(999L)));
++
++        // when & then
++        assertErrorCode(() -> rescheduleVaccinationService.execute(userId, vaccinationId, LocalDate.of(2026, 11, 1)),
++                VaccinationErrorCode.NOT_PET_OWNER);
++    }
++
++    // ----------------------------------------------------------------- cancel
++
++    @Test
++    @DisplayName("SCHEDULED→CANCELLED: 遷移元条件付き更新を行う")
++    void cancel_vaccination_success() {
++        // given
++        givenOwnedVaccination(VaccinationStatus.SCHEDULED);
++        when(vaccinationRepository.cancel(eq(vaccinationId), any())).thenReturn(true);
++
++        // when
++        cancelVaccinationService.execute(userId, vaccinationId);
++
++        // then
++        verify(vaccinationRepository).cancel(eq(vaccinationId), any(LocalDateTime.class));
++        verify(vaccinationRepository, never()).save(any(Vaccination.class));
++    }
++
++    @Test
++    @DisplayName("COMPLETED・CANCELLEDからの中止はVACCINATION-003例外が発生する")
++    void cancel_vaccination_fail_when_not_scheduled() {
++        for (VaccinationStatus status : List.of(VaccinationStatus.COMPLETED, VaccinationStatus.CANCELLED)) {
++            // given
++            givenOwnedVaccination(status);
++
++            // when & then
++            assertErrorCode(() -> cancelVaccinationService.execute(userId, vaccinationId),
++                    VaccinationErrorCode.INVALID_STATE_TRANSITION);
++        }
++        verify(vaccinationRepository, never()).cancel(anyLong(), any());
++    }
++
++    @Test
++    @DisplayName("読み取り後に別の遷移が確定し更新0件の場合、中止はVACCINATION-003例外が発生する")
++    void cancel_vaccination_fail_when_transition_lost() {
++        // given
++        givenOwnedVaccination(VaccinationStatus.SCHEDULED);
++        when(vaccinationRepository.cancel(eq(vaccinationId), any())).thenReturn(false);
++
++        // when & then
++        assertErrorCode(() -> cancelVaccinationService.execute(userId, vaccinationId),
++                VaccinationErrorCode.INVALID_STATE_TRANSITION);
++    }
++
++    @Test
++    @DisplayName("存在しない接種予定の中止時、VACCINATION-001例外が発生する")
++    void cancel_vaccination_fail_when_not_found() {
++        // given
++        when(vaccinationRepository.findById(vaccinationId)).thenReturn(Optional.empty());
++
++        // when & then
++        assertErrorCode(() -> cancelVaccinationService.execute(userId, vaccinationId),
++                VaccinationErrorCode.VACCINATION_NOT_FOUND);
++    }
++
++    @Test
++    @DisplayName("他ユーザーのペットの中止時、VACCINATION-002例外が発生する")
++    void cancel_vaccination_fail_when_not_pet_owner() {
++        // given
++        when(vaccinationRepository.findById(vaccinationId)).thenReturn(Optional.of(vaccination(VaccinationStatus.SCHEDULED)));
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(999L)));
++
++        // when & then
++        assertErrorCode(() -> cancelVaccinationService.execute(userId, vaccinationId),
++                VaccinationErrorCode.NOT_PET_OWNER);
++        verify(vaccinationRepository, never()).cancel(anyLong(), any());
++    }
++
++    // ----------------------------------------------------------------- delete
++
++    @Test
++    @DisplayName("接種予定削除時、論理削除を行う")
++    void delete_vaccination_success() {
++        // given
++        givenOwnedVaccination(VaccinationStatus.COMPLETED);
++        when(vaccinationRepository.softDelete(eq(vaccinationId), any())).thenReturn(true);
++
++        // when
++        deleteVaccinationService.execute(userId, vaccinationId);
++
++        // then
++        verify(vaccinationRepository).softDelete(eq(vaccinationId), any(LocalDateTime.class));
++    }
++
++    @Test
++    @DisplayName("読み取り後に削除済みとなり更新0件の場合、VACCINATION-001例外が発生する")
++    void delete_vaccination_fail_when_deleted_concurrently() {
++        // given
++        givenOwnedVaccination(VaccinationStatus.SCHEDULED);
++        when(vaccinationRepository.softDelete(eq(vaccinationId), any())).thenReturn(false);
++
++        // when & then
++        assertErrorCode(() -> deleteVaccinationService.execute(userId, vaccinationId),
++                VaccinationErrorCode.VACCINATION_NOT_FOUND);
++    }
++
++    @Test
++    @DisplayName("他ユーザーのペットの接種予定削除時、VACCINATION-002例外が発生する")
++    void delete_vaccination_fail_when_not_pet_owner() {
++        // given
++        when(vaccinationRepository.findById(vaccinationId)).thenReturn(Optional.of(vaccination(VaccinationStatus.SCHEDULED)));
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet(999L)));
++
++        // when & then
++        assertErrorCode(() -> deleteVaccinationService.execute(userId, vaccinationId),
++                VaccinationErrorCode.NOT_PET_OWNER);
++        verify(vaccinationRepository, never()).softDelete(anyLong(), any());
++    }
++
++    // -------------------------------------------------------------- reminders
++
++    @Test
++    @DisplayName("SCHD-T002: 当日〜7日後の対象ごとにVACCINATION通知を作成する")
++    void send_reminders_creates_vaccination_notifications() {
++        // given
++        LocalDate today = LocalDate.of(2026, 10, 5);
++        when(vaccinationRepository.findReminderTargets(today, LocalDate.of(2026, 10, 12))).thenReturn(List.of(
++                new VaccinationReminderTarget(vaccinationId, userId, "Momo", "混合ワクチン", LocalDate.of(2026, 10, 10))
++        ));
++
++        // when
++        int created = sendVaccinationRemindersService.execute(today);
++
++        // then
++        assertThat(created).isEqualTo(1);
++        ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
++        verify(notificationRepository).save(captor.capture());
++        Notification notification = captor.getValue();
++        assertThat(notification.getUserId()).isEqualTo(userId);
++        assertThat(notification.getVaccinationId()).isEqualTo(vaccinationId);
++        assertThat(notification.getReservationId()).isNull();
++        assertThat(notification.getNotificationType()).isEqualTo(NotificationType.VACCINATION);
++        assertThat(notification.getMessage()).isEqualTo("Momoの混合ワクチン接種予定日（2026-10-10）が近づいています。");
++        assertThat(notification.isRead()).isFalse();
++    }
++
++    @Test
++    @DisplayName("対象が無い場合、通知を作成しない")
++    void send_reminders_creates_nothing_without_targets() {
++        // given
++        when(vaccinationRepository.findReminderTargets(any(), any())).thenReturn(List.of());
++
++        // when & then
++        assertThat(sendVaccinationRemindersService.execute(LocalDate.of(2026, 10, 5))).isZero();
++        verify(notificationRepository, never()).save(any(Notification.class));
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationMapperTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationMapperTest.java
+new file mode 100644
+index 0000000..16c316a
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationMapperTest.java
+@@ -0,0 +1,63 @@
++package koh.portfolio.springapi.infrastructure.persistence.vaccination;
++
++import koh.portfolio.springapi.domain.vaccination.model.Vaccination;
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationStatus;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.mapstruct.factory.Mappers;
++
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++class VaccinationMapperTest {
++
++    private final VaccinationMapper vaccinationMapper = Mappers.getMapper(VaccinationMapper.class);
++
++    @Test
++    @DisplayName("DomainをEntityに変換できる")
++    void domain_to_entity() {
++        // given
++        LocalDateTime now = LocalDateTime.now();
++        Vaccination domain = new Vaccination(1L, 10L, "混合ワクチン", LocalDate.of(2026, 10, 10),
++                LocalDate.of(2026, 10, 9), VaccinationStatus.COMPLETED, now, now, null);
++
++        // when
++        VaccinationEntity entity = vaccinationMapper.toEntity(domain);
++
++        // then
++        assertThat(entity.getId()).isEqualTo(1L);
++        assertThat(entity.getPetId()).isEqualTo(10L);
++        assertThat(entity.getVaccineName()).isEqualTo("混合ワクチン");
++        assertThat(entity.getScheduledDate()).isEqualTo(LocalDate.of(2026, 10, 10));
++        assertThat(entity.getCompletedDate()).isEqualTo(LocalDate.of(2026, 10, 9));
++        assertThat(entity.getStatus()).isEqualTo(VaccinationStatus.COMPLETED);
++        assertThat(entity.getDeletedAt()).isNull();
++    }
++
++    @Test
++    @DisplayName("EntityをDomainに変換できる")
++    void entity_to_domain() {
++        // given
++        LocalDateTime now = LocalDateTime.now();
++        VaccinationEntity entity = VaccinationEntity.builder()
++                .id(1L)
++                .petId(10L)
++                .vaccineName("狂犬病ワクチン")
++                .scheduledDate(LocalDate.of(2026, 10, 10))
++                .status(VaccinationStatus.SCHEDULED)
++                .createdAt(now)
++                .updatedAt(now)
++                .build();
++
++        // when
++        Vaccination domain = vaccinationMapper.toDomain(entity);
++
++        // then
++        assertThat(domain.getId()).isEqualTo(1L);
++        assertThat(domain.getVaccineName()).isEqualTo("狂犬病ワクチン");
++        assertThat(domain.getStatus()).isEqualTo(VaccinationStatus.SCHEDULED);
++        assertThat(domain.getCompletedDate()).isNull();
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationPersistenceAdapterTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationPersistenceAdapterTest.java
+new file mode 100644
+index 0000000..c9eda07
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/vaccination/VaccinationPersistenceAdapterTest.java
+@@ -0,0 +1,217 @@
++package koh.portfolio.springapi.infrastructure.persistence.vaccination;
++
++import koh.portfolio.springapi.domain.notification.model.NotificationType;
++import koh.portfolio.springapi.domain.pet.model.PetGender;
++import koh.portfolio.springapi.domain.pet.model.PetType;
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationReminderTarget;
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationStatus;
++import koh.portfolio.springapi.domain.vaccination.port.VaccinationRepository;
++import koh.portfolio.springapi.infrastructure.persistence.notification.NotificationEntity;
++import koh.portfolio.springapi.infrastructure.persistence.pet.PetEntity;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
++import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
++import org.springframework.context.annotation.Import;
++import org.springframework.test.context.ActiveProfiles;
++
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++import java.util.List;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++@DataJpaTest
++@ActiveProfiles("test")
++@Import({
++        VaccinationPersistenceAdapter.class,
++        VaccinationMapperImpl.class
++})
++class VaccinationPersistenceAdapterTest {
++
++    private static final LocalDate TODAY = LocalDate.of(2026, 10, 5);
++    private static final LocalDateTime CHANGED_AT = LocalDateTime.of(2026, 10, 1, 12, 0);
++
++    @Autowired
++    private VaccinationRepository vaccinationRepository;
++
++    @Autowired
++    private VaccinationJpaRepository vaccinationJpaRepository;
++
++    @Autowired
++    private TestEntityManager em;
++
++    private PetEntity persistPet(Long userId, LocalDateTime deletedAt) {
++        return em.persist(PetEntity.builder()
++                .userId(userId)
++                .name("Momo")
++                .petType(PetType.CAT)
++                .gender(PetGender.FEMALE)
++                .createdAt(CHANGED_AT)
++                .updatedAt(CHANGED_AT)
++                .deletedAt(deletedAt)
++                .build());
++    }
++
++    private VaccinationEntity persistVaccination(Long petId, VaccinationStatus status, LocalDate scheduledDate) {
++        return vaccinationJpaRepository.save(VaccinationEntity.builder()
++                .petId(petId)
++                .vaccineName("混合ワクチン")
++                .scheduledDate(scheduledDate)
++                .status(status)
++                .createdAt(CHANGED_AT)
++                .updatedAt(CHANGED_AT)
++                .build());
++    }
++
++    private void persistNotification(Long userId, Long vaccinationId, LocalDateTime createdAt) {
++        em.persist(NotificationEntity.builder()
++                .userId(userId)
++                .vaccinationId(vaccinationId)
++                .notificationType(NotificationType.VACCINATION)
++                .title("t")
++                .message("m")
++                .createdAt(createdAt)
++                .build());
++    }
++
++    private List<Long> reminderTargetIds() {
++        em.flush();
++        return vaccinationRepository.findReminderTargets(TODAY, TODAY.plusDays(7)).stream()
++                .map(VaccinationReminderTarget::vaccinationId)
++                .toList();
++    }
++
++    @Test
++    @DisplayName("接種完了はSCHEDULEDの行だけを更新する")
++    void mark_completed_updates_only_scheduled_row() {
++        // given
++        Long petId = persistPet(1L, null).getId();
++        VaccinationEntity scheduled = persistVaccination(petId, VaccinationStatus.SCHEDULED, TODAY);
++        VaccinationEntity cancelled = persistVaccination(petId, VaccinationStatus.CANCELLED, TODAY);
++
++        // when
++        boolean completedScheduled = vaccinationRepository.markCompleted(scheduled.getId(), TODAY, LocalDateTime.now());
++        boolean completedCancelled = vaccinationRepository.markCompleted(cancelled.getId(), TODAY, LocalDateTime.now());
++
++        // then
++        assertThat(completedScheduled).isTrue();
++        assertThat(completedCancelled).isFalse();
++        VaccinationEntity reloaded = vaccinationJpaRepository.findById(scheduled.getId()).orElseThrow();
++        assertThat(reloaded.getStatus()).isEqualTo(VaccinationStatus.COMPLETED);
++        assertThat(reloaded.getCompletedDate()).isEqualTo(TODAY);
++        assertThat(vaccinationJpaRepository.findById(cancelled.getId()).orElseThrow().getStatus())
++                .isEqualTo(VaccinationStatus.CANCELLED);
++    }
++
++    @Test
++    @DisplayName("再登録はCANCELLEDの行だけを新しい予定日でSCHEDULEDに戻す")
++    void reschedule_updates_only_cancelled_row() {
++        // given
++        Long petId = persistPet(1L, null).getId();
++        VaccinationEntity cancelled = persistVaccination(petId, VaccinationStatus.CANCELLED, TODAY);
++        VaccinationEntity completed = persistVaccination(petId, VaccinationStatus.COMPLETED, TODAY);
++        LocalDate newDate = TODAY.plusDays(30);
++
++        // when & then
++        assertThat(vaccinationRepository.reschedule(cancelled.getId(), newDate, LocalDateTime.now())).isTrue();
++        assertThat(vaccinationRepository.reschedule(completed.getId(), newDate, LocalDateTime.now())).isFalse();
++
++        VaccinationEntity reloaded = vaccinationJpaRepository.findById(cancelled.getId()).orElseThrow();
++        assertThat(reloaded.getStatus()).isEqualTo(VaccinationStatus.SCHEDULED);
++        assertThat(reloaded.getScheduledDate()).isEqualTo(newDate);
++        assertThat(vaccinationJpaRepository.findById(completed.getId()).orElseThrow().getScheduledDate()).isEqualTo(TODAY);
++    }
++
++    @Test
++    @DisplayName("中止はSCHEDULEDの行だけをCANCELLEDにし、updated_atを進める")
++    void cancel_updates_only_scheduled_row() {
++        // given
++        Long petId = persistPet(1L, null).getId();
++        VaccinationEntity scheduled = persistVaccination(petId, VaccinationStatus.SCHEDULED, TODAY);
++        VaccinationEntity completed = persistVaccination(petId, VaccinationStatus.COMPLETED, TODAY);
++        LocalDateTime cancelledAt = CHANGED_AT.plusDays(1);
++
++        // when & then
++        assertThat(vaccinationRepository.cancel(scheduled.getId(), cancelledAt)).isTrue();
++        assertThat(vaccinationRepository.cancel(completed.getId(), cancelledAt)).isFalse();
++
++        VaccinationEntity reloaded = vaccinationJpaRepository.findById(scheduled.getId()).orElseThrow();
++        assertThat(reloaded.getStatus()).isEqualTo(VaccinationStatus.CANCELLED);
++        assertThat(reloaded.getUpdatedAt()).isEqualTo(cancelledAt);
++        assertThat(vaccinationJpaRepository.findById(completed.getId()).orElseThrow().getStatus())
++                .isEqualTo(VaccinationStatus.COMPLETED);
++    }
++
++    @Test
++    @DisplayName("論理削除は未削除の行だけを対象とし、削除後は一覧・リマインダー対象から外れる")
++    void soft_delete_only_active_row() {
++        // given
++        Long petId = persistPet(1L, null).getId();
++        VaccinationEntity scheduled = persistVaccination(petId, VaccinationStatus.SCHEDULED, TODAY);
++        LocalDateTime deletedAt = CHANGED_AT.plusDays(1);
++
++        // when & then
++        assertThat(vaccinationRepository.softDelete(scheduled.getId(), deletedAt)).isTrue();
++        assertThat(vaccinationRepository.softDelete(scheduled.getId(), deletedAt.plusHours(1))).isFalse();
++
++        assertThat(vaccinationJpaRepository.findById(scheduled.getId()).orElseThrow().getDeletedAt()).isEqualTo(deletedAt);
++        assertThat(vaccinationRepository.findAllByPetId(petId)).isEmpty();
++        assertThat(reminderTargetIds()).isEmpty();
++    }
++
++    @Test
++    @DisplayName("SCHD-T001/T003/T004: 7日以内のSCHEDULEDだけを飼い主付きで抽出する")
++    void find_reminder_targets_filters_status_and_period() {
++        // given
++        PetEntity pet = persistPet(1L, null);
++        VaccinationEntity today = persistVaccination(pet.getId(), VaccinationStatus.SCHEDULED, TODAY);
++        VaccinationEntity lastDay = persistVaccination(pet.getId(), VaccinationStatus.SCHEDULED, TODAY.plusDays(7));
++        persistVaccination(pet.getId(), VaccinationStatus.SCHEDULED, TODAY.plusDays(8));
++        persistVaccination(pet.getId(), VaccinationStatus.SCHEDULED, TODAY.minusDays(1));
++        persistVaccination(pet.getId(), VaccinationStatus.COMPLETED, TODAY.plusDays(1));
++        persistVaccination(pet.getId(), VaccinationStatus.CANCELLED, TODAY.plusDays(1));
++
++        // when
++        em.flush();
++        List<VaccinationReminderTarget> targets = vaccinationRepository.findReminderTargets(TODAY, TODAY.plusDays(7));
++
++        // then
++        assertThat(targets).extracting(VaccinationReminderTarget::vaccinationId)
++                .containsExactly(today.getId(), lastDay.getId());
++        assertThat(targets.get(0).userId()).isEqualTo(1L);
++        assertThat(targets.get(0).petName()).isEqualTo("Momo");
++    }
++
++    @Test
++    @DisplayName("論理削除されたペットの接種予定は抽出しない")
++    void find_reminder_targets_skips_deleted_pet() {
++        // given
++        Long deletedPetId = persistPet(1L, CHANGED_AT).getId();
++        persistVaccination(deletedPetId, VaccinationStatus.SCHEDULED, TODAY);
++
++        // when & then
++        assertThat(reminderTargetIds()).isEmpty();
++    }
++
++    @Test
++    @DisplayName("SCHD-T005: 最後の変更以降に通知済みの予定は抽出せず、再登録後は再び抽出する")
++    void find_reminder_targets_skips_already_notified() {
++        // given
++        Long petId = persistPet(1L, null).getId();
++        VaccinationEntity notified = persistVaccination(petId, VaccinationStatus.SCHEDULED, TODAY.plusDays(3));
++        persistNotification(1L, notified.getId(), CHANGED_AT.plusHours(1));
++        VaccinationEntity vaccination = persistVaccination(petId, VaccinationStatus.CANCELLED, TODAY.plusDays(3));
++        persistNotification(1L, vaccination.getId(), CHANGED_AT.plusHours(1));
++
++        // when & then: 通知済み、または中止中
++        assertThat(reminderTargetIds()).isEmpty();
++
++        // given: 中止していた予定を再登録し、updated_at が既存の通知より新しくなる
++        vaccinationRepository.reschedule(vaccination.getId(), TODAY.plusDays(5), CHANGED_AT.plusHours(2));
++
++        // when & then
++        assertThat(reminderTargetIds()).containsExactly(vaccination.getId());
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/presentation/vaccination/VaccinationControllerTest.java b/spring-api/src/test/java/koh/portfolio/springapi/presentation/vaccination/VaccinationControllerTest.java
+new file mode 100644
+index 0000000..e507910
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/presentation/vaccination/VaccinationControllerTest.java
+@@ -0,0 +1,252 @@
++package koh.portfolio.springapi.presentation.vaccination;
++
++import com.fasterxml.jackson.databind.ObjectMapper;
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.CreateVaccinationRequest;
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.CreateVaccinationResponse;
++import koh.portfolio.springapi.application.vaccination.dto.VaccinationDto.VaccinationResponse;
++import koh.portfolio.springapi.application.vaccination.usecase.CancelVaccinationUseCase;
++import koh.portfolio.springapi.application.vaccination.usecase.CompleteVaccinationUseCase;
++import koh.portfolio.springapi.application.vaccination.usecase.CreateVaccinationUseCase;
++import koh.portfolio.springapi.application.vaccination.usecase.DeleteVaccinationUseCase;
++import koh.portfolio.springapi.application.vaccination.usecase.GetVaccinationListUseCase;
++import koh.portfolio.springapi.application.vaccination.usecase.RescheduleVaccinationUseCase;
++import koh.portfolio.springapi.common.exception.GlobalExceptionHandler;
++import koh.portfolio.springapi.domain.vaccination.exception.VaccinationErrorCode;
++import koh.portfolio.springapi.domain.vaccination.model.VaccinationStatus;
++import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
++import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
++import org.springframework.boot.test.mock.mockito.MockBean;
++import org.springframework.context.annotation.ComponentScan;
++import org.springframework.context.annotation.FilterType;
++import org.springframework.context.annotation.Import;
++import org.springframework.http.MediaType;
++import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
++import org.springframework.test.web.servlet.MockMvc;
++
++import java.time.LocalDate;
++import java.util.List;
++
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.eq;
++import static org.mockito.ArgumentMatchers.isNull;
++import static org.mockito.Mockito.doThrow;
++import static org.mockito.Mockito.verify;
++import static org.mockito.Mockito.verifyNoInteractions;
++import static org.mockito.Mockito.when;
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
++
++@WebMvcTest(
++        controllers = VaccinationController.class,
++        excludeFilters = @ComponentScan.Filter(
++                type = FilterType.ASSIGNABLE_TYPE,
++                classes = JwtAuthenticationFilter.class
++        )
++)
++@AutoConfigureMockMvc(addFilters = false)
++@Import(GlobalExceptionHandler.class)
++class VaccinationControllerTest {
++
++    @Autowired
++    private MockMvc mockMvc;
++
++    @Autowired
++    private ObjectMapper objectMapper;
++
++    @MockBean
++    private CreateVaccinationUseCase createVaccinationUseCase;
++
++    @MockBean
++    private GetVaccinationListUseCase getVaccinationListUseCase;
++
++    @MockBean
++    private CompleteVaccinationUseCase completeVaccinationUseCase;
++
++    @MockBean
++    private RescheduleVaccinationUseCase rescheduleVaccinationUseCase;
++
++    @MockBean
++    private CancelVaccinationUseCase cancelVaccinationUseCase;
++
++    @MockBean
++    private DeleteVaccinationUseCase deleteVaccinationUseCase;
++
++    private UsernamePasswordAuthenticationToken auth(Long userId) {
++        return new UsernamePasswordAuthenticationToken(userId, null, List.of());
++    }
++
++    @Test
++    @DisplayName("POST /api/v1/pets/{petId}/vaccinations - 接種予定登録成功")
++    void create_vaccination_success() throws Exception {
++        // given
++        when(createVaccinationUseCase.execute(eq(1L), eq(10L), any(CreateVaccinationRequest.class)))
++                .thenReturn(CreateVaccinationResponse.builder().vaccinationId(100L).build());
++
++        // when & then
++        mockMvc.perform(post("/api/v1/pets/10/vaccinations")
++                        .principal(auth(1L))
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content(objectMapper.writeValueAsString(
++                                new CreateVaccinationRequest("混合ワクチン", LocalDate.of(2026, 10, 10)))))
++                .andExpect(status().isCreated())
++                .andExpect(jsonPath("$.success").value(true))
++                .andExpect(jsonPath("$.data.vaccinationId").value(100));
++    }
++
++    @Test
++    @DisplayName("POST /api/v1/pets/{petId}/vaccinations - ワクチン名・接種予定日が無い場合Validation失敗")
++    void create_vaccination_validation_fail() throws Exception {
++        // when & then
++        mockMvc.perform(post("/api/v1/pets/10/vaccinations")
++                        .principal(auth(1L))
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content(objectMapper.writeValueAsString(new CreateVaccinationRequest(" ", null))))
++                .andExpect(status().isBadRequest())
++                .andExpect(jsonPath("$.success").value(false))
++                .andExpect(jsonPath("$.code").value("VALIDATION-001"));
++
++        verifyNoInteractions(createVaccinationUseCase);
++    }
++
++    @Test
++    @DisplayName("GET /api/v1/pets/{petId}/vaccinations - 接種予定一覧取得成功")
++    void get_vaccination_list_success() throws Exception {
++        // given
++        when(getVaccinationListUseCase.execute(1L, 10L)).thenReturn(List.of(
++                VaccinationResponse.builder()
++                        .vaccinationId(100L)
++                        .vaccineName("混合ワクチン")
++                        .scheduledDate(LocalDate.of(2026, 10, 10))
++                        .status(VaccinationStatus.SCHEDULED)
++                        .build()
++        ));
++
++        // when & then
++        mockMvc.perform(get("/api/v1/pets/10/vaccinations").principal(auth(1L)))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.data[0].vaccinationId").value(100))
++                .andExpect(jsonPath("$.data[0].scheduledDate").value("2026-10-10"))
++                .andExpect(jsonPath("$.data[0].completedDate").doesNotExist())
++                .andExpect(jsonPath("$.data[0].status").value("SCHEDULED"));
++    }
++
++    @Test
++    @DisplayName("PATCH /api/v1/vaccinations/{id}/complete - body省略時は完了日nullでUseCaseを呼ぶ")
++    void complete_vaccination_without_body() throws Exception {
++        // when & then
++        mockMvc.perform(patch("/api/v1/vaccinations/100/complete").principal(auth(1L)))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.success").value(true));
++
++        verify(completeVaccinationUseCase).execute(eq(1L), eq(100L), isNull());
++    }
++
++    @Test
++    @DisplayName("PATCH /api/v1/vaccinations/{id}/complete - 未来の接種完了日はValidation失敗")
++    void complete_vaccination_validation_fail_when_future_date() throws Exception {
++        // when & then
++        mockMvc.perform(patch("/api/v1/vaccinations/100/complete")
++                        .principal(auth(1L))
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content("{\"completedDate\":\"" + LocalDate.now().plusDays(1) + "\"}"))
++                .andExpect(status().isBadRequest())
++                .andExpect(jsonPath("$.code").value("VALIDATION-001"));
++
++        verifyNoInteractions(completeVaccinationUseCase);
++    }
++
++    @Test
++    @DisplayName("PATCH /api/v1/vaccinations/{id}/complete - 不正な状態遷移は409とVACCINATION-003を返す")
++    void complete_vaccination_conflict() throws Exception {
++        // given
++        doThrow(VaccinationErrorCode.INVALID_STATE_TRANSITION.defaultException())
++                .when(completeVaccinationUseCase).execute(eq(1L), eq(100L), any());
++
++        // when & then
++        mockMvc.perform(patch("/api/v1/vaccinations/100/complete").principal(auth(1L)))
++                .andExpect(status().isConflict())
++                .andExpect(jsonPath("$.success").value(false))
++                .andExpect(jsonPath("$.code").value("VACCINATION-003"));
++    }
++
++    @Test
++    @DisplayName("PATCH /api/v1/vaccinations/{id}/reschedule - 再登録成功")
++    void reschedule_vaccination_success() throws Exception {
++        // when & then
++        mockMvc.perform(patch("/api/v1/vaccinations/100/reschedule")
++                        .principal(auth(1L))
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content("{\"scheduledDate\":\"2026-11-01\"}"))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.success").value(true));
++
++        verify(rescheduleVaccinationUseCase).execute(1L, 100L, LocalDate.of(2026, 11, 1));
++    }
++
++    @Test
++    @DisplayName("PATCH /api/v1/vaccinations/{id}/reschedule - 接種予定日が無い場合Validation失敗")
++    void reschedule_vaccination_validation_fail() throws Exception {
++        // when & then
++        mockMvc.perform(patch("/api/v1/vaccinations/100/reschedule")
++                        .principal(auth(1L))
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content("{}"))
++                .andExpect(status().isBadRequest())
++                .andExpect(jsonPath("$.code").value("VALIDATION-001"));
++
++        verifyNoInteractions(rescheduleVaccinationUseCase);
++    }
++
++    @Test
++    @DisplayName("PATCH /api/v1/vaccinations/{id}/cancel - 中止成功")
++    void cancel_vaccination_success() throws Exception {
++        // when & then
++        mockMvc.perform(patch("/api/v1/vaccinations/100/cancel").principal(auth(1L)))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.success").value(true));
++
++        verify(cancelVaccinationUseCase).execute(1L, 100L);
++    }
++
++    @Test
++    @DisplayName("PATCH /api/v1/vaccinations/{id}/cancel - 不正な状態遷移は409とVACCINATION-003を返す")
++    void cancel_vaccination_conflict() throws Exception {
++        // given
++        doThrow(VaccinationErrorCode.INVALID_STATE_TRANSITION.defaultException())
++                .when(cancelVaccinationUseCase).execute(1L, 100L);
++
++        // when & then
++        mockMvc.perform(patch("/api/v1/vaccinations/100/cancel").principal(auth(1L)))
++                .andExpect(status().isConflict())
++                .andExpect(jsonPath("$.code").value("VACCINATION-003"));
++    }
++
++    @Test
++    @DisplayName("DELETE /api/v1/vaccinations/{id} - 削除成功")
++    void delete_vaccination_success() throws Exception {
++        // when & then
++        mockMvc.perform(delete("/api/v1/vaccinations/100").principal(auth(1L)))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.success").value(true));
++
++        verify(deleteVaccinationUseCase).execute(1L, 100L);
++    }
++
++    @Test
++    @DisplayName("DELETE /api/v1/vaccinations/{id} - 他ユーザーのペットは403とVACCINATION-002を返す")
++    void delete_vaccination_forbidden() throws Exception {
++        // given
++        doThrow(VaccinationErrorCode.NOT_PET_OWNER.defaultException())
++                .when(deleteVaccinationUseCase).execute(1L, 100L);
++
++        // when & then
++        mockMvc.perform(delete("/api/v1/vaccinations/100").principal(auth(1L)))
++                .andExpect(status().isForbidden())
++                .andExpect(jsonPath("$.code").value("VACCINATION-002"));
++    }
++}

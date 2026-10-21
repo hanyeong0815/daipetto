@@ -1,0 +1,5 @@
+package koh.portfolio.springapi.application.vaccination.usecase;
+
+public interface CancelVaccinationUseCase {
+    void execute(Long userId, Long vaccinationId);
+}

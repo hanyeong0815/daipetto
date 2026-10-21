@@ -10,7 +10,7 @@
 | Document | Test Strategy |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-10-03 |
+| Updated | 2026-10-05 |
 
 ---
 
@@ -176,6 +176,18 @@ flowchart TB
 
 > HEALTH-T008・T009の同時実行は単体テスト（モック）とH2では再現できない。単体テストは行ロック付き読み取りを使うこと、`@DataJpaTest`はその読み取りが論理削除済みを除外することまでを確認し、インターリーブ自体は実PostgreSQLの受け入れスクリプト（`.ai-collab/tasks/2026-10-03-health-notification/scripts/`）で確認している。
 
+### **ワクチン接種予定**
+
+| **Test ID** | **観点** | **期待結果** |
+| --- | --- | --- |
+| VAC-T001 | 接種予定登録・一覧 | SCHEDULEDで登録、予定日の昇順で取得 |
+| VAC-T002 | 他ユーザーのペットへの操作 | VACCINATION-002 |
+| VAC-T003 | SCHEDULED→COMPLETED / CANCELLED、CANCELLED→SCHEDULED | 遷移元の状態だけを条件付きUPDATEで更新 |
+| VAC-T004 | 許可されない遷移・同時実行で負けた遷移 | VACCINATION-003 |
+| VAC-T005 | 論理削除 | deleted_at設定、一覧・リマインダー対象外。同時削除で負けた側はVACCINATION-001 |
+
+> VAC-T001〜T005は`VaccinationServiceTest`（モック）・`VaccinationControllerTest`・`VaccinationPersistenceAdapterTest`（H2で条件付きUPDATEを実行）で確認する。
+
 ---
 
 # **6-5. 病院・予約枠テスト**
@@ -245,6 +257,8 @@ flowchart TB
 | SCHD-T003 | COMPLETEDワクチン | 通知対象外 |
 | SCHD-T004 | CANCELLEDワクチン | 通知対象外 |
 | SCHD-T005 | 通知重複防止 | 重複作成なし |
+
+> **実装済みテスト（2026-10-05、2026-10-21更新）:** SCHD-T001/T003/T004/T005は`VaccinationPersistenceAdapterTest`（H2の`@DataJpaTest`で抽出クエリと送信済み化の条件付きUPDATEを実行）、SCHD-T002は`VaccinationServiceTest`で検証する。抽出後に中止・再登録が確定した場合に古い予定日の通知を作らず、新しい予定日が未送信のまま残ること（Codex REVIEW-001 R-03）も同テストで確認する。Schedulerのcron起動そのものは自動テストしていない。
 
 ---
 

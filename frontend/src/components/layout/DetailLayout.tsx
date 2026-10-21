@@ -11,6 +11,7 @@ const titleMap: Record<string, string> = {
 function getTitle(pathname: string): string {
   if (titleMap[pathname]) return titleMap[pathname]
   if (pathname.includes('/health')) return '健康記録'
+  if (pathname.endsWith('/vaccinations')) return 'ワクチン予定'
   if (pathname.includes('/reserve')) return '予約する'
   if (pathname.includes('/hospitals/')) return '病院詳細'
   if (pathname.includes('/pets/')) return 'ペット詳細'

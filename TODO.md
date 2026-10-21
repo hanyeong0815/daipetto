@@ -1,6 +1,6 @@
 # Daipetto — 作業TODOリスト
 
-最終更新: 2026-10-04
+最終更新: 2026-10-05
 
 ---
 
@@ -80,7 +80,7 @@
 - [x] `V4__alter_pets_add_columns.sql` — `breed`, `neutered`, `microchip_number` カラム追加
 - [x] `PetEntity` / `Pet` ドメイン / `PetMapper` / DTO / Service 反映
 - [x] docs/06_ERD・07_API_Design 更新（同ブランチ内）
-- [ ] **マージ時の必須作業**: migration 番号衝突の解消 — 現ブランチの `V4` は hospitals が使用中のため、`V4__alter_pets_add_columns.sql` を V8 以降へリナンバーする
+- [ ] **マージ時の必須作業**: migration 番号衝突の解消 — 現ブランチの `V4` は hospitals が使用中のため、`V4__alter_pets_add_columns.sql` を空き番号（V13 以降。V11・V12 は vaccinations が使用）へリナンバーする
 
 ### Hospital API（branch: `feat/spring/hospital`）
 - [x] `Hospital` / `HospitalSchedule` ドメイン・エンティティ・テーブル作成
@@ -116,6 +116,20 @@
 - [x] `HOSPITAL-003`（存在しない営業時間）・`HOSPITAL-004`（曜日重複登録）エラーコード追加
 - [x] テスト16件追加（Service 11件 + Controller 5件）、`./gradlew test`で全100件green
 
+### Vaccination API・リマインダーScheduler（2026-10-05実装、Claude Code、ブランチ `feat/spring/vaccination`）
+- [x] `Vaccination` ドメイン・エンティティ・テーブル作成（`V11__create_vaccinations.sql`。同migrationで`notifications.vaccination_id`のFKも追加）
+- [x] `POST /api/v1/pets/{petId}/vaccinations` — 接種予定登録（SCHEDULED）
+- [x] `GET /api/v1/pets/{petId}/vaccinations` — 一覧（接種予定日の昇順）
+- [x] `PATCH /api/v1/vaccinations/{id}/complete` — SCHEDULED→COMPLETED（`completedDate`省略時は当日、未来日不可）
+- [x] `PATCH /api/v1/vaccinations/{id}/reschedule` — CANCELLED→SCHEDULED（`08_State_Design` §7「再登録」、新しい予定日）
+- [x] `VACCINATION-001`（存在しない予定）・`002`（他ユーザーのペット）・`003`（不正な状態遷移）追加
+- [x] リマインダーScheduler（`VaccinationReminderScheduler`、毎日09:00 JST）→ `SendVaccinationRemindersService`。当日〜7日後のSCHEDULEDに飼い主宛VACCINATION通知を生成。予定日ごとに1回だけ生成（`reminded_date`を条件付きUPDATEで確保できた場合だけ通知、再登録でNULLに戻すため再通知。Codex REVIEW-001 R-03対応で`updated_at`比較から変更、`V12__add_vaccination_reminded_date.sql`）
+- 検証: `./gradlew clean test` 239件green（新規30件）。実PostgreSQL（捨てDB `daipetto_vac`）でV1〜V11適用・`ddl-auto: validate`・抽出クエリ・重複防止・条件付きUPDATE・FKを確認（`.ai-collab/tasks/2026-10-05-vaccination/scripts/`）
+
+**練習用に残していた項目（2026-10-21、ユーザーの指示でClaude Codeが実装）:**
+- [x] `PATCH /api/v1/vaccinations/{id}/cancel` — SCHEDULED→CANCELLED（`docs/07` §6-9）。遷移元statusをWHEREに入れた条件付きUPDATE、0件ならVACCINATION-003。再登録で`reminded_date`が消えるため新しい予定日で再通知される
+- [x] `DELETE /api/v1/vaccinations/{id}` — 論理削除（`docs/07` §6-11）。`deleted_at IS NULL`の条件付きUPDATE、同時削除で負けた側はVACCINATION-001
+
 ### 予約枠自動生成バッチ（設計決定、未実装 — 2026-08-02）
 > ユーザーとの設計議論の結論。`hospital_business_hours`管理APIは実装済みだが、これを元に`hospital_schedules`を自動生成するScheduler本体は未着手
 
@@ -139,14 +153,14 @@
 
 ### Notification API（2026-10-03実装、Claude Code）
 - [x] `Notification` ドメイン・エンティティ・テーブル作成（`V10__create_notifications.sql`）
-  - `vaccination_id`は列のみ作成しFKは保留（`vaccinations`未作成。`docs/06_ERD` §15注記）
+  - `vaccination_id`は列のみ作成し、FKは`V11__create_vaccinations.sql`で追加（2026-10-05）
 - [x] `GET /api/v1/notifications` — 通知一覧（作成日時の降順、本人宛のみ）
 - [x] `PATCH /api/v1/notifications/{id}/read` — 既読（未読のみを対象にした条件付きUPDATEで冪等）
 - [x] 予約承認・却下・診療完了時の通知生成（`NotifyReservationEventUseCase`、`08_State_Design` §6-6）
   - 状態遷移と同一トランザクション。遷移が成立しなかった場合は通知を作らない
   - キャンセルは §6-6 に通知定義が無いため生成しない
 - [x] `NOTIFICATION-001`（存在しない通知）・`NOTIFICATION-002`（受信者本人でない）追加
-- [ ] 予防接種リマインダー Scheduler（`VACCINATION`種別。Vaccination ドメイン実装後）
+- [x] 予防接種リマインダー Scheduler（`VACCINATION`種別。2026-10-05、下記 Vaccination API 参照）
 
 ### Health Record API（2026-10-03実装、Claude Code）
 - [x] `HealthRecord` ドメイン・エンティティ・テーブル作成（`V9__create_health_records.sql`）
@@ -220,6 +234,11 @@
 - [x] ペット一覧の表示修正 — 一覧API（PetSummary）は品種・性別を返さないため、常に「— · メス」と表示されていた。種別と体重の表示に変更
 - [ ] 管理者画面 `AdminReservationPage` — **要判断**: 承認/却下/完了APIはあるが、管理者が予約を一覧するAPIが無い（`docs/05` SC-013は一覧表示を定義、`docs/07`に該当APIなし）。Spring側に管理者用一覧APIを追加するか、ユーザー判断待ち
 - [ ] 管理者画面 `AdminUserPage` — ユーザー管理API連動（バックエンド未実装のため連動不可）
+
+### Vaccination API 連動（2026-10-21 実装、Claude Code、ブランチ `feat/spring/vaccination`）
+- [x] ワクチン予定画面 (`VaccinationPage`、`/pets/:petId/vaccinations`、`docs/05` SC-016) — 一覧・登録・接種完了（接種日入力、未来日不可）・中止・再登録（新しい予定日）・削除。ペット切替時に前のペットの応答を反映しない
+- [x] ペット詳細 (`PetDetailPage`) — 「ワクチン予定」欄に直近のSCHEDULED（最大3件、残り日数）と一覧画面へのリンク（`docs/05` SC-006）
+- [x] Codexレビュー（`.ai-collab/tasks/2026-10-05-vaccination/`）: REVIEW-001でR-01〜R-04（ペット切替時の旧データ表示、取得失敗の「予定なし」表示、再登録後のリマインダー欠落、通知文言）→ HANDOFF-002で修正 → REVIEW-002で **ACCEPTED**（2026-10-21）。健康記録画面にも同じペット切替・取得失敗表示の修正を適用。実PostgreSQL・ブラウザ確認はClaude Code実施（Codexは環境上未実施）
 
 ### 状態管理追加
 - [ ] `reservationStore.ts` / `notificationStore.ts` — 未作成。各画面がAPIを直接呼ぶ形で足りているため。未読数バッジなど複数画面で状態を共有する時に追加する

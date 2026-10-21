@@ -10,7 +10,7 @@
 | Document | State Design |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-05-17 |
+| Updated | 2026-10-05 |
 
 ---
 
@@ -272,7 +272,19 @@ stateDiagram-v2
 
 ---
 
-# **7-3. 制約事項**
+# **7-3. 状態遷移ルール**
+
+| **現在状態** | **次状態** | **実行者** | **API** |
+| --- | --- | --- | --- |
+| SCHEDULED | COMPLETED | ペットの飼い主 | `PATCH /vaccinations/{id}/complete`（`07_API_Design` §6-8） |
+| SCHEDULED | CANCELLED | ペットの飼い主 | `PATCH /vaccinations/{id}/cancel`（`07_API_Design` §6-9） |
+| CANCELLED | SCHEDULED | ペットの飼い主 | `PATCH /vaccinations/{id}/reschedule`（§6-10、新しい接種予定日を指定） |
+
+上記以外の遷移（COMPLETED→SCHEDULED/CANCELLED など）は`Vaccination`ドメインモデルで拒否し、VACCINATION-003とする。永続化は遷移元の状態を`WHERE`条件にした条件付きUPDATEで行い、同時に他の遷移が先に成立した場合も0件更新としてVACCINATION-003を返す。
+
+---
+
+# **7-4. 制約事項**
 
 | **条件** | **内容** |
 | --- | --- |
@@ -381,7 +393,10 @@ stateDiagram-v2
 | --- | --- |
 | vaccinations.status | SCHEDULED |
 | scheduled_date | 7日以内 |
-| notification未作成 | 重複通知防止 |
+| 未送信 | 重複通知防止（`reminded_date IS NULL`。送信時に抽出した予定日を条件付きUPDATEで書き込み、成功した場合だけ通知を作る。再登録で`reminded_date`をNULLに戻すため、新しい予定日で再通知する） |
+| 論理削除 | 予定・ペットとも`deleted_at IS NULL` |
+
+「7日以内」は当日〜7日後（両端含む、JST）とする。実装: `VaccinationReminderScheduler`（`@Scheduled(cron = "0 0 9 * * *", zone = "Asia/Tokyo")`）→ `SendVaccinationRemindersService`。
 
 ---
 
@@ -412,7 +427,7 @@ flowchart TB
 | **状態** | **関連API** |
 | --- | --- |
 | reservations.status | Reservation API |
-| vaccinations.status | Vaccination Scheduler |
+| vaccinations.status | Vaccination API / Vaccination Scheduler |
 | notifications.is_read | Notification API |
 | refresh_tokens.revoked | Auth API |
 

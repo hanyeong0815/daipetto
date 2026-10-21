@@ -15,11 +15,18 @@ function recordIcon(r: HealthRecord) {
   return { icon: 'note', color: 'text-neutral-gray-600 bg-neutral-gray-100' }
 }
 
+// ペットごとに作り直し、前のペットの記録・入力中のフォームを次のペットへ持ち越さない（取得失敗時も含む）
 export default function HealthRecordPage() {
-  const petId = Number(useParams().petId)
+  const { petId } = useParams()
+  return <HealthRecordList key={petId} petId={Number(petId)} />
+}
+
+function HealthRecordList({ petId }: { petId: number }) {
   const [records, setRecords] = useState<HealthRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // 最新の一覧取得が失敗したか。失敗を「記録なし」と区別して再試行を出す
+  const [loadFailed, setLoadFailed] = useState(false)
   const [showForm, setShowForm] = useState(false)
   // null = 新規登録、数値 = その記録の編集
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -30,8 +37,10 @@ export default function HealthRecordPage() {
     try {
       const res = await healthRecordApi.getList(petId)
       setRecords(res.data ?? [])
+      setLoadFailed(false)
     } catch (err) {
       setError(extractErrorMessage(err, '健康記録の取得に失敗しました。'))
+      setLoadFailed(true)
     } finally {
       setIsLoading(false)
     }
@@ -166,6 +175,10 @@ export default function HealthRecordPage() {
         <div className="flex items-center justify-center py-xl">
           <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
         </div>
+      ) : loadFailed ? (
+        <button onClick={() => { setError(null); load() }} className="self-center font-button-text text-button-text text-primary px-4 py-2 rounded-xl border border-primary/20 hover:bg-primary/10">
+          再試行
+        </button>
       ) : records.length === 0 ? (
         <p className="font-body-md text-body-md text-neutral-gray-600 text-center py-xl">健康記録はまだありません。</p>
       ) : (
