@@ -651,6 +651,32 @@ Schedulerが対象を抽出した後、通知を作る前に飼い主が予定�
 
 ---
 
+# **3-15. 性別を省略したペット登録が500になる（2026-10-21 pet-fieldsマージ時に発見）**
+
+## **症状**
+
+`POST /api/v1/pets`で`gender`を省略すると、DB制約違反でSERVER-001（500）が返る。名前51文字以上・品種101文字以上・桁数超過の体重も同様に500になっていた。
+
+---
+
+## **原因**
+
+設計書（`02_Requirement_Definition`・`05_Screen_Design`・`06_ERD`）では性別は任意項目だが、`V3__create_pets.sql`は`gender ... NOT NULL`で作られていた。リクエストDTOにも列の長さ・桁数に対応するバリデーションが無く、不正な値がDBまで届いていた。
+
+---
+
+## **対応方法**
+
+`V14__make_pet_gender_nullable.sql`で設計に合わせてNULLを許可。`CreatePetRequest`・`UpdatePetRequest`に`@Size(max = 50)`（名前）・`@Size(max = 100)`（品種）・`@PositiveOrZero @Digits(integer = 3, fraction = 2)`（体重）を付け、400（VALIDATION-001）で返す。画面には性別「不明」の選択肢を追加。
+
+---
+
+## **教訓**
+
+migrationを書いたら、`06_ERD`のNULL可否・型と1列ずつ突き合わせる。リクエストDTOのバリデーションは列の長さ・桁数から決める（DBの制約違反は500になり、利用者には原因が分からない）。
+
+---
+
 # **4. Django関連**
 
 # **4-1. Python Version不一致**

@@ -27,6 +27,9 @@ public class PetEntity {
     @Enumerated(EnumType.STRING)
     private PetGender gender;
     private BigDecimal weight;
+    private String breed;
+    private boolean neutered;
+    private String microchipNumber;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime deletedAt;

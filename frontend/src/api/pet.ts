@@ -22,7 +22,7 @@ export const petApi = {
     })),
 
   update: (petId: number, body: PetUpdateRequest) =>
-    apiClient.patch<ApiResponse<null>>(`/api/v1/pets/${petId}`, body).then((r) => r.data),
+    apiClient.patch<ApiResponse<null>>(`/api/v1/pets/${petId}`, toApiBody(body)).then((r) => r.data),
 
   remove: (petId: number) =>
     apiClient.delete<ApiResponse<null>>(`/api/v1/pets/${petId}`).then((r) => r.data),

@@ -12,7 +12,7 @@ This is the repository entry point for Codex and the canonical shared project po
 - Agent-facing files in `.codex/` and `.ai-collab/` use concise English. User-facing replies remain Korean; product design docs and code comments retain the language rules below.
 - Operational source of truth: `.ai-collab/PROTOCOL.md`. The original research corrections remain in `docs/codex-workflow/01_CORRECTIONS.md` for reference only.
 
-Last updated: 2026-10-21 (branch `feat/spring/vaccination`)
+Last updated: 2026-10-21 (branch `feat/spring/pet-fields-datetime`, stacked on `feat/spring/vaccination`)
 
 ## 1. Areas
 
@@ -134,8 +134,8 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 ## 7. DB / Flyway
 
 - DB changes only via Flyway; logical delete (`deleted_at`) is the default.
-- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile), V9 health_records, V10 notifications, V11 vaccinations (+ FK `notifications.vaccination_id`), V12 `vaccinations.reminded_date` (reminder dedupe marker).
-- ⚠ Unmerged `feat/spring/pet-fields` also uses **V4** (`V4__alter_pets_add_columns.sql` — breed/neutered/microchip_number). Renumber one side at merge. New migrations start at **V13**; check every branch for number collisions before numbering.
+- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile), V9 health_records, V10 notifications, V11 vaccinations (+ FK `notifications.vaccination_id`), V12 `vaccinations.reminded_date` (reminder dedupe marker), V13 pets breed/neutered/microchip_number (the former pet-fields V4, renumbered at merge), V14 `pets.gender` nullable (matches docs/06).
+- New migrations start at **V15**; check every branch for number collisions before numbering.
 - ⚠ V8 fails on an existing database that already holds duplicate active reservations for one schedule; clean those rows before applying.
 - Not created yet: hospital_admins (definition in docs/06). Because `hospital_admins` is missing, admin APIs cannot verify "own hospital" — hospital-affiliation checks are intentionally skipped for now.
 
@@ -147,7 +147,7 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 - Principal is `Long`: use `new UsernamePasswordAuthenticationToken(1L, null, authorities)` — `.with(user(...))` fails.
 - Most unit tests mock repositories. H2 **is** available for `@DataJpaTest` (`application-test.yml`, `MODE=PostgreSQL`, `ddl-auto=create-drop`, Flyway disabled) — see `RefreshTokenPersistenceAdapterTest`; Testcontainers is not introduced.
 - Mocked repositories prove neither real SQL nor concurrency. Null-tolerant `@Query` bugs escape them (docs/12 §3-10) and so do races (docs/12 §3-11). No PostgreSQL concurrency test exists yet.
-- Verify: `./gradlew clean test` in `spring-api/` (256 green as of 2026-10-21).
+- Verify: `./gradlew clean test` in `spring-api/` (261 green as of 2026-10-21).
 
 ## 9. Environment
 
@@ -167,6 +167,8 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
 
 **Vaccination (2026-10-05, branch `feat/spring/vaccination`, stacked on `feat/react-api-integration`)**: register/list/complete/cancel/reschedule/delete APIs + daily 09:00 JST reminder Scheduler creating VACCINATION notifications (dedupe: `reminded_date` claimed by a conditional UPDATE per scheduled date, cleared on reschedule). Task record `.ai-collab/tasks/2026-10-05-vaccination/`; Codex REVIEW-001 found R-01..R-04 (stale pet rows, failed load shown as empty, rescheduled reminder lost to a timestamp race, copy); fixed in HANDOFF-002 and ACCEPTED in REVIEW-002 (2026-10-21). Frontend: SC-016 vaccination screen and the SC-006 upcoming-vaccination panel (2026-10-21).
 
+**Pet fields + datetime format (2026-10-21, branch `feat/spring/pet-fields-datetime`)**: merged the July pet-fields branch (breed/neutered/microchip, V13) and added those columns to the conditional `updateProfile`; pet update stays a full replacement (user decision, docs/07 §5-4); `pets.gender` made nullable (V14) and request validation added for name/breed/weight lengths; all response `LocalDateTime`s serialize as JST with offset (`LocalDateTimeJsonSerializer`, docs/07 §2-7, user decision). Frontend: pet edit screen (`/pets/:petId/edit`, reuses SC-005), breed on the pet list, 「不明」 gender. Task record `.ai-collab/tasks/2026-10-21-pet-fields-datetime/`; Codex REVIEW-001 ACCEPTED (2026-10-21, one P3 comment fix deferred).
+
 **Frontend review (2026-10-04)**: API wiring is implemented, but review is CHANGES_REQUESTED in `.ai-collab/tasks/2026-10-04-frontend-api-integration/REVIEW-001.md`: F-01 private pet cache survives account changes, F-02 stale hospital schedules can overwrite the current hospital, F-03 same-day past slots remain selectable. Codex verified the frontend build and reproduced F-01/F-02 with the actual stores. Browser/Capacitor evidence remains implementer-reported; native runtime verification is pending in TODO.md. Codex owns only this review and the user-requested TODO/status update; application fixes remain with Claude. Claude fixed F-01..F-03 on 2026-10-04 (session-scoped pet store reset/guard, hospital-keyed reservation data with latest-response-wins hospital store, JST start-time rule `isUpcoming`); response in `HANDOFF-002.md`, ACCEPTED in `REVIEW-002.md` (2026-10-04). Browser and APK evidence there is implementer-reported.
 
 **Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · HealthRecord CRUD · Notification (list/read + generation on reservation approve/reject/complete, 2026-10-03) · Vaccination (register/list/complete/reschedule + reminder Scheduler, 2026-10-05) · Frontend all screens SC-001〜015 (auth·pet·hospital·reservation·health record·notification·dashboard·logout wired to real API, 2026-10-04) · ProtectedRoute + role guards · token restore on reload.
@@ -181,7 +183,7 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
 
 **Not started**: schedule auto-generation Scheduler (from `hospital_business_hours`) · django-api entirely · frontend admin reservation screen (needs an admin reservation list API that neither Spring nor docs/07 defines — user decision pending) and admin user screen (backend not built).
 
-**Unmerged branches**: `feat/spring/pet-fields` (pet columns + docs 06/07 updates); verify current unmerged set with `git branch --all` and `git log` before relying on this line — not re-audited in this update.
+**Unmerged branches**: `feat/spring/pet-fields` was merged into `feat/spring/pet-fields-datetime` on 2026-10-21 (migration renumbered to V13). Feature branches are stacked and await user PRs: `feat/react-api-integration` → `feat/spring/vaccination` → `feat/spring/pet-fields-datetime`. Verify with `git branch --all` and `git log`.
 
 ## 11. Workflow rules
 
@@ -208,4 +210,4 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
 | 12 Trouble_Shooting | newly solved issues |
 | 13 Retrospective | as needed |
 
-Known remaining gaps: docs keep Status "Draft" by design; pets breed/neutered/microchip_number columns exist only on unmerged `feat/spring/pet-fields` (docs/06 §8 note).
+Known remaining gaps: docs keep Status "Draft" by design; `pets.image_url` is designed but not implemented (image upload policy undecided, docs/06 §8 note).

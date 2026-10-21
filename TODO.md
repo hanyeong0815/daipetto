@@ -74,13 +74,15 @@
 
 ## 🚧 未実装 — Spring API
 
-### Pet テーブル不足カラム追加（実装済み・未マージ — branch: `feat/spring/pet-fields`）
-> 2026-07-05 実装済み。`breed` は自由入力文字列で確定（マスタテーブル無し）。**develop へのマージ待ち**
+### Pet テーブル不足カラム追加（2026-07-05 実装、2026-10-21 マージ — branch: `feat/spring/pet-fields` → `feat/spring/pet-fields-datetime`）
+> `breed` は自由入力文字列で確定（マスタテーブル無し）。2026-10-21に現行ブランチへマージし、migration番号をV13へ変更
 
-- [x] `V4__alter_pets_add_columns.sql` — `breed`, `neutered`, `microchip_number` カラム追加
+- [x] `V13__alter_pets_add_columns.sql`（旧 `V4__alter_pets_add_columns.sql`、V4はhospitalsが使用中のためリナンバー） — `breed`, `neutered`, `microchip_number` カラム追加
 - [x] `PetEntity` / `Pet` ドメイン / `PetMapper` / DTO / Service 反映
 - [x] docs/06_ERD・07_API_Design 更新（同ブランチ内）
-- [ ] **マージ時の必須作業**: migration 番号衝突の解消 — 現ブランチの `V4` は hospitals が使用中のため、`V4__alter_pets_add_columns.sql` を空き番号（V13 以降。V11・V12 は vaccinations が使用）へリナンバーする
+- [x] マージ時の必須作業: migration番号衝突の解消（V13へリナンバー）、条件付きUPDATE `updateProfile` に3列を追加（足し忘れると更新が黙って失われる）
+- [x] マージ時に発見・修正: `pets.gender` がV3でNOT NULLだったため性別省略の登録が500 → `V14__make_pet_gender_nullable.sql`。名前50・品種100文字、体重の範囲・桁数のバリデーションを追加（`docs/12` §3-15）
+- [x] Codexレビュー（`.ai-collab/tasks/2026-10-21-pet-fields-datetime/`）: REVIEW-001で **ACCEPTED**（2026-10-21）。ペット編集画面・応答日時の`+09:00`を含む。P3（通知画面のコメントが旧形式のまま）は次の回で修正
 
 ### Hospital API（branch: `feat/spring/hospital`）
 - [x] `Hospital` / `HospitalSchedule` ドメイン・エンティティ・テーブル作成
@@ -185,9 +187,9 @@
 - [x] R-04 [P2] 同時実行の部分PATCHが未指定項目を古い値で戻す → 健康記録の更新は行ロック付きで読み取り（`findByIdForUpdate`）、別PATCH・論理削除と直列化
 - [x] T-01 [P3] スモークの記録日アサーションがUTC日付と比較していた → サーバー時刻（Asia/Tokyo）で比較し、日付境界をまたぐ場合も許容
 - [x] 基準タイムゾーンをJST（Asia/Tokyo）に統一（ユーザー指示、日本向けサービスのため）: Spring APIは`main`でJVM既定を固定、`ServerTime`をAsia/SeoulからAsia/Tokyoへ、フロントの「今日」をUTC計算（`toISOString()`）からJSTへ（`docs/07` §2-7、`docs/12` §3-13）
-- [ ] **要判断（既存の文書・実装の食い違い）**: `docs/07` §2-7 の例はオフセット付き（`2026-05-17T10:00:00+09:00`）だが、APIは`LocalDateTime`をオフセットなし（`2026-05-17T10:00:00`）で返している。オフセットを付けるか、文書をオフセットなし（JST）に直すかはユーザー判断
+- [x] ~~要判断~~ → ユーザー決定（2026-10-21）: 応答の日時にJSTのオフセットを付ける。`LocalDateTimeJsonSerializer`（`@JsonComponent`）で全応答の`LocalDateTime`を`2026-05-17T10:00:00+09:00`形式（秒単位）に統一（`docs/07` §2-7）
 - 検証: `./gradlew clean test` 209件green。実PostgreSQLでR-04受け入れ3件（weightのみ・空のPATCH・別項目の2PATCH同時）、REVIEW-001受け入れ10件、スモーク14件（00:43 KST＝UTC日付が前日の時間帯）、通知チェック4件、認証/予約e2e 12件が全通過
-- [ ] **要判断（既存の文書・実装の食い違い）**: `docs/07_API_Design` §5-4 はペット更新を「部分更新」としているが、実装は`birthDate`/`weight`省略時にNULLで上書きする全体置換。フロントは常にフォーム全体を送るため実害は出ていない。実装を部分更新に揃えるか、文書を全体置換に直すかはユーザー判断（今回は変更していない）
+- [x] ~~要判断~~ → ユーザー決定（2026-10-21）: ペット更新は全項目置換のまま、`docs/07` §5-4を全体置換の説明に修正。編集画面は現在値を読み込んでから全項目を送る
 
 **検証（2026-10-03）**: テスト31件追加で`./gradlew clean test` 192件green。実PostgreSQL（捨てDB `daipetto_hn`）でV9/V10適用・`ddl-auto: validate`通過を確認し、API 14項目のスモークも全通過（`.ai-collab/tasks/2026-10-03-health-notification/scripts/smoke-health-notification.mjs`）
 
@@ -260,7 +262,7 @@
   - Claude Code実施（2026-10-04 21時台JST、捨てDB）。結果は`HANDOFF-002.md`。Node再現（実ストア）`scripts/fix-acceptance.cjs` 10件も追加。Codexの確認は未実施
 - [ ] Androidエミュレーター/実機でAPI疎通・認証・主要操作を確認（Claudeによるdebug APKビルド成功の報告あり、端末実行は未検証）
 - [ ] iOSビルド・実行確認（syncのみ実施との報告。Windowsではビルド未実施）
-- [ ] ペット編集画面と`PetUpdateRequest`の`petType`必須項目を対応する（バックエンド更新APIは実装済み、現在の画面接続範囲外）
+- [x] ペット編集画面（2026-10-21） — `/pets/:petId/edit`。登録画面（SC-005）を編集モードで再利用し、現在値を読み込んでから全項目を送る。性別に「不明」を追加、品種・不妊手術・マイクロチップを含む。一覧に品種を表示
 
 ### バックエンドレビュー確定
 - [x] HealthRecord/NotificationのR-01〜R-04・T-01・D-01: Codex `2026-10-03-health-notification/REVIEW-003.md`でACCEPTED（2026-10-04）。209テスト、実PostgreSQLの部分更新/削除/停止/通知/認証予約の検証済み。今回のFrontend承認とは別

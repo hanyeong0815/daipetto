@@ -28,7 +28,10 @@ public class UpdatePetService implements UpdatePetUseCase {
                 request.petType(),
                 request.birthDate(),
                 request.gender(),
-                request.weight()
+                request.weight(),
+                request.breed(),
+                request.neutered(),
+                request.microchipNumber()
         );
 
         // 読み取り後に論理削除がcommitされていた場合は0件更新。削除を最終状態として維持する

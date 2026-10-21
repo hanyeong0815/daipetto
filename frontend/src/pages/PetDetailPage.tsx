@@ -60,7 +60,7 @@ export default function PetDetailPage() {
         <div className="text-center">
           <h1 className="font-headline-lg-mobile text-headline-lg-mobile text-neutral-gray-900">{pet.name}</h1>
           <p className="font-body-lg text-body-lg text-neutral-gray-600 mt-1">
-            {pet.breed ?? '—'} · {pet.gender === 'MALE' ? 'オス' : 'メス'}
+            {pet.breed ?? '—'} · {pet.gender === 'MALE' ? 'オス' : pet.gender === 'FEMALE' ? 'メス' : '—'}
           </p>
         </div>
         <div className="flex gap-sm flex-wrap justify-center">
@@ -81,10 +81,10 @@ export default function PetDetailPage() {
         <section className="bg-surface-container-lowest rounded-[16px] border border-neutral-gray-100 overflow-hidden shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
           <div className="flex items-center justify-between px-container-margin py-md border-b border-neutral-gray-100">
             <h2 className="font-headline-md text-headline-md text-neutral-gray-900">基本情報</h2>
-            <button className="flex items-center gap-1 text-primary font-label-md text-label-md">
+            <Link to={`/pets/${petId}/edit`} className="flex items-center gap-1 text-primary font-label-md text-label-md">
               <span className="material-symbols-outlined text-[16px]">edit</span>
               編集
-            </button>
+            </Link>
           </div>
           <div className="divide-y divide-neutral-gray-100">
             {[

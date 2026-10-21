@@ -53,7 +53,7 @@ class HealthRecordServiceTest {
     private Pet pet(Long ownerId) {
         LocalDateTime now = LocalDateTime.now();
         return new Pet(petId, ownerId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE,
-                new BigDecimal("4.50"), now, now, null);
+                new BigDecimal("4.50"), null, false, null, now, now, null);
     }
 
     private HealthRecord healthRecord() {

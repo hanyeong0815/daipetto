@@ -25,7 +25,10 @@ public class PetService implements CreatePetUseCase, GetPetListUseCase {
                 request.petType(),
                 request.birthDate(),
                 request.gender(),
-                request.weight()
+                request.weight(),
+                request.breed(),
+                request.neutered(),
+                request.microchipNumber()
         );
 
         Pet savedPet = petRepository.save(pet);
@@ -46,6 +49,7 @@ public class PetService implements CreatePetUseCase, GetPetListUseCase {
                                 .name(pet.getName())
                                 .petType(pet.getPetType())
                                 .weight(pet.getWeight())
+                                .breed(pet.getBreed())
                                 .build()
                 )
                 .toList();

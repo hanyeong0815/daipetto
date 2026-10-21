@@ -63,7 +63,7 @@ class CreateReservationServiceTest {
 
     private Pet ownedPet() {
         return new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
-                LocalDateTime.now(), LocalDateTime.now(), null);
+                null, false, null, LocalDateTime.now(), LocalDateTime.now(), null);
     }
 
     private HospitalSchedule availableFutureSchedule() {
@@ -121,7 +121,7 @@ class CreateReservationServiceTest {
         // given
         CreateReservationRequest request = new CreateReservationRequest(petId, hospitalId, scheduleId, null);
         Pet othersPet = new Pet(petId, 999L, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null,
-                LocalDateTime.now(), LocalDateTime.now(), null);
+                null, false, null, LocalDateTime.now(), LocalDateTime.now(), null);
 
         when(petRepository.findById(petId)).thenReturn(Optional.of(othersPet));
 

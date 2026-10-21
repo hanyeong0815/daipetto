@@ -28,6 +28,9 @@ public class GetPetDetailService implements GetPetDetailUseCase {
                 pet.getBirthDate(),
                 pet.getGender(),
                 pet.getWeight(),
+                pet.getBreed(),
+                pet.isNeutered(),
+                pet.getMicrochipNumber(),
                 pet.getCreatedAt()
         );
     }

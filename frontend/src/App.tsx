@@ -81,6 +81,7 @@ export default function App() {
           <Route element={<DetailLayout />}>
             <Route path="/pets/new" element={<PetRegisterPage />} />
             <Route path="/pets/:petId" element={<PetDetailPage />} />
+            <Route path="/pets/:petId/edit" element={<PetRegisterPage />} />
             <Route path="/pets/:petId/health" element={<HealthRecordPage />} />
             <Route path="/pets/:petId/vaccinations" element={<VaccinationPage />} />
             <Route path="/hospitals/:hospitalId" element={<HospitalDetailPage />} />

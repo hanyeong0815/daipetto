@@ -66,7 +66,7 @@ class GetReservationServiceTest {
         when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(
                 new Hospital(hospitalId, "Tokyo Animal Hospital", "Tokyo, Shibuya", "03-1234-5678", HospitalStatus.ACTIVE, now, now, null)));
         when(petRepository.findByIdIncludingDeleted(petId)).thenReturn(Optional.of(
-                new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null, now, now, null)));
+                new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null, null, false, null, now, now, null)));
         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(
                 new HospitalSchedule(scheduleId, hospitalId, LocalDate.of(2026, 5, 20),
                         LocalTime.of(10, 0), LocalTime.of(10, 30), HospitalScheduleStatus.AVAILABLE, now, now)));
@@ -103,7 +103,7 @@ class GetReservationServiceTest {
                 new HospitalSchedule(scheduleId, hospitalId, LocalDate.of(2026, 5, 20),
                         LocalTime.of(10, 0), LocalTime.of(10, 30), HospitalScheduleStatus.AVAILABLE, now, now)));
         when(petRepository.findByIdIncludingDeleted(petId)).thenReturn(Optional.of(
-                new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null, now, now, now)));
+                new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null, null, false, null, now, now, now)));
 
         // when
         List<ReservationSummary> result = getReservationService.execute(userId);

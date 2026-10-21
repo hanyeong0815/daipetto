@@ -78,7 +78,7 @@ export default function MyPetPage() {
                   <span className="material-symbols-outlined text-neutral-gray-600">chevron_right</span>
                 </div>
                 <p className="font-body-md text-body-md text-neutral-gray-600 mt-0.5 truncate">
-                  {PET_SPECIES_LABEL[pet.species] ?? '—'}
+                  {PET_SPECIES_LABEL[pet.species] ?? '—'}{pet.breed ? ` · ${pet.breed}` : ''}
                 </p>
                 <div className="flex items-center gap-2 mt-3">
                   <span className="inline-flex items-center gap-1 text-primary border border-primary/20 bg-surface-bright font-label-md text-label-md px-2.5 py-1 rounded-full">

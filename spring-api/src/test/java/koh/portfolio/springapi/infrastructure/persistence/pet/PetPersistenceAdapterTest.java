@@ -49,7 +49,7 @@ class PetPersistenceAdapterTest {
     private Pet renamed(Long id) {
         LocalDateTime now = LocalDateTime.now();
         return new Pet(id, 1L, "MomoUpdated", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE,
-                new BigDecimal("5.00"), now, now, null);
+                new BigDecimal("5.00"), "Mix", true, "392000000000001", now, now, null);
     }
 
     @Test
@@ -63,7 +63,12 @@ class PetPersistenceAdapterTest {
 
         // then
         assertThat(updated).isTrue();
-        assertThat(petJpaRepository.findById(saved.getId()).orElseThrow().getName()).isEqualTo("MomoUpdated");
+        PetEntity reloaded = petJpaRepository.findById(saved.getId()).orElseThrow();
+        assertThat(reloaded.getName()).isEqualTo("MomoUpdated");
+        // pet-fieldsの列も条件付きUPDATEで書き込まれる（列を足し忘れると更新が黙って失われる）
+        assertThat(reloaded.getBreed()).isEqualTo("Mix");
+        assertThat(reloaded.isNeutered()).isTrue();
+        assertThat(reloaded.getMicrochipNumber()).isEqualTo("392000000000001");
     }
 
     @Test

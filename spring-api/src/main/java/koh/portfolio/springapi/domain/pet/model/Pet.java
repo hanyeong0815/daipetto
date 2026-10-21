@@ -17,17 +17,23 @@ public class Pet {
     private LocalDate birthDate;
     private PetGender gender;
     private BigDecimal weight;
+    private String breed;
+    private boolean neutered;
+    private String microchipNumber;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime deletedAt;
 
-    public static Pet create(Long userId, String name, PetType petType, LocalDate birthDate, PetGender gender, BigDecimal weight) {
+    public static Pet create(Long userId, String name, PetType petType, LocalDate birthDate, PetGender gender, BigDecimal weight,
+                              String breed, boolean neutered, String microchipNumber) {
         LocalDateTime now = LocalDateTime.now();
 
-        return new Pet(null, userId, name, petType, birthDate, gender, weight, now, now, null);
+        return new Pet(null, userId, name, petType, birthDate, gender, weight, breed, neutered, microchipNumber, now, now, null);
     }
 
-    public Pet update(String name, PetType petType, LocalDate birthDate, PetGender gender, BigDecimal weight) {
-        return new Pet(this.id, this.userId, name, petType, birthDate, gender, weight, this.createdAt, LocalDateTime.now(), null);
+    public Pet update(String name, PetType petType, LocalDate birthDate, PetGender gender, BigDecimal weight,
+                       String breed, boolean neutered, String microchipNumber) {
+        return new Pet(this.id, this.userId, name, petType, birthDate, gender, weight, breed, neutered, microchipNumber,
+                this.createdAt, LocalDateTime.now(), null);
     }
 }

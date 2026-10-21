@@ -219,11 +219,14 @@
 
 | **項目** | **条件** |
 | --- | --- |
-| petName | 必須 |
+| petName | 必須（50文字以内） |
 | petType | 必須 |
 | birthDate | 任意 |
 | gender | 任意 |
-| weight | 任意 |
+| weight | 任意（0以上、整数部3桁・小数部2桁まで） |
+| breed | 任意（100文字以内、自由入力） |
+| neutered | 任意（既定false） |
+| microchipNumber | 任意（15文字以内） |
 
 ---
 
@@ -252,7 +255,7 @@
 
 | **項目** | **条件** |
 | --- | --- |
-| weight | 任意 |
+| weight | 任意（0以上、整数部3桁・小数部2桁まで） |
 | memo | 任意 |
 | symptom | 任意 |
 

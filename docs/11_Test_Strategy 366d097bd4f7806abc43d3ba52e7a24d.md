@@ -157,6 +157,17 @@ flowchart TB
 | PET-T003 | 他ユーザーのペット詳細取得 | 403 |
 | PET-T004 | ペット更新 | 更新成功 |
 | PET-T005 | ペット削除 | deleted_at設定 |
+| PET-T006 | 名前51文字・品種101文字・負の体重・桁数超過の体重 | Validation Error（VALIDATION-001） |
+| PET-T007 | 性別を省略した登録 | 登録成功（性別は任意項目、V14でNULL許可） |
+| PET-T008 | 品種・不妊手術・マイクロチップを含む更新 | 全項目が置き換わり、論理削除済みのペットは更新されない（PET-001） |
+
+> PET-T006・T007は`PetControllerTest`、PET-T008は`PetServiceTest`（モック）と`PetPersistenceAdapterTest`（H2で条件付きUPDATEの列を確認）で検証する。
+
+### **共通（日時形式）**
+
+| **Test ID** | **観点** | **期待結果** |
+| --- | --- | --- |
+| COMMON-T001 | 応答の日時 | JSTのオフセット付き・秒単位（`2026-05-20T10:00:30+09:00`）。`NotificationControllerTest`で検証 |
 
 ---
 
