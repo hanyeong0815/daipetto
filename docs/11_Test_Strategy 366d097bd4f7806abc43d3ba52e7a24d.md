@@ -244,6 +244,14 @@ flowchart TB
 | SCH-T001 | AVAILABLE予約枠取得 | 取得成功 |
 | SCH-T002 | BLOCKED予約枠予約 | RESERVATION-003 |
 | SCH-T003 | 過去予約枠予約 | RESERVATION-005 |
+| GEN-T001 | 営業時間から予約枠を生成 | 開始〜休憩開始・休憩終了〜終了はAVAILABLE、休憩はBLOCKED。区間の端数は作らない。0時をまたぐ枠を作らない。秒を含む境界を切り捨てない。保存済みの営業時間外の休憩でも営業時間外に枠を作らない |
+| GEN-T002 | 既に枠がある日・営業時間の無い曜日 | 枠がある日は作らず`skippedDates`に数える（手動のBLOCKEDを上書きしない）。休診日は作らない |
+| GEN-T003 | 同じ月の再実行・同時実行 | 枠は増えない。同時実行でも同じ（日付・開始時刻）の枠が二重にできない（病院行の排他） |
+| GEN-T004 | 月の範囲 | 過去の月・13か月以上先はHOSPITAL-010。今月は今日（JST）以降だけ |
+| GEN-T005 | 月次バッチ | 営業中の病院だけ、翌月の1日〜月末。1病院の失敗で他の病院を止めない |
+| GEN-T006 | 営業時間の入力検証 | 開始>=終了、単位5分未満・240分超、休憩の片方だけ・営業時間外はHOSPITAL-009 |
+
+> GEN-T001・T006は`HospitalBusinessHoursTest`、GEN-T002〜T005は`HospitalScheduleGenerationServiceTest`、日付の問い合わせ・一括保存・病院行の排他取得は`HospitalSchedulePersistenceAdapterTest`（H2）で検証する。実PostgreSQL・実HTTPでの確認（同時実行と排他待ちを含む）は受け入れスクリプト（`.ai-collab/tasks/2026-10-22-schedule-generation/scripts/`）で行う。cron起動そのものは自動テストしていない。
 
 ---
 

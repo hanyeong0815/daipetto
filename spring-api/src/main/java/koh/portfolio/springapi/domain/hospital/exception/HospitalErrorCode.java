@@ -14,6 +14,8 @@ public enum HospitalErrorCode implements ErrorCode {
     NOT_HOSPITAL_ADMIN_USER("HOSPITAL-006", "病院管理者権限のないユーザーです。", HttpStatus.BAD_REQUEST),
     HOSPITAL_ADMIN_DUPLICATED("HOSPITAL-007", "既に紐付けられている病院管理者です。", HttpStatus.CONFLICT),
     HOSPITAL_ADMIN_NOT_FOUND("HOSPITAL-008", "病院管理者の紐付けが存在しません。", HttpStatus.NOT_FOUND),
+    INVALID_BUSINESS_HOURS("HOSPITAL-009", "診療時間の設定が正しくありません。", HttpStatus.BAD_REQUEST),
+    INVALID_GENERATION_MONTH("HOSPITAL-010", "予約枠を生成できない月です。", HttpStatus.BAD_REQUEST),
     DEFAULT("HOSPITAL-999", "病院関連エラーです。", HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final String code;

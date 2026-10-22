@@ -4,7 +4,7 @@ import { useHospitalStore } from '../../stores/hospitalStore'
 import { hospitalApi } from '../../api/hospital'
 import { adminUserApi } from '../../api/adminUser'
 import { extractErrorMessage } from '../../api/client'
-import { formatTime } from '../../utils/date'
+import { addMonths, formatTime, todayInJapan } from '../../utils/date'
 import type { AdminUser, DayOfWeek, HospitalAdminUser, HospitalBusinessHours, HospitalSchedule, ManagedHospital } from '../../types'
 
 const DAY_ORDER: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
@@ -74,6 +74,11 @@ export default function AdminHospitalPage() {
   const [businessHoursForm, setBusinessHoursForm] = useState<BusinessHoursFormState>(emptyBusinessHoursForm)
 
   const [scheduleForm, setScheduleForm] = useState({ availableDate: '', startTime: '', endTime: '' })
+
+  // 予約枠の自動生成は今月〜12か月先（APIの範囲と同じ）。既定は来月
+  const currentMonth = todayInJapan().slice(0, 7)
+  const [generateMonth, setGenerateMonth] = useState(() => addMonths(todayInJapan().slice(0, 7), 1))
+  const [isGenerating, setIsGenerating] = useState(false)
 
   const fetchHospitals = useCallback(async () => {
     try {
@@ -238,6 +243,32 @@ export default function AdminHospitalPage() {
       }
     } catch (err) {
       setActionError(extractErrorMessage(err, '予約枠の追加に失敗しました。'))
+    }
+  }
+
+  const handleGenerateSchedules = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!selectedHospitalId) return
+    const hospitalId = selectedHospitalId
+    setActionError(null)
+    setIsGenerating(true)
+    try {
+      const res = await hospitalApi.generateSchedules(hospitalId, generateMonth)
+      if (res.success && res.data) {
+        await refreshIfSelected(hospitalId, fetchSchedules)
+        const { createdSlots, generatedDates, skippedDates } = res.data
+        const skipped = skippedDates > 0 ? `、既に枠がある${skippedDates}日は対象外` : ''
+        // 0件の理由（営業時間の未登録・枠の長さより短い営業時間・既存の枠）は応答から特定できないため断定しない（REVIEW-001 R-03）
+        flashSaved(
+          createdSlots > 0
+            ? `${generateMonth}の予約枠を${createdSlots}件作成しました（${generatedDates}日分${skipped}）`
+            : `${generateMonth}の予約枠は作成されませんでした（既に枠があり対象外: ${skippedDates}日）。診療時間（曜日別）と予約枠単位を確認してください`,
+        )
+      }
+    } catch (err) {
+      setActionError(extractErrorMessage(err, '予約枠の自動生成に失敗しました。'))
+    } finally {
+      setIsGenerating(false)
     }
   }
 
@@ -460,6 +491,24 @@ export default function AdminHospitalPage() {
               })}
             </div>
           </section>
+
+          {/* 予約枠の自動生成（翌月分は毎月1日にバッチでも作成される） */}
+          {canManage && (
+            <section className="flex flex-col gap-sm">
+              <h2 className="font-headline-md text-headline-md text-neutral-gray-900">予約枠の自動生成</h2>
+              <p className="font-label-md text-label-md text-neutral-gray-600">
+                診療時間（曜日別）から、選んだ月の予約枠を作成します。休憩時間は「ブロック中」の枠になり、既に枠がある日は作成しません。翌月分は毎月1日に自動で作成されます。
+              </p>
+              <form onSubmit={handleGenerateSchedules} className="bg-surface-container-lowest rounded-xl border border-neutral-gray-100 p-container-margin flex gap-2">
+                <input required type="month" value={generateMonth} min={currentMonth} max={addMonths(currentMonth, 12)}
+                  onChange={(e) => setGenerateMonth(e.target.value)} aria-label="予約枠を生成する月" className={inputClass} />
+                <button type="submit" disabled={isGenerating}
+                  className="flex-shrink-0 px-4 h-[44px] bg-pet-green-vibrant text-white font-button-text text-button-text rounded-lg hover:bg-primary transition-colors disabled:opacity-50">
+                  生成する
+                </button>
+              </form>
+            </section>
+          )}
 
           {/* 予約枠 */}
           {canManage && (

@@ -43,6 +43,12 @@ public class HospitalPersistenceAdapter implements HospitalRepository {
     }
 
     @Override
+    public Optional<Hospital> findByIdForUpdate(Long id) {
+        return hospitalJpaRepository.findByIdForUpdate(id)
+                .map(hospitalMapper::toDomain);
+    }
+
+    @Override
     public List<Hospital> findAllForManagement() {
         return hospitalJpaRepository.findAllByDeletedAtIsNullOrderByIdAsc().stream()
                 .map(hospitalMapper::toDomain)

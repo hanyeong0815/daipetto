@@ -3,10 +3,13 @@ package koh.portfolio.springapi.presentation.hospital;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.CreateHospitalScheduleRequest;
 import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.CreateHospitalScheduleResponse;
+import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.GenerateHospitalSchedulesResponse;
 import koh.portfolio.springapi.application.hospital.usecase.BlockHospitalScheduleUseCase;
 import koh.portfolio.springapi.application.hospital.usecase.CreateHospitalScheduleUseCase;
+import koh.portfolio.springapi.application.hospital.usecase.GenerateHospitalSchedulesUseCase;
 import koh.portfolio.springapi.application.hospital.usecase.UnblockHospitalScheduleUseCase;
 import koh.portfolio.springapi.common.exception.GlobalExceptionHandler;
+import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
 import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,12 +26,14 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.YearMonth;
 
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -60,6 +65,9 @@ class HospitalScheduleAdminControllerTest {
 
     @MockBean
     private UnblockHospitalScheduleUseCase unblockHospitalScheduleUseCase;
+
+    @MockBean
+    private GenerateHospitalSchedulesUseCase generateHospitalSchedulesUseCase;
 
     // ------------------------------------------------------------------ create
 
@@ -98,6 +106,53 @@ class HospitalScheduleAdminControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("VALIDATION-001"));
+    }
+
+    // ---------------------------------------------------------------- generate
+
+    @Test
+    @DisplayName("POST /api/v1/admin/hospitals/{hospitalId}/schedules/generate - 月を指定して自動生成し、件数を返す")
+    void generate_hospital_schedules_success() throws Exception {
+        // given
+        when(generateHospitalSchedulesUseCase.execute(99L, 1L, YearMonth.of(2026, 11)))
+                .thenReturn(new GenerateHospitalSchedulesResponse(120, 20, 1));
+
+        // when & then
+        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules/generate").principal(admin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"month\":\"2026-11\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.createdSlots").value(120))
+                .andExpect(jsonPath("$.data.generatedDates").value(20))
+                .andExpect(jsonPath("$.data.skippedDates").value(1));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/admin/hospitals/{hospitalId}/schedules/generate - monthなし・形式誤りは400")
+    void generate_hospital_schedules_validation_fail() throws Exception {
+        for (String body : List.of("{}", "{\"month\":\"2026-13\"}", "{\"month\":\"2026/11\"}")) {
+            mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules/generate").principal(admin())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("VALIDATION-001"));
+        }
+        verifyNoInteractions(generateHospitalSchedulesUseCase);
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/admin/hospitals/{hospitalId}/schedules/generate - 過去の月はHOSPITAL-010（400）")
+    void generate_hospital_schedules_fail_for_invalid_month() throws Exception {
+        // given
+        when(generateHospitalSchedulesUseCase.execute(99L, 1L, YearMonth.of(2020, 1)))
+                .thenThrow(HospitalErrorCode.INVALID_GENERATION_MONTH.defaultException());
+
+        // when & then
+        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules/generate").principal(admin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"month\":\"2020-01\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("HOSPITAL-010"));
     }
 
     // ------------------------------------------------------------------- block

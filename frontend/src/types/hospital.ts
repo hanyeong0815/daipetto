@@ -86,3 +86,10 @@ export interface HospitalAdminUser {
   email: string
   nickname: string
 }
+
+// 予約枠の自動生成結果（POST /api/v1/admin/hospitals/{id}/schedules/generate）
+export interface ScheduleGenerationResult {
+  createdSlots: number
+  generatedDates: number
+  skippedDates: number
+}

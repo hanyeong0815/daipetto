@@ -10,7 +10,7 @@
 | Document | State Design |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-10-05 |
+| Updated | 2026-10-22 |
 
 ---
 
@@ -376,6 +376,8 @@ stateDiagram-v2
 ---
 
 # **11. Scheduler連携**
+
+予約枠自動生成Scheduler（毎月1日）は状態遷移を行わず、新しい`hospital_schedules`行を`AVAILABLE`（休憩時間は`BLOCKED`）で作るだけである（`04_System_Architecture` §14、`07_API_Design` §8-11）。
 
 # **11-1. ワクチン通知Scheduler**
 

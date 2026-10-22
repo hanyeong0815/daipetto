@@ -12,6 +12,7 @@ import type {
   HospitalUpdateRequest,
   HospitalAdminUser,
   ManagedHospital,
+  ScheduleGenerationResult,
 } from '../types'
 
 export const hospitalApi = {
@@ -43,6 +44,12 @@ export const hospitalApi = {
   createSchedule: (hospitalId: number, body: HospitalScheduleCreateRequest) =>
     apiClient
       .post<ApiResponse<{ scheduleId: number }>>(`/api/v1/admin/hospitals/${hospitalId}/schedules`, body)
+      .then((r) => r.data),
+
+  // 曜日別の診療時間から指定月（YYYY-MM）の予約枠を自動生成する。既に枠がある日は作らない
+  generateSchedules: (hospitalId: number, month: string) =>
+    apiClient
+      .post<ApiResponse<ScheduleGenerationResult>>(`/api/v1/admin/hospitals/${hospitalId}/schedules/generate`, { month })
       .then((r) => r.data),
 
   blockSchedule: (hospitalId: number, scheduleId: number) =>

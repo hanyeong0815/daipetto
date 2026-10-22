@@ -283,7 +283,7 @@
 
 ### **内容**
 
-SYSTEM_ADMINは病院の登録・停止と、病院管理者（HOSPITAL_ADMIN）の病院への紐付け・解除を行える。HOSPITAL_ADMIN・SYSTEM_ADMINは病院情報更新・予約枠の登録／BLOCKED切替・曜日別営業時間のCRUDを行える。HOSPITAL_ADMINは紐付いた病院だけを管理できる（`07_API_Design` §2-8）。
+SYSTEM_ADMINは病院の登録・停止と、病院管理者（HOSPITAL_ADMIN）の病院への紐付け・解除を行える。HOSPITAL_ADMIN・SYSTEM_ADMINは病院情報更新・予約枠の登録／BLOCKED切替・曜日別営業時間のCRUDを行える。HOSPITAL_ADMINは紐付いた病院だけを管理できる（`07_API_Design` §2-8）。予約枠は曜日別営業時間から自動生成する（毎月1日に翌月分、管理画面から任意の月も可。既に枠がある日は作らない）。
 
 ### **異常系**
 
@@ -293,6 +293,7 @@ SYSTEM_ADMINは病院の登録・停止と、病院管理者（HOSPITAL_ADMIN）
 | 曜日重複登録 | HOSPITAL-004 |
 | 紐付いていない病院の管理 | HOSPITAL-005 |
 | 病院管理者権限でないユーザーの紐付け / 紐付けの重複 / 存在しない紐付けの解除 | HOSPITAL-006 / 007 / 008 |
+| 不正な営業時間 / 生成できない月 | HOSPITAL-009 / 010 |
 
 ---
 

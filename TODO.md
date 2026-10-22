@@ -150,13 +150,16 @@
 - [x] Codexレビュー（`.ai-collab/tasks/2026-10-22-hospital-admins/`）: REVIEW-001でR-01（停止・保存の応答待ちに別病院を選ぶと前の病院のデータに入れ替わる）・R-02（一覧の取得失敗を「管理対象なし」と表示）・R-03 → HANDOFF-002で修正 → REVIEW-002で **ACCEPTED**（2026-10-22）
 - [x] フロントエンド: SC-013 `AdminReservationPage`をモックから実API連動、SC-014 `AdminHospitalPage`を管理対象病院の選択＋病院管理者の紐付け欄に変更
 
-### 予約枠自動生成バッチ（設計決定、未実装 — 2026-08-02）
-> ユーザーとの設計議論の結論。`hospital_business_hours`管理APIは実装済みだが、これを元に`hospital_schedules`を自動生成するScheduler本体は未着手
+### 予約枠自動生成バッチ（設計決定 2026-08-02、実装 2026-10-22 — Claude Code、ブランチ `feat/spring/schedule-generation`）
+> ユーザーとの設計議論の結論に沿って実装。毎月1日のSchedulerと、管理画面からの手動生成（任意の月）の2経路
 
-- [ ] 予約枠自動生成Scheduler（`@Scheduled`、`04_System_Architecture` §14参照）
+- [x] 予約枠自動生成Scheduler（`HospitalScheduleGenerationScheduler`、毎月1日 00:00 JST、営業中の全病院の翌月分。`04_System_Architecture` §14参照）
   - `hospital_business_hours`を元に、翌月分など一定期間の`hospital_schedules`を`slot_duration_minutes`単位で分割生成
   - 休憩時間帯も同じ単位で分割し`BLOCKED`として生成（行を作らず空白にする方式は採らない — 画面上「休憩中」と表示できるようにするため）
-  - 既に生成済みの期間は再生成しない（手動BLOCKEDの上書き防止）
+  - 既に生成済みの期間は再生成しない（手動BLOCKEDの上書き防止）→ 実装では枠が1つでもある日を作らない（病院行の排他で生成を直列化）
+- [x] 手動生成API `POST /api/v1/admin/hospitals/{id}/schedules/generate`（今月〜12か月先、今月は今日以降。HOSPITAL-010）と SC-014「予約枠の自動生成」
+- [x] 営業時間の入力検証（開始<終了、単位5〜240分、休憩は両方指定かつ営業時間内。HOSPITAL-009、`docs/12` §3-18）
+- [x] Codexレビュー（`.ai-collab/tasks/2026-10-22-schedule-generation/`）: REVIEW-001でR-01（保存済みの営業時間外の休憩で営業時間外に枠ができる）・R-02（秒を含む時刻の切り捨て）・R-03（0件時の文言）→ HANDOFF-002で修正 → REVIEW-002で **ACCEPTED**（2026-10-22）
 
 ### Reservation API（2026-08-23実装、Claude Code）
 - [x] `Reservation` ドメイン・エンティティ・テーブル作成 (`V7__create_reservations.sql`。V5/V6はHospitalBusinessHours/HospitalScheduleが使用済みのためV7から)

@@ -30,3 +30,10 @@ export const formatTime = (time: string) => time.slice(0, 5)
 export function daysFromToday(date: string): number {
   return Math.round((Date.parse(date) - Date.parse(todayInJapan())) / 86_400_000)
 }
+
+// YYYY-MM に月数を足す（JSTの今月を基準に「来月」「12か月先」を求める）
+export function addMonths(yearMonth: string, months: number): string {
+  const [year, month] = yearMonth.split('-').map(Number)
+  const total = year * 12 + (month - 1) + months
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`
+}
