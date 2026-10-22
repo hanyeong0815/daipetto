@@ -1,7 +1,10 @@
 package koh.portfolio.springapi.application.pet.dto;
 
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 import koh.portfolio.springapi.domain.pet.model.PetGender;
 import koh.portfolio.springapi.domain.pet.model.PetType;
 import lombok.Builder;
@@ -12,18 +15,21 @@ import java.time.LocalDateTime;
 
 public record PetDto() {
     public record CreatePetRequest(
-            @NotBlank String name,
+            @NotBlank @Size(max = 50) String name,
             @NotNull PetType petType,
             LocalDate birthDate,
             PetGender gender,
-            BigDecimal weight
+            @PositiveOrZero @Digits(integer = 3, fraction = 2) BigDecimal weight,
+            @Size(max = 100) String breed,
+            boolean neutered,
+            @Size(max = 15) String microchipNumber
     ) {}
 
     @Builder
     public record CreatePetResponse(Long petId) {}
 
     @Builder
-    public record PetSummary(Long id, String name, PetType petType, BigDecimal weight) {}
+    public record PetSummary(Long id, String name, PetType petType, BigDecimal weight, String breed) {}
 
     public record PetDetailResponse(
             Long id,
@@ -32,14 +38,20 @@ public record PetDto() {
             LocalDate birthDate,
             PetGender gender,
             BigDecimal weight,
+            String breed,
+            boolean neutered,
+            String microchipNumber,
             LocalDateTime createdAt
     ) {}
 
     public record UpdatePetRequest(
-            @NotBlank String name,
+            @NotBlank @Size(max = 50) String name,
             @NotNull PetType petType,
             LocalDate birthDate,
-            @NotNull PetGender gender,
-            BigDecimal weight
+            PetGender gender,
+            @PositiveOrZero @Digits(integer = 3, fraction = 2) BigDecimal weight,
+            @Size(max = 100) String breed,
+            boolean neutered,
+            @Size(max = 15) String microchipNumber
     ) {}
 }

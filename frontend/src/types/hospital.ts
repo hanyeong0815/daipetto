@@ -70,3 +70,26 @@ export interface HospitalBusinessHoursUpdateRequest {
   breakEndTime?: string
   slotDurationMinutes: number
 }
+
+// 管理画面で操作できる病院（GET /api/v1/admin/hospitals/mine、停止中も含む）
+export interface ManagedHospital {
+  hospitalId: number
+  name: string
+  address: string
+  phoneNumber?: string
+  status: HospitalStatus
+}
+
+// 病院に紐付いた病院管理者（GET /api/v1/admin/hospitals/{id}/admins）
+export interface HospitalAdminUser {
+  userId: number
+  email: string
+  nickname: string
+}
+
+// 予約枠の自動生成結果（POST /api/v1/admin/hospitals/{id}/schedules/generate）
+export interface ScheduleGenerationResult {
+  createdSlots: number
+  generatedDates: number
+  skippedDates: number
+}

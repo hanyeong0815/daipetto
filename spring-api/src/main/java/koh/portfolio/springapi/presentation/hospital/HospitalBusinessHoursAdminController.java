@@ -8,10 +8,12 @@ import koh.portfolio.springapi.application.hospital.usecase.CreateHospitalBusine
 import koh.portfolio.springapi.application.hospital.usecase.DeleteHospitalBusinessHoursUseCase;
 import koh.portfolio.springapi.application.hospital.usecase.UpdateHospitalBusinessHoursUseCase;
 import koh.portfolio.springapi.common.response.ApiResponse;
+import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -25,10 +27,11 @@ public class HospitalBusinessHoursAdminController {
     @PostMapping("/{hospitalId}/business-hours")
     @PreAuthorize("hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')")
     public ResponseEntity<ApiResponse<CreateHospitalBusinessHoursResponse>> createHospitalBusinessHours(
+            Authentication authentication,
             @PathVariable Long hospitalId,
             @RequestBody @Valid CreateHospitalBusinessHoursRequest request
     ) {
-        CreateHospitalBusinessHoursResponse response = createHospitalBusinessHoursUseCase.execute(hospitalId, request);
+        CreateHospitalBusinessHoursResponse response = createHospitalBusinessHoursUseCase.execute(extractUserId(authentication), hospitalId, request);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -38,11 +41,12 @@ public class HospitalBusinessHoursAdminController {
     @PatchMapping("/{hospitalId}/business-hours/{businessHoursId}")
     @PreAuthorize("hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> updateHospitalBusinessHours(
+            Authentication authentication,
             @PathVariable Long hospitalId,
             @PathVariable Long businessHoursId,
             @RequestBody @Valid UpdateHospitalBusinessHoursRequest request
     ) {
-        updateHospitalBusinessHoursUseCase.execute(hospitalId, businessHoursId, request);
+        updateHospitalBusinessHoursUseCase.execute(extractUserId(authentication), hospitalId, businessHoursId, request);
 
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -50,11 +54,19 @@ public class HospitalBusinessHoursAdminController {
     @DeleteMapping("/{hospitalId}/business-hours/{businessHoursId}")
     @PreAuthorize("hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteHospitalBusinessHours(
+            Authentication authentication,
             @PathVariable Long hospitalId,
             @PathVariable Long businessHoursId
     ) {
-        deleteHospitalBusinessHoursUseCase.execute(hospitalId, businessHoursId);
+        deleteHospitalBusinessHoursUseCase.execute(extractUserId(authentication), hospitalId, businessHoursId);
 
         return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    private Long extractUserId(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof Long userId)) {
+            throw AuthErrorCode.AUTH_FAILED.defaultException();
+        }
+        return userId;
     }
 }

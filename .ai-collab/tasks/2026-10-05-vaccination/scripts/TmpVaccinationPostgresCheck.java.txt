@@ -1,0 +1,50 @@
+package koh.portfolio.springapi;
+
+import koh.portfolio.springapi.application.vaccination.usecase.SendVaccinationRemindersUseCase;
+import koh.portfolio.springapi.domain.vaccination.port.VaccinationRepository;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+@SpringBootTest
+@ActiveProfiles("local")
+class TmpVaccinationPostgresCheck {
+    @Autowired JdbcTemplate jdbc;
+    @Autowired VaccinationRepository repo;
+    @Autowired SendVaccinationRemindersUseCase reminders;
+    @Autowired org.springframework.transaction.support.TransactionTemplate tx;
+
+    @Test
+    void check() {
+        LocalDate today = LocalDate.of(2026, 10, 5);
+        Long userId = jdbc.queryForObject("insert into users(email,password,nickname,role,status) values ('v@x.jp','p','n','ROLE_USER','ACTIVE') returning id", Long.class);
+        Long petId = jdbc.queryForObject("insert into pets(user_id,name,pet_type,gender) values (?, 'Momo','CAT','FEMALE') returning id", Long.class, userId);
+        Long v1 = jdbc.queryForObject("insert into vaccinations(pet_id,vaccine_name,scheduled_date) values (?, '混合', ?) returning id", Long.class, petId, today.plusDays(3));
+        Long v2 = jdbc.queryForObject("insert into vaccinations(pet_id,vaccine_name,scheduled_date,status) values (?, '狂犬病', ?, 'CANCELLED') returning id", Long.class, petId, today.plusDays(2));
+        jdbc.queryForObject("insert into vaccinations(pet_id,vaccine_name,scheduled_date) values (?, '遠い', ?) returning id", Long.class, petId, today.plusDays(8));
+
+        assertThat(jdbc.queryForObject("select status from vaccinations where id=?", String.class, v1)).isEqualTo("SCHEDULED");
+        assertThat(reminders.execute(today)).isEqualTo(1);
+        assertThat(reminders.execute(today)).isZero();
+        assertThat(jdbc.queryForObject("select message from notifications where vaccination_id=?", String.class, v1))
+                .isEqualTo("Momoの混合接種予定日（2026-10-08）が近づいています。");
+
+        assertThat((Boolean) tx.execute(st -> repo.reschedule(v2, today.plusDays(4), LocalDateTime.now()))).isTrue();
+        assertThat((Boolean) tx.execute(st -> repo.reschedule(v2, today.plusDays(4), LocalDateTime.now()))).isFalse();
+        assertThat(reminders.execute(today)).isEqualTo(1);
+        assertThat((Boolean) tx.execute(st -> repo.markCompleted(v1, today, LocalDateTime.now()))).isTrue();
+        assertThat((Boolean) tx.execute(st -> repo.markCompleted(v1, today, LocalDateTime.now()))).isFalse();
+
+        assertThatThrownBy(() -> jdbc.update("insert into notifications(user_id,vaccination_id,notification_type,title,message) values (?, 999999, 'VACCINATION','t','m')", userId))
+                .hasMessageContaining("fk_notifications_vaccination");
+        System.out.println("TMP_PG_CHECK_OK");
+    }
+}

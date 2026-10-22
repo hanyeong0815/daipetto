@@ -10,7 +10,7 @@
 | Document | Test Strategy |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-10-03 |
+| Updated | 2026-10-22 |
 
 ---
 
@@ -141,10 +141,42 @@ flowchart TB
 | --- | --- | --- | --- |
 | ROLE-T001 | ROLE_USER | ペット登録 | 成功 |
 | ROLE-T002 | ROLE_USER | 予約承認 | 403 |
-| ROLE-T003 | ROLE_HOSPITAL_ADMIN | 予約承認 | 成功 |
-| ROLE-T004 | ROLE_HOSPITAL_ADMIN | 病院管理 | 403 |
+| ROLE-T003 | ROLE_HOSPITAL_ADMIN | 予約承認（紐付いた病院の予約） | 成功（紐付いていない病院はHOSPITAL-005、6-2「病院所属」） |
+| ROLE-T004 | ROLE_HOSPITAL_ADMIN | 病院登録・停止・病院管理者の紐付け | 403 |
 | ROLE-T005 | ROLE_SYSTEM_ADMIN | 病院管理 | 成功 |
 | ROLE-T006 | 未認証 | 認証必須API | 401 |
+| ROLE-T007 | ROLE_USER・ROLE_HOSPITAL_ADMIN | ユーザー管理（`/api/v1/admin/users`） | 403 |
+
+### **ユーザー管理**
+
+| **Test ID** | **観点** | **期待結果** |
+| --- | --- | --- |
+| ADMIN-T001 | 検索（キーワード・権限・状態・ページ） | 部分一致（大文字小文字無視）、論理削除済みを除外、ID昇順、ページ情報付き。パスワードは返さない |
+| ADMIN-T002 | ユーザー停止 | SUSPENDED、全Refresh Token失効、発行済みAccess Tokenでも次のリクエストから401、ログインはAUTH-002 |
+| ADMIN-T003 | 停止解除 | ACTIVE、再ログイン可能 |
+| ADMIN-T004 | 権限変更 | 次のリクエストから新しい権限で認可される |
+| ADMIN-T005 | 自分自身の停止・権限変更 | USER-005 |
+| ADMIN-T006 | 存在しない権限名・状態名 | VALIDATION-001（500にしない） |
+| ADMIN-T007 | 停止と同時に進行中のログイン・Token再発行 | 停止の確定後に有効なRefresh Tokenが残らない（ログインはAUTH-002、再発行は後続Tokenを失効） |
+| ADMIN-T008 | 最後のページの最後の1件が停止・権限変更で条件から外れる | 画面は最後の有効なページを取り直す（空のページに留まらない） |
+
+### **病院所属（hospital_admins）**
+
+| **Test ID** | **観点** | **期待結果** |
+| --- | --- | --- |
+| HADM-T001 | 紐付いていない病院の更新・予約枠・営業時間・予約の承認／却下／診療完了・予約一覧（病院管理者） | 403 HOSPITAL-005、データは変わらない |
+| HADM-T002 | 紐付いた病院の同じ操作（病院管理者）／任意の病院（システム管理者） | 成功 |
+| HADM-T003 | 管理対象の病院一覧（`/admin/hospitals/mine`） | システム管理者は停止中を含む全病院、病院管理者は紐付いた病院だけ |
+| HADM-T004 | 紐付け | 201。重複HOSPITAL-007、一般ユーザーHOSPITAL-006、存在しない病院HOSPITAL-001、存在しない・削除済みユーザーUSER-003 |
+| HADM-T005 | 同じ紐付けの同時登録 | 1件だけ成立し、残りはHOSPITAL-007 |
+| HADM-T006 | 紐付け解除 | 次のリクエストから操作不可。紐付けが無ければHOSPITAL-008 |
+| HADM-T007 | 権限を病院管理者以外へ変更 | 紐付けがすべて削除され、再び病院管理者にしても戻らない |
+| HADM-T008 | 権限変更と同時に進行中の紐付け | 権限変更の確定後に紐付けが残らない（紐付けはHOSPITAL-006） |
+| HADM-T009 | 予約一覧（病院管理者）の絞り込み | 状態・日付で絞り込み、条件なしは全件（PostgreSQLのnull条件）、論理削除済みの予約は除外、日付・開始時刻順 |
+
+> HADM-T001〜T007は`HospitalAdminServiceTest`・各Service／Controllerテスト・`HospitalAdminPersistenceAdapterTest`（H2）、HADM-T009は`ReservationAdminQueryTest`（H2）と`GetAdminReservationListServiceTest`で検証する。実PostgreSQL・実HTTPでの確認（HADM-T005・T008を含む）は受け入れスクリプト（`.ai-collab/tasks/2026-10-22-hospital-admins/scripts/`）で行う。
+
+> ADMIN-T001は`UserPersistenceAdapterTest`（H2）と`AdminUserServiceTest`、ADMIN-T002〜T006は`AdminUserServiceTest`・`AdminUserControllerTest`・`JwtAuthenticationFilterTest`で検証し、実PostgreSQL・実HTTPでの確認は受け入れスクリプト（`.ai-collab/tasks/2026-10-21-user-management/scripts/`）で行う。
 
 ---
 
@@ -157,6 +189,17 @@ flowchart TB
 | PET-T003 | 他ユーザーのペット詳細取得 | 403 |
 | PET-T004 | ペット更新 | 更新成功 |
 | PET-T005 | ペット削除 | deleted_at設定 |
+| PET-T006 | 名前51文字・品種101文字・負の体重・桁数超過の体重 | Validation Error（VALIDATION-001） |
+| PET-T007 | 性別を省略した登録 | 登録成功（性別は任意項目、V14でNULL許可） |
+| PET-T008 | 品種・不妊手術・マイクロチップを含む更新 | 全項目が置き換わり、論理削除済みのペットは更新されない（PET-001） |
+
+> PET-T006・T007は`PetControllerTest`、PET-T008は`PetServiceTest`（モック）と`PetPersistenceAdapterTest`（H2で条件付きUPDATEの列を確認）で検証する。
+
+### **共通（日時形式）**
+
+| **Test ID** | **観点** | **期待結果** |
+| --- | --- | --- |
+| COMMON-T001 | 応答の日時 | JSTのオフセット付き・秒単位（`2026-05-20T10:00:30+09:00`）。`NotificationControllerTest`で検証 |
 
 ---
 
@@ -176,6 +219,18 @@ flowchart TB
 
 > HEALTH-T008・T009の同時実行は単体テスト（モック）とH2では再現できない。単体テストは行ロック付き読み取りを使うこと、`@DataJpaTest`はその読み取りが論理削除済みを除外することまでを確認し、インターリーブ自体は実PostgreSQLの受け入れスクリプト（`.ai-collab/tasks/2026-10-03-health-notification/scripts/`）で確認している。
 
+### **ワクチン接種予定**
+
+| **Test ID** | **観点** | **期待結果** |
+| --- | --- | --- |
+| VAC-T001 | 接種予定登録・一覧 | SCHEDULEDで登録、予定日の昇順で取得 |
+| VAC-T002 | 他ユーザーのペットへの操作 | VACCINATION-002 |
+| VAC-T003 | SCHEDULED→COMPLETED / CANCELLED、CANCELLED→SCHEDULED | 遷移元の状態だけを条件付きUPDATEで更新 |
+| VAC-T004 | 許可されない遷移・同時実行で負けた遷移 | VACCINATION-003 |
+| VAC-T005 | 論理削除 | deleted_at設定、一覧・リマインダー対象外。同時削除で負けた側はVACCINATION-001 |
+
+> VAC-T001〜T005は`VaccinationServiceTest`（モック）・`VaccinationControllerTest`・`VaccinationPersistenceAdapterTest`（H2で条件付きUPDATEを実行）で確認する。
+
 ---
 
 # **6-5. 病院・予約枠テスト**
@@ -189,6 +244,14 @@ flowchart TB
 | SCH-T001 | AVAILABLE予約枠取得 | 取得成功 |
 | SCH-T002 | BLOCKED予約枠予約 | RESERVATION-003 |
 | SCH-T003 | 過去予約枠予約 | RESERVATION-005 |
+| GEN-T001 | 営業時間から予約枠を生成 | 開始〜休憩開始・休憩終了〜終了はAVAILABLE、休憩はBLOCKED。区間の端数は作らない。0時をまたぐ枠を作らない。秒を含む境界を切り捨てない。保存済みの営業時間外の休憩でも営業時間外に枠を作らない |
+| GEN-T002 | 既に枠がある日・営業時間の無い曜日 | 枠がある日は作らず`skippedDates`に数える（手動のBLOCKEDを上書きしない）。休診日は作らない |
+| GEN-T003 | 同じ月の再実行・同時実行 | 枠は増えない。同時実行でも同じ（日付・開始時刻）の枠が二重にできない（病院行の排他） |
+| GEN-T004 | 月の範囲 | 過去の月・13か月以上先はHOSPITAL-010。今月は今日（JST）以降だけ |
+| GEN-T005 | 月次バッチ | 営業中の病院だけ、翌月の1日〜月末。1病院の失敗で他の病院を止めない |
+| GEN-T006 | 営業時間の入力検証 | 開始>=終了、単位5分未満・240分超、休憩の片方だけ・営業時間外はHOSPITAL-009 |
+
+> GEN-T001・T006は`HospitalBusinessHoursTest`、GEN-T002〜T005は`HospitalScheduleGenerationServiceTest`、日付の問い合わせ・一括保存・病院行の排他取得は`HospitalSchedulePersistenceAdapterTest`（H2）で検証する。実PostgreSQL・実HTTPでの確認（同時実行と排他待ちを含む）は受け入れスクリプト（`.ai-collab/tasks/2026-10-22-schedule-generation/scripts/`）で行う。cron起動そのものは自動テストしていない。
 
 ---
 
@@ -245,6 +308,8 @@ flowchart TB
 | SCHD-T003 | COMPLETEDワクチン | 通知対象外 |
 | SCHD-T004 | CANCELLEDワクチン | 通知対象外 |
 | SCHD-T005 | 通知重複防止 | 重複作成なし |
+
+> **実装済みテスト（2026-10-05、2026-10-21更新）:** SCHD-T001/T003/T004/T005は`VaccinationPersistenceAdapterTest`（H2の`@DataJpaTest`で抽出クエリと送信済み化の条件付きUPDATEを実行）、SCHD-T002は`VaccinationServiceTest`で検証する。抽出後に中止・再登録が確定した場合に古い予定日の通知を作らず、新しい予定日が未送信のまま残ること（Codex REVIEW-001 R-03）も同テストで確認する。Schedulerのcron起動そのものは自動テストしていない。
 
 ---
 

@@ -10,7 +10,7 @@
 | Document | System Architecture |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-08-23 |
+| Updated | 2026-10-22 |
 
 ---
 
@@ -483,7 +483,9 @@ flowchart TB
 | **Scheduler** | **実行時間** |
 | --- | --- |
 | ワクチン通知 | 毎日 09:00 |
-| 予約枠自動生成 | 例: 毎月1日 00:00（`hospital_business_hours`を元に翌月分の`hospital_schedules`を生成） |
+| 予約枠自動生成 | 毎月1日 00:00 JST（`hospital_business_hours`を元に翌月分の`hospital_schedules`を生成） |
+
+**予約枠自動生成（2026-10-22実装）:** `HospitalScheduleGenerationScheduler`（`@Scheduled(cron = "0 0 0 1 * *", zone = "Asia/Tokyo")`）が営業中（`ACTIVE`）の全病院について翌月分を生成する。病院ごとに別トランザクション（`HospitalScheduleGenerator`）で処理し、1病院の失敗は記録して他の病院の生成を続ける。各病院の生成は病院行を`SELECT ... FOR UPDATE`で排他取得してから行い、既に枠が1つでもある日は作らない（手動の枠・臨時BLOCKEDを上書きしない、`06_ERD` §18）。同じ処理を管理画面から任意の月（今月〜12か月先）に実行するAPIもある（`07_API_Design` §8-11）。導入直後の今月・翌月分は、Schedulerの次回実行を待たず手動生成で作る。
 
 ---
 

@@ -28,7 +28,8 @@ public interface PetJpaRepository extends JpaRepository<PetEntity, Long> {
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update PetEntity set name = :name, petType = :petType, birthDate = :birthDate, gender = :gender, "
-            + "weight = :weight, updatedAt = :updatedAt where id = :id and deletedAt is null")
+            + "weight = :weight, breed = :breed, neutered = :neutered, microchipNumber = :microchipNumber, "
+            + "updatedAt = :updatedAt where id = :id and deletedAt is null")
     int updateProfile(
             @Param("id") Long id,
             @Param("name") String name,
@@ -36,6 +37,9 @@ public interface PetJpaRepository extends JpaRepository<PetEntity, Long> {
             @Param("birthDate") LocalDate birthDate,
             @Param("gender") PetGender gender,
             @Param("weight") BigDecimal weight,
+            @Param("breed") String breed,
+            @Param("neutered") boolean neutered,
+            @Param("microchipNumber") String microchipNumber,
             @Param("updatedAt") LocalDateTime updatedAt
     );
 }

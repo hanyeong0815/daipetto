@@ -1,6 +1,6 @@
 # Daipetto — 作業TODOリスト
 
-最終更新: 2026-10-03
+最終更新: 2026-10-22
 
 ---
 
@@ -74,13 +74,15 @@
 
 ## 🚧 未実装 — Spring API
 
-### Pet テーブル不足カラム追加（実装済み・未マージ — branch: `feat/spring/pet-fields`）
-> 2026-07-05 実装済み。`breed` は自由入力文字列で確定（マスタテーブル無し）。**develop へのマージ待ち**
+### Pet テーブル不足カラム追加（2026-07-05 実装、2026-10-21 マージ — branch: `feat/spring/pet-fields` → `feat/spring/pet-fields-datetime`）
+> `breed` は自由入力文字列で確定（マスタテーブル無し）。2026-10-21に現行ブランチへマージし、migration番号をV13へ変更
 
-- [x] `V4__alter_pets_add_columns.sql` — `breed`, `neutered`, `microchip_number` カラム追加
+- [x] `V13__alter_pets_add_columns.sql`（旧 `V4__alter_pets_add_columns.sql`、V4はhospitalsが使用中のためリナンバー） — `breed`, `neutered`, `microchip_number` カラム追加
 - [x] `PetEntity` / `Pet` ドメイン / `PetMapper` / DTO / Service 反映
 - [x] docs/06_ERD・07_API_Design 更新（同ブランチ内）
-- [ ] **マージ時の必須作業**: migration 番号衝突の解消 — 現ブランチの `V4` は hospitals が使用中のため、`V4__alter_pets_add_columns.sql` を V8 以降へリナンバーする
+- [x] マージ時の必須作業: migration番号衝突の解消（V13へリナンバー）、条件付きUPDATE `updateProfile` に3列を追加（足し忘れると更新が黙って失われる）
+- [x] マージ時に発見・修正: `pets.gender` がV3でNOT NULLだったため性別省略の登録が500 → `V14__make_pet_gender_nullable.sql`。名前50・品種100文字、体重の範囲・桁数のバリデーションを追加（`docs/12` §3-15）
+- [x] Codexレビュー（`.ai-collab/tasks/2026-10-21-pet-fields-datetime/`）: REVIEW-001で **ACCEPTED**（2026-10-21）。ペット編集画面・応答日時の`+09:00`を含む。P3（通知画面のコメントが旧形式のまま）は次の回で修正
 
 ### Hospital API（branch: `feat/spring/hospital`）
 - [x] `Hospital` / `HospitalSchedule` ドメイン・エンティティ・テーブル作成
@@ -97,7 +99,7 @@
 - [x] `POST /api/v1/admin/hospitals/{hospitalId}/schedules` — 予約枠の個別手動登録（ユーザー実装。`@Valid`・`existsById`チェック追加済み）
 - [x] 予約枠のAVAILABLE/BLOCKED切り替え — `PATCH .../schedules/{scheduleId}/block`・`.../unblock`（Claude Code実装、2026-08-02。`BlockHospitalScheduleService`/`UnblockHospitalScheduleService`、`HospitalErrorCode.HOSPITAL_SCHEDULE_NOT_FOUND`追加、`docs/07_API_Design` 8-5・8-6追記、テスト10件green）
   - 状態遷移は`Hospital.suspend()`と同じ「不変オブジェクト・新インスタンス返却」パターン
-  - schedule.hospitalIdとpath変数のhospitalIdが一致しない場合もHOSPITAL-002（他病院の予約枠を弄れないようにするガード。Pet の owner check に相当するが hospital_admins が無いので厳密な権限チェックではない点に注意）
+  - schedule.hospitalIdとpath変数のhospitalIdが一致しない場合もHOSPITAL-002（他病院の予約枠を弄れないようにするガード。Pet の owner check に相当。2026-10-22 から hospital_admins による所属チェックも別途行う）
   - **予約による自動BLOCKEDは行わない**（`06_ERD` §12業務制約、§18参照）
 - [x] Hospital/HospitalSchedule 全体テスト整備（Claude Code、2026-08-02）。テスト作成中に発見して同時に修正したバグ:
   - `HospitalAdminControllerTest`の`@MockBean`漏れ（`UpdateHospitalUseCase`/`SuspendHospitalUseCase`未Mock → 3件失敗）を修正
@@ -116,13 +118,48 @@
 - [x] `HOSPITAL-003`（存在しない営業時間）・`HOSPITAL-004`（曜日重複登録）エラーコード追加
 - [x] テスト16件追加（Service 11件 + Controller 5件）、`./gradlew test`で全100件green
 
-### 予約枠自動生成バッチ（設計決定、未実装 — 2026-08-02）
-> ユーザーとの設計議論の結論。`hospital_business_hours`管理APIは実装済みだが、これを元に`hospital_schedules`を自動生成するScheduler本体は未着手
+### Vaccination API・リマインダーScheduler（2026-10-05実装、Claude Code、ブランチ `feat/spring/vaccination`）
+- [x] `Vaccination` ドメイン・エンティティ・テーブル作成（`V11__create_vaccinations.sql`。同migrationで`notifications.vaccination_id`のFKも追加）
+- [x] `POST /api/v1/pets/{petId}/vaccinations` — 接種予定登録（SCHEDULED）
+- [x] `GET /api/v1/pets/{petId}/vaccinations` — 一覧（接種予定日の昇順）
+- [x] `PATCH /api/v1/vaccinations/{id}/complete` — SCHEDULED→COMPLETED（`completedDate`省略時は当日、未来日不可）
+- [x] `PATCH /api/v1/vaccinations/{id}/reschedule` — CANCELLED→SCHEDULED（`08_State_Design` §7「再登録」、新しい予定日）
+- [x] `VACCINATION-001`（存在しない予定）・`002`（他ユーザーのペット）・`003`（不正な状態遷移）追加
+- [x] リマインダーScheduler（`VaccinationReminderScheduler`、毎日09:00 JST）→ `SendVaccinationRemindersService`。当日〜7日後のSCHEDULEDに飼い主宛VACCINATION通知を生成。予定日ごとに1回だけ生成（`reminded_date`を条件付きUPDATEで確保できた場合だけ通知、再登録でNULLに戻すため再通知。Codex REVIEW-001 R-03対応で`updated_at`比較から変更、`V12__add_vaccination_reminded_date.sql`）
+- 検証: `./gradlew clean test` 239件green（新規30件）。実PostgreSQL（捨てDB `daipetto_vac`）でV1〜V11適用・`ddl-auto: validate`・抽出クエリ・重複防止・条件付きUPDATE・FKを確認（`.ai-collab/tasks/2026-10-05-vaccination/scripts/`）
 
-- [ ] 予約枠自動生成Scheduler（`@Scheduled`、`04_System_Architecture` §14参照）
+**練習用に残していた項目（2026-10-21、ユーザーの指示でClaude Codeが実装）:**
+- [x] `PATCH /api/v1/vaccinations/{id}/cancel` — SCHEDULED→CANCELLED（`docs/07` §6-9）。遷移元statusをWHEREに入れた条件付きUPDATE、0件ならVACCINATION-003。再登録で`reminded_date`が消えるため新しい予定日で再通知される
+- [x] `DELETE /api/v1/vaccinations/{id}` — 論理削除（`docs/07` §6-11）。`deleted_at IS NULL`の条件付きUPDATE、同時削除で負けた側はVACCINATION-001
+
+### ユーザー管理 API（2026-10-21 実装、Claude Code、ブランチ `feat/spring/user-management`）
+- [x] `GET /api/v1/admin/users` — キーワード（メール・ニックネーム）・権限・状態で検索、ページ形式（`PageResponse`）
+- [x] `PATCH /api/v1/admin/users/{id}/suspend`・`/activate` — 停止時はユーザー行の排他を取り、全Refresh Tokenを失効
+- [x] `PATCH /api/v1/admin/users/{id}/role` — 権限変更。自分自身の停止・権限変更はUSER-005
+- [x] 認証フィルターがリクエストごとにユーザーの現在の状態・権限を確認（停止・権限変更が次のリクエストから反映、`docs/09` §3-5）
+- [x] 存在しないenum値（クエリ・JSON）を500ではなく400（VALIDATION-001）で返す（`docs/12` §3-16）
+- [x] Codexレビュー（`.ai-collab/tasks/2026-10-21-user-management/`）: REVIEW-001でR-01（停止と重なったログインがトークンを発行）・R-02（一覧が空のページに留まる）・R-03 → HANDOFF-002で修正 → REVIEW-002で **ACCEPTED**（2026-10-22）
+
+### 病院所属（hospital_admins）・管理者向け予約一覧（2026-10-22 実装、Claude Code、ブランチ `feat/spring/hospital-admins`）
+- [x] `hospital_admins`テーブル（`V15__create_hospital_admins.sql`、ユーザー×病院の一意制約）
+- [x] 所属チェック（`HospitalAccessChecker`）— 病院更新・予約枠・営業時間・予約の承認/却下/診療完了で、病院管理者は紐付いた病院だけ操作可能（それ以外HOSPITAL-005、`docs/07` §2-8）
+- [x] `GET /api/v1/admin/hospitals/mine` — 管理対象の病院（システム管理者は停止中を含む全病院）
+- [x] `GET/POST/DELETE /api/v1/admin/hospitals/{id}/admins` — 病院管理者の一覧・紐付け・解除（システム管理者のみ、HOSPITAL-006〜008）。紐付けはユーザー行の排他を取ってから権限を確認（`docs/12` §3-17）
+- [x] 権限を病院管理者以外へ変更すると紐付けをすべて削除
+- [x] `GET /api/v1/admin/reservations?hospitalId=&status=&date=` — 病院管理者向け予約一覧（予約者・ペット名付き）。必須クエリパラメータ欠落を500ではなく400に
+- [x] Codexレビュー（`.ai-collab/tasks/2026-10-22-hospital-admins/`）: REVIEW-001でR-01（停止・保存の応答待ちに別病院を選ぶと前の病院のデータに入れ替わる）・R-02（一覧の取得失敗を「管理対象なし」と表示）・R-03 → HANDOFF-002で修正 → REVIEW-002で **ACCEPTED**（2026-10-22）
+- [x] フロントエンド: SC-013 `AdminReservationPage`をモックから実API連動、SC-014 `AdminHospitalPage`を管理対象病院の選択＋病院管理者の紐付け欄に変更
+
+### 予約枠自動生成バッチ（設計決定 2026-08-02、実装 2026-10-22 — Claude Code、ブランチ `feat/spring/schedule-generation`）
+> ユーザーとの設計議論の結論に沿って実装。毎月1日のSchedulerと、管理画面からの手動生成（任意の月）の2経路
+
+- [x] 予約枠自動生成Scheduler（`HospitalScheduleGenerationScheduler`、毎月1日 00:00 JST、営業中の全病院の翌月分。`04_System_Architecture` §14参照）
   - `hospital_business_hours`を元に、翌月分など一定期間の`hospital_schedules`を`slot_duration_minutes`単位で分割生成
   - 休憩時間帯も同じ単位で分割し`BLOCKED`として生成（行を作らず空白にする方式は採らない — 画面上「休憩中」と表示できるようにするため）
-  - 既に生成済みの期間は再生成しない（手動BLOCKEDの上書き防止）
+  - 既に生成済みの期間は再生成しない（手動BLOCKEDの上書き防止）→ 実装では枠が1つでもある日を作らない（病院行の排他で生成を直列化）
+- [x] 手動生成API `POST /api/v1/admin/hospitals/{id}/schedules/generate`（今月〜12か月先、今月は今日以降。HOSPITAL-010）と SC-014「予約枠の自動生成」
+- [x] 営業時間の入力検証（開始<終了、単位5〜240分、休憩は両方指定かつ営業時間内。HOSPITAL-009、`docs/12` §3-18）
+- [x] Codexレビュー（`.ai-collab/tasks/2026-10-22-schedule-generation/`）: REVIEW-001でR-01（保存済みの営業時間外の休憩で営業時間外に枠ができる）・R-02（秒を含む時刻の切り捨て）・R-03（0件時の文言）→ HANDOFF-002で修正 → REVIEW-002で **ACCEPTED**（2026-10-22）
 
 ### Reservation API（2026-08-23実装、Claude Code）
 - [x] `Reservation` ドメイン・エンティティ・テーブル作成 (`V7__create_reservations.sql`。V5/V6はHospitalBusinessHours/HospitalScheduleが使用済みのためV7から)
@@ -139,14 +176,14 @@
 
 ### Notification API（2026-10-03実装、Claude Code）
 - [x] `Notification` ドメイン・エンティティ・テーブル作成（`V10__create_notifications.sql`）
-  - `vaccination_id`は列のみ作成しFKは保留（`vaccinations`未作成。`docs/06_ERD` §15注記）
+  - `vaccination_id`は列のみ作成し、FKは`V11__create_vaccinations.sql`で追加（2026-10-05）
 - [x] `GET /api/v1/notifications` — 通知一覧（作成日時の降順、本人宛のみ）
 - [x] `PATCH /api/v1/notifications/{id}/read` — 既読（未読のみを対象にした条件付きUPDATEで冪等）
 - [x] 予約承認・却下・診療完了時の通知生成（`NotifyReservationEventUseCase`、`08_State_Design` §6-6）
   - 状態遷移と同一トランザクション。遷移が成立しなかった場合は通知を作らない
   - キャンセルは §6-6 に通知定義が無いため生成しない
 - [x] `NOTIFICATION-001`（存在しない通知）・`NOTIFICATION-002`（受信者本人でない）追加
-- [ ] 予防接種リマインダー Scheduler（`VACCINATION`種別。Vaccination ドメイン実装後）
+- [x] 予防接種リマインダー Scheduler（`VACCINATION`種別。2026-10-05、下記 Vaccination API 参照）
 
 ### Health Record API（2026-10-03実装、Claude Code）
 - [x] `HealthRecord` ドメイン・エンティティ・テーブル作成（`V9__create_health_records.sql`）
@@ -171,9 +208,9 @@
 - [x] R-04 [P2] 同時実行の部分PATCHが未指定項目を古い値で戻す → 健康記録の更新は行ロック付きで読み取り（`findByIdForUpdate`）、別PATCH・論理削除と直列化
 - [x] T-01 [P3] スモークの記録日アサーションがUTC日付と比較していた → サーバー時刻（Asia/Tokyo）で比較し、日付境界をまたぐ場合も許容
 - [x] 基準タイムゾーンをJST（Asia/Tokyo）に統一（ユーザー指示、日本向けサービスのため）: Spring APIは`main`でJVM既定を固定、`ServerTime`をAsia/SeoulからAsia/Tokyoへ、フロントの「今日」をUTC計算（`toISOString()`）からJSTへ（`docs/07` §2-7、`docs/12` §3-13）
-- [ ] **要判断（既存の文書・実装の食い違い）**: `docs/07` §2-7 の例はオフセット付き（`2026-05-17T10:00:00+09:00`）だが、APIは`LocalDateTime`をオフセットなし（`2026-05-17T10:00:00`）で返している。オフセットを付けるか、文書をオフセットなし（JST）に直すかはユーザー判断
+- [x] ~~要判断~~ → ユーザー決定（2026-10-21）: 応答の日時にJSTのオフセットを付ける。`LocalDateTimeJsonSerializer`（`@JsonComponent`）で全応答の`LocalDateTime`を`2026-05-17T10:00:00+09:00`形式（秒単位）に統一（`docs/07` §2-7）
 - 検証: `./gradlew clean test` 209件green。実PostgreSQLでR-04受け入れ3件（weightのみ・空のPATCH・別項目の2PATCH同時）、REVIEW-001受け入れ10件、スモーク14件（00:43 KST＝UTC日付が前日の時間帯）、通知チェック4件、認証/予約e2e 12件が全通過
-- [ ] **要判断（既存の文書・実装の食い違い）**: `docs/07_API_Design` §5-4 はペット更新を「部分更新」としているが、実装は`birthDate`/`weight`省略時にNULLで上書きする全体置換。フロントは常にフォーム全体を送るため実害は出ていない。実装を部分更新に揃えるか、文書を全体置換に直すかはユーザー判断（今回は変更していない）
+- [x] ~~要判断~~ → ユーザー決定（2026-10-21）: ペット更新は全項目置換のまま、`docs/07` §5-4を全体置換の説明に修正。編集画面は現在値を読み込んでから全項目を送る
 
 **検証（2026-10-03）**: テスト31件追加で`./gradlew clean test` 192件green。実PostgreSQL（捨てDB `daipetto_hn`）でV9/V10適用・`ddl-auto: validate`通過を確認し、API 14項目のスモークも全通過（`.ai-collab/tasks/2026-10-03-health-notification/scripts/smoke-health-notification.mjs`）
 
@@ -198,28 +235,58 @@
 
 ---
 
-## 🚧 未実装 — Frontend（API 連動）
+## Frontend — API連動の実装状況・残作業
 
 ### Hospital API 連動（2026-08-09 実装、Claude Code）
 - [x] 病院検索 (`HospitalSearchPage`) — Hospital API 連動。distance/rating/reviews/specialtyはバックエンドに存在しないため削除
 - [x] 病院詳細 (`HospitalDetailPage`) — Hospital + HospitalBusinessHours API 連動。doctors/reviewsはバックエンドに存在しないため削除、診療時間は曜日別に表示
 - [x] 管理者画面 (`AdminHospitalPage`) — Hospital（Create/Update/Suspend）+ HospitalSchedule（Create/Block/Unblock）+ HospitalBusinessHours（Create/Update/Delete）全連動
-  - `hospital_admins`未実装のため「自分の病院」を判定できず、一覧から選択する方式で暫定対応
+  - ~~`hospital_admins`未実装のため「自分の病院」を判定できず、一覧から選択する方式で暫定対応~~ → 2026-10-22: 管理対象の病院（`/admin/hospitals/mine`、停止中を含む）だけを選択肢にし、1件なら自動選択。システム管理者向けに「病院管理者」の紐付け・解除欄を追加
 - [x] `hospitalStore.ts` — 病院一覧・詳細・予約枠・営業時間（読み取り用）
 - [x] `api/hospital.ts` — 全Hospital関連API（公開4 + 管理者6）のラッパー
 - [x] プラットフォーム別APIベースURL — `Capacitor.getPlatform()`で実行時に自動判定（Web/Android/iOS）、`.env`の手動書き換えが不要に
 
-### 実 API 接続が必要な画面（残り）
-- [ ] 予約 (`ReservationPage`) — Reservation API 連動（バックエンド実装済み・連動可能）
-- [ ] 予約履歴 (`ReservationHistoryPage`) — Reservation API 連動（バックエンド実装済み・連動可能）
-- [ ] 健康記録 (`HealthRecordPage`) — HealthRecord API 連動（バックエンド実装済み・連動可能）
-- [ ] 通知 (`NotificationsPage`) — Notification API 連動（バックエンド実装済み・連動可能）
-- [ ] 管理者画面 `AdminReservationPage` — 予約承認/却下/完了API連動（バックエンド実装済み・連動可能）
-- [ ] 管理者画面 `AdminUserPage` — ユーザー管理API連動（バックエンド未実装のため連動不可）
+### Reservation / HealthRecord / Notification API 連動（2026-10-04 実装、Claude Code、ブランチ `feat/react-api-integration`）
+- [x] 予約 (`ReservationPage`) — 病院詳細・予約枠一覧から予約可能日（今日以降のAVAILABLE枠）と時間を選び`POST /reservations`。BLOCKED枠は選択不可。重複などのエラーはAPIのメッセージを表示
+  - 診療目的はAPIに項目が無いため任意選択とし、`memo`の先頭に「診療目的: …」として付記（`docs/05` SC-010）
+- [x] 予約履歴 (`ReservationHistoryPage`) — 一覧・詳細（メモ表示）・キャンセル（REQUESTED/APPROVEDのみ）。却下(REJECTED)も表示。ダミーの「病院詳細」（予約IDを病院IDとして使っていた）と「レビューを書く」（機能なし）は削除
+- [x] 健康記録 (`HealthRecordPage`) — 一覧・登録・編集（PATCH）・削除。記録種別の選択（予防接種・投薬など）はモデルに無いため廃止し、体重・症状・メモの入力に変更
+- [x] 通知 (`NotificationsPage`) — 一覧・既読化（一括既読APIが無いため「すべて既読」は1件ずつPATCH）。日時はJSTのまま表示
+- [x] ダッシュボード — 次の予約（今日以降のREQUESTED/APPROVEDで最も早いもの）と、先頭ペットの健康記録（直近の体重・前回比・最近の症状）を実データ化
+- [x] ログアウト — ヘッダー右上（存在しない`/profile`へのリンクだった）をログアウトボタンに変更。`POST /auth/logout`の後、失敗してもローカルのトークンを破棄
+- [x] ペット一覧の表示修正 — 一覧API（PetSummary）は品種・性別を返さないため、常に「— · メス」と表示されていた。種別と体重の表示に変更
+- [x] 管理者画面 `AdminReservationPage` — 2026-10-22: 管理者向け予約一覧API（`docs/07` §9-8）を追加し、モックデータから実API連動に変更。病院選択・状態別件数・日付/状態の絞り込み・承認/却下/診療完了（確認ダイアログ）
+- [x] 管理者画面 `AdminUserPage`（2026-10-21、SC-015） — 検索（キーワード・権限・状態、20件ずつのページ）・停止/停止解除・権限変更を実API連動。自分自身の行は操作不可。Dashboardに役割別の「管理メニュー」を追加（管理画面への入口が無かったため）。`UserProfile`の型を実際の応答（`userId`・`status`）に修正
+
+### Vaccination API 連動（2026-10-21 実装、Claude Code、ブランチ `feat/spring/vaccination`）
+- [x] ワクチン予定画面 (`VaccinationPage`、`/pets/:petId/vaccinations`、`docs/05` SC-016) — 一覧・登録・接種完了（接種日入力、未来日不可）・中止・再登録（新しい予定日）・削除。ペット切替時に前のペットの応答を反映しない
+- [x] ペット詳細 (`PetDetailPage`) — 「ワクチン予定」欄に直近のSCHEDULED（最大3件、残り日数）と一覧画面へのリンク（`docs/05` SC-006）
+- [x] Codexレビュー（`.ai-collab/tasks/2026-10-05-vaccination/`）: REVIEW-001でR-01〜R-04（ペット切替時の旧データ表示、取得失敗の「予定なし」表示、再登録後のリマインダー欠落、通知文言）→ HANDOFF-002で修正 → REVIEW-002で **ACCEPTED**（2026-10-21）。健康記録画面にも同じペット切替・取得失敗表示の修正を適用。実PostgreSQL・ブラウザ確認はClaude Code実施（Codexは環境上未実施）
 
 ### 状態管理追加
-- [ ] `reservationStore.ts` — 予約一覧・詳細
-- [ ] `notificationStore.ts` — 通知・未読数
+- [ ] `reservationStore.ts` / `notificationStore.ts` — 未作成。各画面がAPIを直接呼ぶ形で足りているため。未読数バッジなど複数画面で状態を共有する時に追加する
+
+### Codexレビュー後の修正・検証（2026-10-04）
+
+> 上記の `[x]` はAPI接続の実装済みを示し、レビュー承認を意味しない。判定は **CHANGES_REQUESTED**。詳細: `.ai-collab/tasks/2026-10-04-frontend-api-integration/REVIEW-001.md`。
+>
+> 再レビュー（`REVIEW-002.md`、2026-10-04）でF-01〜F-03は **ACCEPTED**。ブラウザ回帰とAndroid APKビルドはClaude Codeの報告のみで、Codexは未実施。
+
+- [x] F-01 [P1] アカウント切替時に前ユーザーのペット一覧・選択状態を破棄し、前セッションの遅延レスポンスによる再保存も防止する。A→ログアウト→B＋取得失敗/応答遅延で他ユーザーの情報が表示されないことを確認
+  - 修正（Claude Code、HANDOFF-002 → Codex REVIEW-002でACCEPTED）: `authStore.session`（clearAuthごとに増加）で`petStore`を破棄し、古いセッションで始まった応答は反映しない。ログアウトせずに別アカウントでログインした場合も`LoginPage`がclearAuthして新セッションにする。マイペットは取得失敗を「未登録」と区別して再試行を表示
+- [x] F-02 [P2] 病院詳細・予約枠をhospitalId単位で管理し、古い病院の応答を無視する。切替時は選択をリセットし、現在の病院の取得完了まで進行不可にする。取得エラーと再試行も表示
+  - 修正（同上）: `ReservationPage`は病院IDをkeyに作り直し、病院情報・予約枠をその病院専用のローカル状態で取得（遅れて届いた応答は破棄）。取得完了まで「次へ」不可、失敗時は再試行を表示。共有の`hospitalStore`も最後に要求した病院の応答だけを反映し、別の病院へ切り替えた時点で前のデータを消す（病院詳細・管理者画面にも効く）
+- [x] F-03 [P2] 予約枠とダッシュボードの「次の予約」をJSTの開始日時で判定する。同日でも過去時刻を除外し、確認・送信時にも再確認する
+  - 修正（同上）: `utils/date.ts`の`isUpcoming`（開始がJSTの現在より後。バックエンドのRESERVATION-005と同じ判定）を予約可能日・時間枠・送信前の再確認・ダッシュボードに適用。ダッシュボードは取得失敗を空データと区別して表示
+- [x] Codex実行: `npm run build`（TypeScript/Vite）成功。実ストアを使うNode再現でF-01/F-02を確認（欠陥再現であり受け入れ成功ではない）
+- [x] 修正後のブラウザ回帰確認: アカウント切替、応答順序逆転、ネットワーク失敗、JST当日の過去/未来枠、通常の予約・健康記録・通知・ログアウト
+  - Claude Code実施（2026-10-04 21時台JST、捨てDB）。結果は`HANDOFF-002.md`。Node再現（実ストア）`scripts/fix-acceptance.cjs` 10件も追加。Codexの確認は未実施
+- [ ] Androidエミュレーター/実機でAPI疎通・認証・主要操作を確認（Claudeによるdebug APKビルド成功の報告あり、端末実行は未検証）
+- [ ] iOSビルド・実行確認（syncのみ実施との報告。Windowsではビルド未実施）
+- [x] ペット編集画面（2026-10-21） — `/pets/:petId/edit`。登録画面（SC-005）を編集モードで再利用し、現在値を読み込んでから全項目を送る。性別に「不明」を追加、品種・不妊手術・マイクロチップを含む。一覧に品種を表示
+
+### バックエンドレビュー確定
+- [x] HealthRecord/NotificationのR-01〜R-04・T-01・D-01: Codex `2026-10-03-health-notification/REVIEW-003.md`でACCEPTED（2026-10-04）。209テスト、実PostgreSQLの部分更新/削除/停止/通知/認証予約の検証済み。今回のFrontend承認とは別
 
 ### 認証フロー（2026-08-09 実装、branch: `fix/auth-session-issues`）
 - [x] Protected Route 実装（`components/auth/ProtectedRoute.tsx`。未ログイン → `/login` にリダイレクト）

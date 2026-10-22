@@ -5,6 +5,7 @@ import koh.portfolio.springapi.domain.hospital.port.HospitalScheduleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -33,5 +34,15 @@ public class HospitalSchedulePersistenceAdapter implements HospitalScheduleRepos
     public Optional<HospitalSchedule> findById(Long id) {
         return hospitalScheduleJpaRepository.findById(id)
                 .map(hospitalScheduleMapper::toDomain);
+    }
+
+    @Override
+    public List<LocalDate> findDatesWithSchedules(Long hospitalId, LocalDate from, LocalDate to) {
+        return hospitalScheduleJpaRepository.findDatesWithSchedules(hospitalId, from, to);
+    }
+
+    @Override
+    public void saveAll(List<HospitalSchedule> hospitalSchedules) {
+        hospitalScheduleJpaRepository.saveAll(hospitalSchedules.stream().map(hospitalScheduleMapper::toEntity).toList());
     }
 }

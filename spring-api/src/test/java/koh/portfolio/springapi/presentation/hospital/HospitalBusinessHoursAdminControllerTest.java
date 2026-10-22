@@ -19,10 +19,13 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.DayOfWeek;
 import java.time.LocalTime;
+
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -71,11 +74,11 @@ class HospitalBusinessHoursAdminControllerTest {
                 LocalTime.of(12, 0), LocalTime.of(13, 0), 30
         );
 
-        when(createHospitalBusinessHoursUseCase.execute(eq(1L), any(CreateHospitalBusinessHoursRequest.class)))
+        when(createHospitalBusinessHoursUseCase.execute(eq(99L), eq(1L), any(CreateHospitalBusinessHoursRequest.class)))
                 .thenReturn(new CreateHospitalBusinessHoursResponse(1L));
 
         // when & then
-        mockMvc.perform(post("/api/v1/admin/hospitals/1/business-hours")
+        mockMvc.perform(post("/api/v1/admin/hospitals/1/business-hours").principal(admin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -92,7 +95,7 @@ class HospitalBusinessHoursAdminControllerTest {
         );
 
         // when & then
-        mockMvc.perform(post("/api/v1/admin/hospitals/1/business-hours")
+        mockMvc.perform(post("/api/v1/admin/hospitals/1/business-hours").principal(admin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
@@ -111,13 +114,13 @@ class HospitalBusinessHoursAdminControllerTest {
         );
 
         // when & then
-        mockMvc.perform(patch("/api/v1/admin/hospitals/1/business-hours/10")
+        mockMvc.perform(patch("/api/v1/admin/hospitals/1/business-hours/10").principal(admin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        verify(updateHospitalBusinessHoursUseCase).execute(eq(1L), eq(10L), any(UpdateHospitalBusinessHoursRequest.class));
+        verify(updateHospitalBusinessHoursUseCase).execute(eq(99L), eq(1L), eq(10L), any(UpdateHospitalBusinessHoursRequest.class));
     }
 
     // ------------------------------------------------------------------ delete
@@ -126,10 +129,14 @@ class HospitalBusinessHoursAdminControllerTest {
     @DisplayName("DELETE /api/v1/admin/hospitals/{hospitalId}/business-hours/{businessHoursId} - 営業時間削除成功")
     void delete_hospital_business_hours_success() throws Exception {
         // when & then
-        mockMvc.perform(delete("/api/v1/admin/hospitals/1/business-hours/10"))
+        mockMvc.perform(delete("/api/v1/admin/hospitals/1/business-hours/10").principal(admin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        verify(deleteHospitalBusinessHoursUseCase).execute(1L, 10L);
+        verify(deleteHospitalBusinessHoursUseCase).execute(99L, 1L, 10L);
+    }
+
+    private UsernamePasswordAuthenticationToken admin() {
+        return new UsernamePasswordAuthenticationToken(99L, null, List.of());
     }
 }

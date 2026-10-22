@@ -12,11 +12,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class BlockHospitalScheduleService implements BlockHospitalScheduleUseCase {
+    private final HospitalAccessChecker hospitalAccessChecker;
     private final HospitalScheduleRepository hospitalScheduleRepository;
 
     @Override
     @Transactional
-    public void execute(Long hospitalId, Long scheduleId) {
+    public void execute(Long userId, Long hospitalId, Long scheduleId) {
+        hospitalAccessChecker.checkManageable(userId, hospitalId);
+
         HospitalSchedule schedule = hospitalScheduleRepository.findById(scheduleId)
                 .orElseThrow(HospitalErrorCode.HOSPITAL_SCHEDULE_NOT_FOUND::defaultException);
 

@@ -1,0 +1,1491 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index a17c9fd..2a13d12 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -12,7 +12,7 @@ This is the repository entry point for Codex and the canonical shared project po
+ - Agent-facing files in `.codex/` and `.ai-collab/` use concise English. User-facing replies remain Korean; product design docs and code comments retain the language rules below.
+ - Operational source of truth: `.ai-collab/PROTOCOL.md`. The original research corrections remain in `docs/codex-workflow/01_CORRECTIONS.md` for reference only.
+ 
+-Last updated: 2026-10-21 (branch `feat/spring/vaccination`)
++Last updated: 2026-10-21 (branch `feat/spring/pet-fields-datetime`, stacked on `feat/spring/vaccination`)
+ 
+ ## 1. Areas
+ 
+@@ -134,8 +134,8 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
+ ## 7. DB / Flyway
+ 
+ - DB changes only via Flyway; logical delete (`deleted_at`) is the default.
+-- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile), V9 health_records, V10 notifications, V11 vaccinations (+ FK `notifications.vaccination_id`), V12 `vaccinations.reminded_date` (reminder dedupe marker).
+-- ⚠ Unmerged `feat/spring/pet-fields` also uses **V4** (`V4__alter_pets_add_columns.sql` — breed/neutered/microchip_number). Renumber one side at merge. New migrations start at **V13**; check every branch for number collisions before numbering.
++- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile), V9 health_records, V10 notifications, V11 vaccinations (+ FK `notifications.vaccination_id`), V12 `vaccinations.reminded_date` (reminder dedupe marker), V13 pets breed/neutered/microchip_number (the former pet-fields V4, renumbered at merge), V14 `pets.gender` nullable (matches docs/06).
++- New migrations start at **V15**; check every branch for number collisions before numbering.
+ - ⚠ V8 fails on an existing database that already holds duplicate active reservations for one schedule; clean those rows before applying.
+ - Not created yet: hospital_admins (definition in docs/06). Because `hospital_admins` is missing, admin APIs cannot verify "own hospital" — hospital-affiliation checks are intentionally skipped for now.
+ 
+@@ -147,7 +147,7 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
+ - Principal is `Long`: use `new UsernamePasswordAuthenticationToken(1L, null, authorities)` — `.with(user(...))` fails.
+ - Most unit tests mock repositories. H2 **is** available for `@DataJpaTest` (`application-test.yml`, `MODE=PostgreSQL`, `ddl-auto=create-drop`, Flyway disabled) — see `RefreshTokenPersistenceAdapterTest`; Testcontainers is not introduced.
+ - Mocked repositories prove neither real SQL nor concurrency. Null-tolerant `@Query` bugs escape them (docs/12 §3-10) and so do races (docs/12 §3-11). No PostgreSQL concurrency test exists yet.
+-- Verify: `./gradlew clean test` in `spring-api/` (256 green as of 2026-10-21).
++- Verify: `./gradlew clean test` in `spring-api/` (261 green as of 2026-10-21).
+ 
+ ## 9. Environment
+ 
+@@ -167,6 +167,8 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
+ 
+ **Vaccination (2026-10-05, branch `feat/spring/vaccination`, stacked on `feat/react-api-integration`)**: register/list/complete/cancel/reschedule/delete APIs + daily 09:00 JST reminder Scheduler creating VACCINATION notifications (dedupe: `reminded_date` claimed by a conditional UPDATE per scheduled date, cleared on reschedule). Task record `.ai-collab/tasks/2026-10-05-vaccination/`; Codex REVIEW-001 found R-01..R-04 (stale pet rows, failed load shown as empty, rescheduled reminder lost to a timestamp race, copy); fixed in HANDOFF-002 and ACCEPTED in REVIEW-002 (2026-10-21). Frontend: SC-016 vaccination screen and the SC-006 upcoming-vaccination panel (2026-10-21).
+ 
++**Pet fields + datetime format (2026-10-21, branch `feat/spring/pet-fields-datetime`)**: merged the July pet-fields branch (breed/neutered/microchip, V13) and added those columns to the conditional `updateProfile`; pet update stays a full replacement (user decision, docs/07 §5-4); `pets.gender` made nullable (V14) and request validation added for name/breed/weight lengths; all response `LocalDateTime`s serialize as JST with offset (`LocalDateTimeJsonSerializer`, docs/07 §2-7, user decision). Frontend: pet edit screen (`/pets/:petId/edit`, reuses SC-005), breed on the pet list, 「不明」 gender. Task record `.ai-collab/tasks/2026-10-21-pet-fields-datetime/`.
++
+ **Frontend review (2026-10-04)**: API wiring is implemented, but review is CHANGES_REQUESTED in `.ai-collab/tasks/2026-10-04-frontend-api-integration/REVIEW-001.md`: F-01 private pet cache survives account changes, F-02 stale hospital schedules can overwrite the current hospital, F-03 same-day past slots remain selectable. Codex verified the frontend build and reproduced F-01/F-02 with the actual stores. Browser/Capacitor evidence remains implementer-reported; native runtime verification is pending in TODO.md. Codex owns only this review and the user-requested TODO/status update; application fixes remain with Claude. Claude fixed F-01..F-03 on 2026-10-04 (session-scoped pet store reset/guard, hospital-keyed reservation data with latest-response-wins hospital store, JST start-time rule `isUpcoming`); response in `HANDOFF-002.md`, ACCEPTED in `REVIEW-002.md` (2026-10-04). Browser and APK evidence there is implementer-reported.
+ 
+ **Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · HealthRecord CRUD · Notification (list/read + generation on reservation approve/reject/complete, 2026-10-03) · Vaccination (register/list/complete/reschedule + reminder Scheduler, 2026-10-05) · Frontend all screens SC-001〜015 (auth·pet·hospital·reservation·health record·notification·dashboard·logout wired to real API, 2026-10-04) · ProtectedRoute + role guards · token restore on reload.
+@@ -181,7 +183,7 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
+ 
+ **Not started**: schedule auto-generation Scheduler (from `hospital_business_hours`) · django-api entirely · frontend admin reservation screen (needs an admin reservation list API that neither Spring nor docs/07 defines — user decision pending) and admin user screen (backend not built).
+ 
+-**Unmerged branches**: `feat/spring/pet-fields` (pet columns + docs 06/07 updates); verify current unmerged set with `git branch --all` and `git log` before relying on this line — not re-audited in this update.
++**Unmerged branches**: `feat/spring/pet-fields` was merged into `feat/spring/pet-fields-datetime` on 2026-10-21 (migration renumbered to V13). Feature branches are stacked and await user PRs: `feat/react-api-integration` → `feat/spring/vaccination` → `feat/spring/pet-fields-datetime`. Verify with `git branch --all` and `git log`.
+ 
+ ## 11. Workflow rules
+ 
+@@ -208,4 +210,4 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
+ | 12 Trouble_Shooting | newly solved issues |
+ | 13 Retrospective | as needed |
+ 
+-Known remaining gaps: docs keep Status "Draft" by design; pets breed/neutered/microchip_number columns exist only on unmerged `feat/spring/pet-fields` (docs/06 §8 note).
++Known remaining gaps: docs keep Status "Draft" by design; `pets.image_url` is designed but not implemented (image upload policy undecided, docs/06 §8 note).
+diff --git a/TODO.md b/TODO.md
+index 9d79bbb..939dddc 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -74,13 +74,14 @@
+ 
+ ## 🚧 未実装 — Spring API
+ 
+-### Pet テーブル不足カラム追加（実装済み・未マージ — branch: `feat/spring/pet-fields`）
+-> 2026-07-05 実装済み。`breed` は自由入力文字列で確定（マスタテーブル無し）。**develop へのマージ待ち**
++### Pet テーブル不足カラム追加（2026-07-05 実装、2026-10-21 マージ — branch: `feat/spring/pet-fields` → `feat/spring/pet-fields-datetime`）
++> `breed` は自由入力文字列で確定（マスタテーブル無し）。2026-10-21に現行ブランチへマージし、migration番号をV13へ変更
+ 
+-- [x] `V4__alter_pets_add_columns.sql` — `breed`, `neutered`, `microchip_number` カラム追加
++- [x] `V13__alter_pets_add_columns.sql`（旧 `V4__alter_pets_add_columns.sql`、V4はhospitalsが使用中のためリナンバー） — `breed`, `neutered`, `microchip_number` カラム追加
+ - [x] `PetEntity` / `Pet` ドメイン / `PetMapper` / DTO / Service 反映
+ - [x] docs/06_ERD・07_API_Design 更新（同ブランチ内）
+-- [ ] **マージ時の必須作業**: migration 番号衝突の解消 — 現ブランチの `V4` は hospitals が使用中のため、`V4__alter_pets_add_columns.sql` を空き番号（V13 以降。V11・V12 は vaccinations が使用）へリナンバーする
++- [x] マージ時の必須作業: migration番号衝突の解消（V13へリナンバー）、条件付きUPDATE `updateProfile` に3列を追加（足し忘れると更新が黙って失われる）
++- [x] マージ時に発見・修正: `pets.gender` がV3でNOT NULLだったため性別省略の登録が500 → `V14__make_pet_gender_nullable.sql`。名前50・品種100文字、体重の範囲・桁数のバリデーションを追加（`docs/12` §3-15）
+ 
+ ### Hospital API（branch: `feat/spring/hospital`）
+ - [x] `Hospital` / `HospitalSchedule` ドメイン・エンティティ・テーブル作成
+@@ -185,9 +186,9 @@
+ - [x] R-04 [P2] 同時実行の部分PATCHが未指定項目を古い値で戻す → 健康記録の更新は行ロック付きで読み取り（`findByIdForUpdate`）、別PATCH・論理削除と直列化
+ - [x] T-01 [P3] スモークの記録日アサーションがUTC日付と比較していた → サーバー時刻（Asia/Tokyo）で比較し、日付境界をまたぐ場合も許容
+ - [x] 基準タイムゾーンをJST（Asia/Tokyo）に統一（ユーザー指示、日本向けサービスのため）: Spring APIは`main`でJVM既定を固定、`ServerTime`をAsia/SeoulからAsia/Tokyoへ、フロントの「今日」をUTC計算（`toISOString()`）からJSTへ（`docs/07` §2-7、`docs/12` §3-13）
+-- [ ] **要判断（既存の文書・実装の食い違い）**: `docs/07` §2-7 の例はオフセット付き（`2026-05-17T10:00:00+09:00`）だが、APIは`LocalDateTime`をオフセットなし（`2026-05-17T10:00:00`）で返している。オフセットを付けるか、文書をオフセットなし（JST）に直すかはユーザー判断
++- [x] ~~要判断~~ → ユーザー決定（2026-10-21）: 応答の日時にJSTのオフセットを付ける。`LocalDateTimeJsonSerializer`（`@JsonComponent`）で全応答の`LocalDateTime`を`2026-05-17T10:00:00+09:00`形式（秒単位）に統一（`docs/07` §2-7）
+ - 検証: `./gradlew clean test` 209件green。実PostgreSQLでR-04受け入れ3件（weightのみ・空のPATCH・別項目の2PATCH同時）、REVIEW-001受け入れ10件、スモーク14件（00:43 KST＝UTC日付が前日の時間帯）、通知チェック4件、認証/予約e2e 12件が全通過
+-- [ ] **要判断（既存の文書・実装の食い違い）**: `docs/07_API_Design` §5-4 はペット更新を「部分更新」としているが、実装は`birthDate`/`weight`省略時にNULLで上書きする全体置換。フロントは常にフォーム全体を送るため実害は出ていない。実装を部分更新に揃えるか、文書を全体置換に直すかはユーザー判断（今回は変更していない）
++- [x] ~~要判断~~ → ユーザー決定（2026-10-21）: ペット更新は全項目置換のまま、`docs/07` §5-4を全体置換の説明に修正。編集画面は現在値を読み込んでから全項目を送る
+ 
+ **検証（2026-10-03）**: テスト31件追加で`./gradlew clean test` 192件green。実PostgreSQL（捨てDB `daipetto_hn`）でV9/V10適用・`ddl-auto: validate`通過を確認し、API 14項目のスモークも全通過（`.ai-collab/tasks/2026-10-03-health-notification/scripts/smoke-health-notification.mjs`）
+ 
+@@ -260,7 +261,7 @@
+   - Claude Code実施（2026-10-04 21時台JST、捨てDB）。結果は`HANDOFF-002.md`。Node再現（実ストア）`scripts/fix-acceptance.cjs` 10件も追加。Codexの確認は未実施
+ - [ ] Androidエミュレーター/実機でAPI疎通・認証・主要操作を確認（Claudeによるdebug APKビルド成功の報告あり、端末実行は未検証）
+ - [ ] iOSビルド・実行確認（syncのみ実施との報告。Windowsではビルド未実施）
+-- [ ] ペット編集画面と`PetUpdateRequest`の`petType`必須項目を対応する（バックエンド更新APIは実装済み、現在の画面接続範囲外）
++- [x] ペット編集画面（2026-10-21） — `/pets/:petId/edit`。登録画面（SC-005）を編集モードで再利用し、現在値を読み込んでから全項目を送る。性別に「不明」を追加、品種・不妊手術・マイクロチップを含む。一覧に品種を表示
+ 
+ ### バックエンドレビュー確定
+ - [x] HealthRecord/NotificationのR-01〜R-04・T-01・D-01: Codex `2026-10-03-health-notification/REVIEW-003.md`でACCEPTED（2026-10-04）。209テスト、実PostgreSQLの部分更新/削除/停止/通知/認証予約の検証済み。今回のFrontend承認とは別
+diff --git a/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md b/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md
+index 74085da..1dba4ba 100644
+--- a/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md	
++++ b/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md	
+@@ -219,11 +219,14 @@
+ 
+ | **項目** | **条件** |
+ | --- | --- |
+-| petName | 必須 |
++| petName | 必須（50文字以内） |
+ | petType | 必須 |
+ | birthDate | 任意 |
+ | gender | 任意 |
+-| weight | 任意 |
++| weight | 任意（0以上、整数部3桁・小数部2桁まで） |
++| breed | 任意（100文字以内、自由入力） |
++| neutered | 任意（既定false） |
++| microchipNumber | 任意（15文字以内） |
+ 
+ ---
+ 
+@@ -252,7 +255,7 @@
+ 
+ | **項目** | **条件** |
+ | --- | --- |
+-| weight | 任意 |
++| weight | 任意（0以上、整数部3桁・小数部2桁まで） |
+ | memo | 任意 |
+ | symptom | 任意 |
+ 
+diff --git a/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md b/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md
+index b178a38..36ab250 100644
+--- a/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md	
++++ b/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md	
+@@ -347,10 +347,15 @@ flowchart TB
+ | --- | --- |
+ | ペット名 | ○ |
+ | 種類 | ○ |
++| 品種 | × |
+ | 生年月日 | × |
+-| 性別 | × |
++| 性別 | ×（オス / メス / 不明） |
+ | 体重 | × |
+-| 画像 | × |
++| 不妊手術の有無 | ×（既定: なし） |
++| マイクロチップ番号 | × |
++| 画像 | ×（未実装、画像アップロード方針未決定） |
++
++同じ画面をペット情報の編集にも使う（`/pets/:petId/edit`、SC-006の「編集」から遷移）。編集時は現在の値を読み込んでから表示し、保存は全項目の置き換えになる（`07_API_Design` §5-4）。
+ 
+ ---
+ 
+@@ -358,8 +363,10 @@ flowchart TB
+ 
+ | **項目** | **条件** |
+ | --- | --- |
+-| ペット名 | 最大20文字 |
+-| 体重 | 数値のみ |
++| ペット名 | 最大50文字（`pets.name` VARCHAR(50)） |
++| 品種 | 最大100文字 |
++| 体重 | 0以上、整数部3桁・小数部2桁まで |
++| マイクロチップ番号 | 最大15文字 |
+ 
+ ---
+ 
+@@ -393,7 +400,7 @@ flowchart TB
+ 
+ | **操作** | **内容** |
+ | --- | --- |
+-| 編集 | ペット情報修正 |
++| 編集 | ペット情報修正（SC-005の画面を編集モードで使用） |
+ | 健康記録 | 健康記録画面遷移 |
+ | 予約 | 病院予約画面遷移 |
+ | ワクチン予定 | ワクチン予定画面（SC-016）遷移。詳細画面には直近のSCHEDULED（最大3件）を表示し、取得失敗時は「予定なし」と区別してエラーと再試行を表示 |
+diff --git a/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md b/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md
+index 7fb0c8c..8b6f475 100644
+--- a/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md	
++++ b/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md	
+@@ -76,7 +76,9 @@ erDiagram
+         date birth_date
+         varchar gender
+         decimal weight
+-        varchar image_url
++        varchar breed
++        boolean neutered
++        varchar microchip_number
+         timestamp created_at
+         timestamp updated_at
+         timestamp deleted_at
+@@ -184,7 +186,7 @@ erDiagram
+ | --- | --- | --- | --- |
+ | ユーザー | users | システム利用者情報 | V1 |
+ | リフレッシュトークン | refresh_tokens | Refresh Token管理 | V2 |
+-| ペット | pets | ユーザーが飼育するペット情報 | V3 |
++| ペット | pets | ユーザーが飼育するペット情報 | V3（breed・neutered・microchip_numberはV13、genderのNULL許可はV14） |
+ | 病院 | hospitals | 動物病院情報 | V4 |
+ | 病院営業時間 | hospital_business_hours | 病院の曜日別デフォルト営業時間（予約枠自動生成の元データ） | V5 |
+ | 病院予約枠 | hospital_schedules | 病院の予約可能時間 | V6 |
+@@ -271,13 +273,23 @@ Refresh Tokenを管理する。
+ | ペット名 | name | VARCHAR(50) |  |  | NO |  |  | ペット名 |
+ | ペット種別 | pet_type | VARCHAR(30) |  |  | NO |  |  | 犬・猫など |
+ | 生年月日 | birth_date | DATE |  |  | YES |  | NULL | 生年月日 |
+-| 性別 | gender | VARCHAR(20) |  |  | YES |  | NULL | 性別 |
++| 性別 | gender | VARCHAR(10) |  |  | YES |  | NULL | 性別（MALE / FEMALE、未設定は不明）。V3ではNOT NULLだったが設計どおり任意項目にした（V14） |
+ | 体重 | weight | DECIMAL(5,2) |  |  | YES |  | NULL | 体重 |
+-| 画像URL | image_url | VARCHAR(500) |  |  | YES |  | NULL | ペット画像URL |
++| 品種 | breed | VARCHAR(100) |  |  | YES |  | NULL | 品種名（自由入力、マスタ管理なし） |
++| 去勢・避妊済み | neutered | BOOLEAN |  |  | NO |  | false | 去勢・避妊手術済みフラグ |
++| マイクロチップ番号 | microchip_number | VARCHAR(15) |  |  | YES |  | NULL | マイクロチップ番号 |
+ | 作成日時 | created_at | TIMESTAMP |  |  | NO |  | CURRENT_TIMESTAMP | 作成日時 |
+ | 更新日時 | updated_at | TIMESTAMP |  |  | NO |  | CURRENT_TIMESTAMP | 更新日時 |
+ | 論理削除日時 | deleted_at | TIMESTAMP |  |  | YES |  | NULL | 論理削除日時 |
+ 
++`breed`は現時点では自由入力の文字列として保存する（マスタテーブル・承認フローは導入しない）。品種統計を厳密に取りたくなった場合は、将来的に別テーブルへの移行を検討する。
++
++> **未実装カラム（TODO.md参照）:**
++>
++> | **論理名** | **物理名** | **Type** | **Null** | **説明** | **状態** |
++> | --- | --- | --- | --- | --- | --- |
++> | 画像URL | image_url | VARCHAR(500) | YES | ペット画像URL | 画像アップロード方針未決定（S3 vs ローカルストレージ） |
++
+ ---
+ 
+ # **9. hospitals**
+diff --git a/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md b/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md
+index fdc8ea1..9d4cdc8 100644
+--- a/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md	
++++ b/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md	
+@@ -118,6 +118,8 @@ GET /api/v1/pets?page=0&size=10
+ 
+ ISO-8601形式を利用する。
+ 
++応答の日時（`createdAt`など）は**JSTのオフセット付き・秒単位**で返す（例: `2026-05-17T10:00:00+09:00`、`LocalDateTimeJsonSerializer`）。日付のみの項目（`recordedDate`・`scheduledDate`など）は`2026-05-17`、時刻のみの項目（`startTime`など）は`10:00:00`の形式で、オフセットを付けない（どちらもJSTの日付・時刻として扱う）。
++
+ 基準タイムゾーンは**JST（Asia/Tokyo、UTC+9）**とする（日本向けサービスのため）。Spring APIは起動時にJVMの既定タイムゾーンをJSTに固定し、実行環境（UTCのコンテナ等）に依存しない。`recordedDate`省略時の「当日」や過去日時の判定もJSTで行う。フロントエンドも「今日」をJSTで計算する。
+ 
+ ---
+@@ -368,7 +370,8 @@ GET /api/v1/pets
+       "id": 1,
+       "name": "Momo",
+       "petType": "CAT",
+-      "weight": 4.5
++      "weight": 4.5,
++      "breed": "Scottish Fold"
+     }
+   ]
+ }
+@@ -386,6 +389,28 @@ GET /api/v1/pets/{petId}
+ 
+ ---
+ 
++## **Response**
++
++```json
++{
++  "success": true,
++  "data": {
++    "id": 1,
++    "name": "Momo",
++    "petType": "CAT",
++    "birthDate": "2023-01-01",
++    "gender": "FEMALE",
++    "weight": 4.5,
++    "breed": "Scottish Fold",
++    "neutered": true,
++    "microchipNumber": "123456789012345",
++    "createdAt": "2026-05-17T10:00:00+09:00"
++  }
++}
++```
++
++---
++
+ ## **異常系（5-2・5-4・5-5共通）**
+ 
+ | **Code** | **内容** |
+@@ -413,10 +438,15 @@ POST /api/v1/pets
+   "petType": "CAT",
+   "birthDate": "2023-01-01",
+   "gender": "FEMALE",
+-  "weight": 4.5
++  "weight": 4.5,
++  "breed": "Scottish Fold",
++  "neutered": true,
++  "microchipNumber": "123456789012345"
+ }
+ ```
+ 
++`name`・`petType`は必須、その他は任意項目。`name`は50文字以内、`weight`は0以上・整数部3桁・小数部2桁まで（`DECIMAL(5,2)`）、`breed`は100文字以内の自由入力文字列（マスタ管理なし）、`microchipNumber`は15文字以内、`neutered`は省略時`false`、`gender`は省略時に未設定（不明）。違反はVALIDATION-001。
++
+ ---
+ 
+ ## **Response**
+@@ -442,7 +472,7 @@ PATCH /api/v1/pets/{petId}
+ 
+ ## **説明**
+ 
+-部分更新を行う。
++**全項目の置き換え**を行う。Requestの形式・必須項目・バリデーションは5-3と同じ。省略した任意項目は未設定（`birthDate`・`gender`・`weight`・`breed`・`microchipNumber`はNULL、`neutered`は`false`）になるため、クライアントは常に全項目を送る（画面はSC-005の編集モードで現在値を読み込んでから送信する）。他の更新系に合わせてHTTPメソッドはPATCHとしている。論理削除済みのペットはPET-001。
+ 
+ ---
+ 
+@@ -1556,7 +1586,7 @@ GET /api/v1/notifications
+       "title": "予約が承認されました",
+       "message": "ご予約が承認されました。予約内容をご確認ください。",
+       "isRead": false,
+-      "createdAt": "2026-05-20T10:00:00"
++      "createdAt": "2026-05-20T10:00:00+09:00"
+     }
+   ]
+ }
+diff --git a/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md b/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md
+index 2e182fd..0686289 100644
+--- a/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md	
++++ b/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md	
+@@ -157,6 +157,17 @@ flowchart TB
+ | PET-T003 | 他ユーザーのペット詳細取得 | 403 |
+ | PET-T004 | ペット更新 | 更新成功 |
+ | PET-T005 | ペット削除 | deleted_at設定 |
++| PET-T006 | 名前51文字・品種101文字・負の体重・桁数超過の体重 | Validation Error（VALIDATION-001） |
++| PET-T007 | 性別を省略した登録 | 登録成功（性別は任意項目、V14でNULL許可） |
++| PET-T008 | 品種・不妊手術・マイクロチップを含む更新 | 全項目が置き換わり、論理削除済みのペットは更新されない（PET-001） |
++
++> PET-T006・T007は`PetControllerTest`、PET-T008は`PetServiceTest`（モック）と`PetPersistenceAdapterTest`（H2で条件付きUPDATEの列を確認）で検証する。
++
++### **共通（日時形式）**
++
++| **Test ID** | **観点** | **期待結果** |
++| --- | --- | --- |
++| COMMON-T001 | 応答の日時 | JSTのオフセット付き・秒単位（`2026-05-20T10:00:30+09:00`）。`NotificationControllerTest`で検証 |
+ 
+ ---
+ 
+diff --git a/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md b/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md
+index 2e28015..ed48408 100644
+--- a/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md	
++++ b/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md	
+@@ -651,6 +651,32 @@ Schedulerが対象を抽出した後、通知を作る前に飼い主が予定
+ 
+ ---
+ 
++# **3-15. 性別を省略したペット登録が500になる（2026-10-21 pet-fieldsマージ時に発見）**
++
++## **症状**
++
++`POST /api/v1/pets`で`gender`を省略すると、DB制約違反でSERVER-001（500）が返る。名前51文字以上・品種101文字以上・桁数超過の体重も同様に500になっていた。
++
++---
++
++## **原因**
++
++設計書（`02_Requirement_Definition`・`05_Screen_Design`・`06_ERD`）では性別は任意項目だが、`V3__create_pets.sql`は`gender ... NOT NULL`で作られていた。リクエストDTOにも列の長さ・桁数に対応するバリデーションが無く、不正な値がDBまで届いていた。
++
++---
++
++## **対応方法**
++
++`V14__make_pet_gender_nullable.sql`で設計に合わせてNULLを許可。`CreatePetRequest`・`UpdatePetRequest`に`@Size(max = 50)`（名前）・`@Size(max = 100)`（品種）・`@PositiveOrZero @Digits(integer = 3, fraction = 2)`（体重）を付け、400（VALIDATION-001）で返す。画面には性別「不明」の選択肢を追加。
++
++---
++
++## **教訓**
++
++migrationを書いたら、`06_ERD`のNULL可否・型と1列ずつ突き合わせる。リクエストDTOのバリデーションは列の長さ・桁数から決める（DBの制約違反は500になり、利用者には原因が分からない）。
++
++---
++
+ # **4. Django関連**
+ 
+ # **4-1. Python Version不一致**
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 5f516bd..475da5f 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -81,6 +81,7 @@ export default function App() {
+           <Route element={<DetailLayout />}>
+             <Route path="/pets/new" element={<PetRegisterPage />} />
+             <Route path="/pets/:petId" element={<PetDetailPage />} />
++            <Route path="/pets/:petId/edit" element={<PetRegisterPage />} />
+             <Route path="/pets/:petId/health" element={<HealthRecordPage />} />
+             <Route path="/pets/:petId/vaccinations" element={<VaccinationPage />} />
+             <Route path="/hospitals/:hospitalId" element={<HospitalDetailPage />} />
+diff --git a/frontend/src/api/pet.ts b/frontend/src/api/pet.ts
+index f86f2c2..b7348b3 100644
+--- a/frontend/src/api/pet.ts
++++ b/frontend/src/api/pet.ts
+@@ -22,7 +22,7 @@ export const petApi = {
+     })),
+ 
+   update: (petId: number, body: PetUpdateRequest) =>
+-    apiClient.patch<ApiResponse<null>>(`/api/v1/pets/${petId}`, body).then((r) => r.data),
++    apiClient.patch<ApiResponse<null>>(`/api/v1/pets/${petId}`, toApiBody(body)).then((r) => r.data),
+ 
+   remove: (petId: number) =>
+     apiClient.delete<ApiResponse<null>>(`/api/v1/pets/${petId}`).then((r) => r.data),
+diff --git a/frontend/src/components/layout/DetailLayout.tsx b/frontend/src/components/layout/DetailLayout.tsx
+index 8ca9804..48ed02f 100644
+--- a/frontend/src/components/layout/DetailLayout.tsx
++++ b/frontend/src/components/layout/DetailLayout.tsx
+@@ -12,6 +12,7 @@ function getTitle(pathname: string): string {
+   if (titleMap[pathname]) return titleMap[pathname]
+   if (pathname.includes('/health')) return '健康記録'
+   if (pathname.endsWith('/vaccinations')) return 'ワクチン予定'
++  if (pathname.endsWith('/edit')) return 'ペット情報の編集'
+   if (pathname.includes('/reserve')) return '予約する'
+   if (pathname.includes('/hospitals/')) return '病院詳細'
+   if (pathname.includes('/pets/')) return 'ペット詳細'
+diff --git a/frontend/src/pages/MyPetPage.tsx b/frontend/src/pages/MyPetPage.tsx
+index e4c83fc..e782659 100644
+--- a/frontend/src/pages/MyPetPage.tsx
++++ b/frontend/src/pages/MyPetPage.tsx
+@@ -78,7 +78,7 @@ export default function MyPetPage() {
+                   <span className="material-symbols-outlined text-neutral-gray-600">chevron_right</span>
+                 </div>
+                 <p className="font-body-md text-body-md text-neutral-gray-600 mt-0.5 truncate">
+-                  {PET_SPECIES_LABEL[pet.species] ?? '—'}
++                  {PET_SPECIES_LABEL[pet.species] ?? '—'}{pet.breed ? ` · ${pet.breed}` : ''}
+                 </p>
+                 <div className="flex items-center gap-2 mt-3">
+                   <span className="inline-flex items-center gap-1 text-primary border border-primary/20 bg-surface-bright font-label-md text-label-md px-2.5 py-1 rounded-full">
+diff --git a/frontend/src/pages/PetDetailPage.tsx b/frontend/src/pages/PetDetailPage.tsx
+index f29ee00..5b7e770 100644
+--- a/frontend/src/pages/PetDetailPage.tsx
++++ b/frontend/src/pages/PetDetailPage.tsx
+@@ -60,7 +60,7 @@ export default function PetDetailPage() {
+         <div className="text-center">
+           <h1 className="font-headline-lg-mobile text-headline-lg-mobile text-neutral-gray-900">{pet.name}</h1>
+           <p className="font-body-lg text-body-lg text-neutral-gray-600 mt-1">
+-            {pet.breed ?? '—'} · {pet.gender === 'MALE' ? 'オス' : 'メス'}
++            {pet.breed ?? '—'} · {pet.gender === 'MALE' ? 'オス' : pet.gender === 'FEMALE' ? 'メス' : '—'}
+           </p>
+         </div>
+         <div className="flex gap-sm flex-wrap justify-center">
+@@ -81,10 +81,10 @@ export default function PetDetailPage() {
+         <section className="bg-surface-container-lowest rounded-[16px] border border-neutral-gray-100 overflow-hidden shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
+           <div className="flex items-center justify-between px-container-margin py-md border-b border-neutral-gray-100">
+             <h2 className="font-headline-md text-headline-md text-neutral-gray-900">基本情報</h2>
+-            <button className="flex items-center gap-1 text-primary font-label-md text-label-md">
++            <Link to={`/pets/${petId}/edit`} className="flex items-center gap-1 text-primary font-label-md text-label-md">
+               <span className="material-symbols-outlined text-[16px]">edit</span>
+               編集
+-            </button>
++            </Link>
+           </div>
+           <div className="divide-y divide-neutral-gray-100">
+             {[
+diff --git a/frontend/src/pages/PetRegisterPage.tsx b/frontend/src/pages/PetRegisterPage.tsx
+index 5303471..1ee00d9 100644
+--- a/frontend/src/pages/PetRegisterPage.tsx
++++ b/frontend/src/pages/PetRegisterPage.tsx
+@@ -1,55 +1,119 @@
+-import React, { useState, FormEvent } from 'react'
+-import { useNavigate } from 'react-router-dom'
++import React, { useEffect, useState, FormEvent } from 'react'
++import { useNavigate, useParams } from 'react-router-dom'
+ import { FaDog, FaCat, FaPaw } from 'react-icons/fa6'
+ import { petApi } from '../api/pet'
+ import { extractErrorMessage } from '../api/client'
+ import { usePetStore } from '../stores/petStore'
+ import type { PetSpecies, PetGender } from '../types'
+ 
++// /pets/new は新規登録、/pets/:petId/edit は編集（同じフォームを使う）。編集はペットごとに作り直す
+ export default function PetRegisterPage() {
++  const { petId } = useParams()
++  return <PetForm key={petId ?? 'new'} petId={petId ? Number(petId) : undefined} />
++}
++
++function PetForm({ petId }: { petId?: number }) {
++  const isEdit = petId !== undefined
+   const navigate = useNavigate()
+   const fetchPets = usePetStore((s) => s.fetchPets)
+   const [species, setSpecies] = useState<PetSpecies>('DOG')
+-  const [gender, setGender] = useState<PetGender>('MALE')
++  // null = 不明（性別は任意項目）
++  const [gender, setGender] = useState<PetGender | null>('MALE')
+   const [name, setName] = useState('')
+   const [breed, setBreed] = useState('')
+   const [birthDate, setBirthDate] = useState('')
+   const [weight, setWeight] = useState('')
+   const [microchip, setMicrochip] = useState('')
+   const [neutered, setNeutered] = useState(false)
++  // 編集時は現在の値を読み込むまでフォームを出さない（空のまま保存すると全項目が置き換わるため）
++  const [isPrefilling, setIsPrefilling] = useState(isEdit)
++  const [prefillFailed, setPrefillFailed] = useState(false)
+   const [isLoading, setIsLoading] = useState(false)
+   const [isSuccess, setIsSuccess] = useState(false)
+   const [error, setError] = useState<string | null>(null)
+ 
++  useEffect(() => {
++    if (!isEdit) return
++    let active = true
++    petApi
++      .getDetail(petId)
++      .then((res) => {
++        if (!active) return
++        const pet = res.data
++        if (!res.success || !pet) {
++          setPrefillFailed(true)
++          return
++        }
++        setSpecies(pet.species)
++        setGender(pet.gender ?? null)
++        setName(pet.name)
++        setBreed(pet.breed ?? '')
++        setBirthDate(pet.birthDate ?? '')
++        setWeight(pet.weight != null ? String(pet.weight) : '')
++        setMicrochip(pet.microchipNumber ?? '')
++        setNeutered(pet.neutered)
++      })
++      .catch((err) => {
++        if (!active) return
++        setError(extractErrorMessage(err, 'ペット情報の取得に失敗しました。'))
++        setPrefillFailed(true)
++      })
++      .finally(() => active && setIsPrefilling(false))
++    return () => {
++      active = false
++    }
++  }, [isEdit, petId])
++
+   const handleSubmit = async (e: FormEvent) => {
+     e.preventDefault()
+     setError(null)
+     setIsLoading(true)
++    // 更新は全項目置換（docs/07 §5-4）。空欄の任意項目は未設定として送る
++    const body = {
++      name,
++      species,
++      breed: breed || undefined,
++      birthDate: birthDate || undefined,
++      gender: gender ?? undefined,
++      weight: weight ? parseFloat(weight) : undefined,
++      neutered,
++      microchipNumber: microchip || undefined,
++    }
+     try {
+-      const res = await petApi.create({
+-        name,
+-        species,
+-        breed: breed || undefined,
+-        birthDate: birthDate || undefined,
+-        gender,
+-        weight: weight ? parseFloat(weight) : undefined,
+-        neutered,
+-        microchipNumber: microchip || undefined,
+-      })
++      const res = isEdit ? await petApi.update(petId, body) : await petApi.create(body)
+       if (!res.success) {
+-        setError(res.message ?? 'ペットの登録に失敗しました。')
++        setError(res.message ?? (isEdit ? 'ペット情報の保存に失敗しました。' : 'ペットの登録に失敗しました。'))
+         return
+       }
+       setIsSuccess(true)
+       await fetchPets()
+-      setTimeout(() => navigate('/pets'), 2000)
++      setTimeout(() => navigate(isEdit ? `/pets/${petId}` : '/pets'), isEdit ? 800 : 2000)
+     } catch (err: unknown) {
+-      setError(extractErrorMessage(err, 'ペットの登録に失敗しました。もう一度お試しください。'))
++      setError(extractErrorMessage(err, isEdit ? 'ペット情報の保存に失敗しました。' : 'ペットの登録に失敗しました。もう一度お試しください。'))
+     } finally {
+       setIsLoading(false)
+     }
+   }
+ 
++  if (isPrefilling) {
++    return (
++      <div className="flex items-center justify-center py-xl">
++        <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
++      </div>
++    )
++  }
++
++  if (prefillFailed) {
++    return (
++      <div className="px-container-margin py-lg flex flex-col gap-md items-center">
++        <p className="font-body-md text-body-md text-error-red">{error ?? 'ペット情報の取得に失敗しました。'}</p>
++        <button type="button" onClick={() => navigate(-1)} className="font-button-text text-button-text text-primary px-4 py-2 rounded-xl border border-primary/20">
++          戻る
++        </button>
++      </div>
++    )
++  }
++
+   return (
+     <form onSubmit={handleSubmit} className="px-container-margin py-lg pb-xl flex flex-col gap-lg">
+       {error && (
+@@ -109,6 +173,7 @@ export default function PetRegisterPage() {
+             value={name}
+             onChange={(e) => setName(e.target.value)}
+             placeholder="ペットの名前"
++            maxLength={50}
+             required
+             className="w-full h-[48px] px-sm bg-neutral-gray-50 border border-neutral-gray-100 rounded-lg font-body-md text-body-md text-on-surface placeholder:text-neutral-gray-600 focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all"
+           />
+@@ -121,6 +186,7 @@ export default function PetRegisterPage() {
+             value={breed}
+             onChange={(e) => setBreed(e.target.value)}
+             placeholder="例：ゴールデン・レトリバー"
++            maxLength={100}
+             className="w-full h-[48px] px-sm bg-neutral-gray-50 border border-neutral-gray-100 rounded-lg font-body-md text-body-md text-on-surface placeholder:text-neutral-gray-600 focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all"
+           />
+         </div>
+@@ -137,13 +203,14 @@ export default function PetRegisterPage() {
+ 
+         <div className="flex flex-col gap-xs">
+           <label className="font-label-md text-label-md text-on-surface-variant">性別</label>
+-          <div className="grid grid-cols-2 gap-sm">
++          <div className="grid grid-cols-3 gap-sm">
+             {([
+               { value: 'MALE', label: 'オス' },
+               { value: 'FEMALE', label: 'メス' },
+-            ] as { value: PetGender; label: string }[]).map(({ value, label }) => (
++              { value: null, label: '不明' },
++            ] as { value: PetGender | null; label: string }[]).map(({ value, label }) => (
+               <button
+-                key={value}
++                key={value ?? 'UNKNOWN'}
+                 type="button"
+                 onClick={() => setGender(value)}
+                 className={`flex items-center justify-center gap-2 h-[48px] rounded-lg border-2 font-button-text text-button-text transition-all ${
+@@ -152,7 +219,7 @@ export default function PetRegisterPage() {
+                     : 'border-neutral-gray-100 bg-surface-container-lowest text-neutral-gray-600'
+                 }`}
+               >
+-                <span className="material-symbols-outlined text-[18px]">{value === 'MALE' ? 'male' : 'female'}</span>
++                <span className="material-symbols-outlined text-[18px]">{value === 'MALE' ? 'male' : value === 'FEMALE' ? 'female' : 'help'}</span>
+                 {label}
+               </button>
+             ))}
+@@ -164,9 +231,9 @@ export default function PetRegisterPage() {
+           <div className="relative">
+             <input
+               type="number"
+-              step="0.1"
++              step="0.01"
+               min="0"
+-              max="200"
++              max="999.99"
+               value={weight}
+               onChange={(e) => setWeight(e.target.value)}
+               placeholder="0.0"
+@@ -221,12 +288,12 @@ export default function PetRegisterPage() {
+         ) : isSuccess ? (
+           <>
+             <span className="material-symbols-outlined text-[20px]">check_circle</span>
+-            登録完了
++            {isEdit ? '保存完了' : '登録完了'}
+           </>
+         ) : (
+           <>
+             <span className="material-symbols-outlined text-[20px]">pets</span>
+-            登録する
++            {isEdit ? '保存する' : '登録する'}
+           </>
+         )}
+       </button>
+diff --git a/frontend/src/types/pet.ts b/frontend/src/types/pet.ts
+index b4bb608..c4b0eb6 100644
+--- a/frontend/src/types/pet.ts
++++ b/frontend/src/types/pet.ts
+@@ -8,7 +8,7 @@ export interface Pet {
+   species: PetSpecies
+   breed?: string
+   birthDate?: string
+-  gender: PetGender
++  gender?: PetGender
+   weight?: number
+   neutered: boolean
+   microchipNumber?: string
+@@ -20,21 +20,14 @@ export interface PetCreateRequest {
+   species: PetSpecies
+   breed?: string
+   birthDate?: string
+-  gender: PetGender
++  gender?: PetGender
+   weight?: number
+   neutered: boolean
+   microchipNumber?: string
+ }
+ 
+-export interface PetUpdateRequest {
+-  name?: string
+-  breed?: string
+-  birthDate?: string
+-  gender?: PetGender
+-  weight?: number
+-  neutered?: boolean
+-  microchipNumber?: string
+-}
++// 更新は全項目置換（docs/07 §5-4）。省略した任意項目はNULL、neuteredはfalseになるため、常にフォーム全体を送る
++export type PetUpdateRequest = PetCreateRequest
+ 
+-// 一覧API（PetSummary）は品種・性別を返さないため、一覧では種別を表示する
++// 一覧API（PetSummary）は性別を返さないため、一覧では種別と品種を表示する
+ export const PET_SPECIES_LABEL: Record<PetSpecies, string> = { DOG: '犬', CAT: '猫', OTHER: 'その他' }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/pet/dto/PetDto.java b/spring-api/src/main/java/koh/portfolio/springapi/application/pet/dto/PetDto.java
+index 6a29275..7b3661a 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/pet/dto/PetDto.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/pet/dto/PetDto.java
+@@ -1,7 +1,10 @@
+ package koh.portfolio.springapi.application.pet.dto;
+ 
++import jakarta.validation.constraints.Digits;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.PositiveOrZero;
++import jakarta.validation.constraints.Size;
+ import koh.portfolio.springapi.domain.pet.model.PetGender;
+ import koh.portfolio.springapi.domain.pet.model.PetType;
+ import lombok.Builder;
+@@ -12,18 +15,21 @@ import java.time.LocalDateTime;
+ 
+ public record PetDto() {
+     public record CreatePetRequest(
+-            @NotBlank String name,
++            @NotBlank @Size(max = 50) String name,
+             @NotNull PetType petType,
+             LocalDate birthDate,
+             PetGender gender,
+-            BigDecimal weight
++            @PositiveOrZero @Digits(integer = 3, fraction = 2) BigDecimal weight,
++            @Size(max = 100) String breed,
++            boolean neutered,
++            @Size(max = 15) String microchipNumber
+     ) {}
+ 
+     @Builder
+     public record CreatePetResponse(Long petId) {}
+ 
+     @Builder
+-    public record PetSummary(Long id, String name, PetType petType, BigDecimal weight) {}
++    public record PetSummary(Long id, String name, PetType petType, BigDecimal weight, String breed) {}
+ 
+     public record PetDetailResponse(
+             Long id,
+@@ -32,14 +38,20 @@ public record PetDto() {
+             LocalDate birthDate,
+             PetGender gender,
+             BigDecimal weight,
++            String breed,
++            boolean neutered,
++            String microchipNumber,
+             LocalDateTime createdAt
+     ) {}
+ 
+     public record UpdatePetRequest(
+-            @NotBlank String name,
++            @NotBlank @Size(max = 50) String name,
+             @NotNull PetType petType,
+             LocalDate birthDate,
+-            @NotNull PetGender gender,
+-            BigDecimal weight
++            PetGender gender,
++            @PositiveOrZero @Digits(integer = 3, fraction = 2) BigDecimal weight,
++            @Size(max = 100) String breed,
++            boolean neutered,
++            @Size(max = 15) String microchipNumber
+     ) {}
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/GetPetDetailService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/GetPetDetailService.java
+index 562a51c..5f62efe 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/GetPetDetailService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/GetPetDetailService.java
+@@ -28,6 +28,9 @@ public class GetPetDetailService implements GetPetDetailUseCase {
+                 pet.getBirthDate(),
+                 pet.getGender(),
+                 pet.getWeight(),
++                pet.getBreed(),
++                pet.isNeutered(),
++                pet.getMicrochipNumber(),
+                 pet.getCreatedAt()
+         );
+     }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/PetService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/PetService.java
+index 3323638..e259784 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/PetService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/PetService.java
+@@ -25,7 +25,10 @@ public class PetService implements CreatePetUseCase, GetPetListUseCase {
+                 request.petType(),
+                 request.birthDate(),
+                 request.gender(),
+-                request.weight()
++                request.weight(),
++                request.breed(),
++                request.neutered(),
++                request.microchipNumber()
+         );
+ 
+         Pet savedPet = petRepository.save(pet);
+@@ -46,6 +49,7 @@ public class PetService implements CreatePetUseCase, GetPetListUseCase {
+                                 .name(pet.getName())
+                                 .petType(pet.getPetType())
+                                 .weight(pet.getWeight())
++                                .breed(pet.getBreed())
+                                 .build()
+                 )
+                 .toList();
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/UpdatePetService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/UpdatePetService.java
+index 1bf3c00..ad892dd 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/UpdatePetService.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/pet/service/UpdatePetService.java
+@@ -28,7 +28,10 @@ public class UpdatePetService implements UpdatePetUseCase {
+                 request.petType(),
+                 request.birthDate(),
+                 request.gender(),
+-                request.weight()
++                request.weight(),
++                request.breed(),
++                request.neutered(),
++                request.microchipNumber()
+         );
+ 
+         // 読み取り後に論理削除がcommitされていた場合は0件更新。削除を最終状態として維持する
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/common/time/LocalDateTimeJsonSerializer.java b/spring-api/src/main/java/koh/portfolio/springapi/common/time/LocalDateTimeJsonSerializer.java
+new file mode 100644
+index 0000000..24f5b11
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/common/time/LocalDateTimeJsonSerializer.java
+@@ -0,0 +1,24 @@
++package koh.portfolio.springapi.common.time;
++
++import com.fasterxml.jackson.core.JsonGenerator;
++import com.fasterxml.jackson.databind.JsonSerializer;
++import com.fasterxml.jackson.databind.SerializerProvider;
++import org.springframework.boot.jackson.JsonComponent;
++
++import java.io.IOException;
++import java.time.LocalDateTime;
++import java.time.format.DateTimeFormatter;
++import java.time.temporal.ChronoUnit;
++
++// 応答の日時はJSTのオフセット付きで返す（例: 2026-05-17T10:00:00+09:00、07_API_Design §2-7）。
++// DBとドメインはJSTの LocalDateTime のまま扱い、JSONに出す時だけオフセットを付ける
++@JsonComponent
++public class LocalDateTimeJsonSerializer extends JsonSerializer<LocalDateTime> {
++
++    @Override
++    public void serialize(LocalDateTime value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
++        gen.writeString(value.truncatedTo(ChronoUnit.SECONDS)
++                .atZone(ServerTime.ZONE_ID)
++                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/pet/model/Pet.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/pet/model/Pet.java
+index a6ff724..8d0f8aa 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/pet/model/Pet.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/pet/model/Pet.java
+@@ -17,17 +17,23 @@ public class Pet {
+     private LocalDate birthDate;
+     private PetGender gender;
+     private BigDecimal weight;
++    private String breed;
++    private boolean neutered;
++    private String microchipNumber;
+     private LocalDateTime createdAt;
+     private LocalDateTime updatedAt;
+     private LocalDateTime deletedAt;
+ 
+-    public static Pet create(Long userId, String name, PetType petType, LocalDate birthDate, PetGender gender, BigDecimal weight) {
++    public static Pet create(Long userId, String name, PetType petType, LocalDate birthDate, PetGender gender, BigDecimal weight,
++                              String breed, boolean neutered, String microchipNumber) {
+         LocalDateTime now = LocalDateTime.now();
+ 
+-        return new Pet(null, userId, name, petType, birthDate, gender, weight, now, now, null);
++        return new Pet(null, userId, name, petType, birthDate, gender, weight, breed, neutered, microchipNumber, now, now, null);
+     }
+ 
+-    public Pet update(String name, PetType petType, LocalDate birthDate, PetGender gender, BigDecimal weight) {
+-        return new Pet(this.id, this.userId, name, petType, birthDate, gender, weight, this.createdAt, LocalDateTime.now(), null);
++    public Pet update(String name, PetType petType, LocalDate birthDate, PetGender gender, BigDecimal weight,
++                       String breed, boolean neutered, String microchipNumber) {
++        return new Pet(this.id, this.userId, name, petType, birthDate, gender, weight, breed, neutered, microchipNumber,
++                this.createdAt, LocalDateTime.now(), null);
+     }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetEntity.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetEntity.java
+index 72bbf36..1b40f7b 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetEntity.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetEntity.java
+@@ -27,6 +27,9 @@ public class PetEntity {
+     @Enumerated(EnumType.STRING)
+     private PetGender gender;
+     private BigDecimal weight;
++    private String breed;
++    private boolean neutered;
++    private String microchipNumber;
+     private LocalDateTime createdAt;
+     private LocalDateTime updatedAt;
+     private LocalDateTime deletedAt;
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetJpaRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetJpaRepository.java
+index 5a26dba..598a696 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetJpaRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetJpaRepository.java
+@@ -28,7 +28,8 @@ public interface PetJpaRepository extends JpaRepository<PetEntity, Long> {
+ 
+     @Modifying(clearAutomatically = true, flushAutomatically = true)
+     @Query("update PetEntity set name = :name, petType = :petType, birthDate = :birthDate, gender = :gender, "
+-            + "weight = :weight, updatedAt = :updatedAt where id = :id and deletedAt is null")
++            + "weight = :weight, breed = :breed, neutered = :neutered, microchipNumber = :microchipNumber, "
++            + "updatedAt = :updatedAt where id = :id and deletedAt is null")
+     int updateProfile(
+             @Param("id") Long id,
+             @Param("name") String name,
+@@ -36,6 +37,9 @@ public interface PetJpaRepository extends JpaRepository<PetEntity, Long> {
+             @Param("birthDate") LocalDate birthDate,
+             @Param("gender") PetGender gender,
+             @Param("weight") BigDecimal weight,
++            @Param("breed") String breed,
++            @Param("neutered") boolean neutered,
++            @Param("microchipNumber") String microchipNumber,
+             @Param("updatedAt") LocalDateTime updatedAt
+     );
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapter.java
+index 9a8c7a1..228a43b 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapter.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapter.java
+@@ -63,6 +63,9 @@ public class PetPersistenceAdapter implements PetRepository {
+                 pet.getBirthDate(),
+                 pet.getGender(),
+                 pet.getWeight(),
++                pet.getBreed(),
++                pet.isNeutered(),
++                pet.getMicrochipNumber(),
+                 pet.getUpdatedAt()
+         ) == 1;
+     }
+diff --git a/spring-api/src/main/resources/db/migration/V13__alter_pets_add_columns.sql b/spring-api/src/main/resources/db/migration/V13__alter_pets_add_columns.sql
+new file mode 100644
+index 0000000..1fa573a
+--- /dev/null
++++ b/spring-api/src/main/resources/db/migration/V13__alter_pets_add_columns.sql
+@@ -0,0 +1,4 @@
++ALTER TABLE pets
++    ADD COLUMN breed            VARCHAR(100) NULL,
++    ADD COLUMN neutered         BOOLEAN      NOT NULL DEFAULT FALSE,
++    ADD COLUMN microchip_number VARCHAR(15)  NULL;
+diff --git a/spring-api/src/main/resources/db/migration/V14__make_pet_gender_nullable.sql b/spring-api/src/main/resources/db/migration/V14__make_pet_gender_nullable.sql
+new file mode 100644
+index 0000000..3973899
+--- /dev/null
++++ b/spring-api/src/main/resources/db/migration/V14__make_pet_gender_nullable.sql
+@@ -0,0 +1,4 @@
++-- 性別は任意項目（02_Requirement_Definition FR-PET-001・06_ERD §8）。V3のNOT NULLは設計と食い違い、
++-- 性別を省略した登録がDB制約違反（500）になっていたため、設計に合わせてNULLを許可する
++ALTER TABLE pets
++    ALTER COLUMN gender DROP NOT NULL;
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/healthrecord/service/HealthRecordServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/healthrecord/service/HealthRecordServiceTest.java
+index c6b8209..345a0f2 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/healthrecord/service/HealthRecordServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/healthrecord/service/HealthRecordServiceTest.java
+@@ -53,7 +53,7 @@ class HealthRecordServiceTest {
+     private Pet pet(Long ownerId) {
+         LocalDateTime now = LocalDateTime.now();
+         return new Pet(petId, ownerId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE,
+-                new BigDecimal("4.50"), now, now, null);
++                new BigDecimal("4.50"), null, false, null, now, now, null);
+     }
+ 
+     private HealthRecord healthRecord() {
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/pet/service/PetServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/pet/service/PetServiceTest.java
+index 80cc3ff..5a3e722 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/pet/service/PetServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/pet/service/PetServiceTest.java
+@@ -54,12 +54,14 @@ class PetServiceTest {
+         // given
+         Long userId = 1L;
+         CreatePetRequest request = new CreatePetRequest(
+-                "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5")
++                "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Scottish Fold", true, "123456789012345"
+         );
+ 
+         LocalDateTime now = LocalDateTime.now();
+         Pet savedPet = new Pet(1L, userId, "Momo", PetType.CAT,
+-                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), now, now, null);
++                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Scottish Fold", true, "123456789012345", now, now, null);
+ 
+         when(petRepository.save(any(Pet.class))).thenReturn(savedPet);
+ 
+@@ -71,6 +73,50 @@ class PetServiceTest {
+         verify(petRepository).save(any(Pet.class));
+     }
+ 
++    @Test
++    @DisplayName("ペット登録成功時、breed・neutered・microchipNumberがPetに正しく渡される")
++    void create_pet_passes_new_fields_to_domain() {
++        // given
++        Long userId = 1L;
++        CreatePetRequest request = new CreatePetRequest(
++                "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Scottish Fold", true, "123456789012345"
++        );
++
++        when(petRepository.save(any(Pet.class))).thenAnswer(invocation -> invocation.getArgument(0));
++
++        // when
++        petService.execute(userId, request);
++
++        // then
++        ArgumentCaptor<Pet> captor = ArgumentCaptor.forClass(Pet.class);
++        verify(petRepository).save(captor.capture());
++        Pet captured = captor.getValue();
++        assertThat(captured.getBreed()).isEqualTo("Scottish Fold");
++        assertThat(captured.isNeutered()).isTrue();
++        assertThat(captured.getMicrochipNumber()).isEqualTo("123456789012345");
++    }
++
++    @Test
++    @DisplayName("ペット登録時、breedとmicrochipNumberはnullでも登録できる")
++    void create_pet_success_when_breed_and_microchip_null() {
++        // given
++        Long userId = 1L;
++        CreatePetRequest request = new CreatePetRequest(
++                "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                null, false, null
++        );
++
++        when(petRepository.save(any(Pet.class))).thenAnswer(invocation -> invocation.getArgument(0));
++
++        // when
++        CreatePetResponse response = petService.execute(userId, request);
++
++        // then
++        assertThat(response).isNotNull();
++        verify(petRepository).save(any(Pet.class));
++    }
++
+     // ---------------------------------------------------------------- getList
+ 
+     @Test
+@@ -82,9 +128,11 @@ class PetServiceTest {
+ 
+         List<Pet> pets = List.of(
+                 new Pet(1L, userId, "Momo", PetType.CAT,
+-                        LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), now, now, null),
++                        LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                        "Scottish Fold", true, "123456789012345", now, now, null),
+                 new Pet(2L, userId, "Kuma", PetType.DOG,
+-                        LocalDate.of(2022, 5, 10), PetGender.MALE, new BigDecimal("8.0"), now, now, null)
++                        LocalDate.of(2022, 5, 10), PetGender.MALE, new BigDecimal("8.0"),
++                        "Shiba", false, null, now, now, null)
+         );
+ 
+         when(petRepository.findAllByUserId(userId)).thenReturn(pets);
+@@ -95,7 +143,9 @@ class PetServiceTest {
+         // then
+         assertThat(result).hasSize(2);
+         assertThat(result.get(0).name()).isEqualTo("Momo");
++        assertThat(result.get(0).breed()).isEqualTo("Scottish Fold");
+         assertThat(result.get(1).name()).isEqualTo("Kuma");
++        assertThat(result.get(1).breed()).isEqualTo("Shiba");
+         verify(petRepository).findAllByUserId(userId);
+     }
+ 
+@@ -110,7 +160,8 @@ class PetServiceTest {
+         LocalDateTime now = LocalDateTime.now();
+ 
+         Pet pet = new Pet(petId, userId, "Momo", PetType.CAT,
+-                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), now, now, null);
++                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Scottish Fold", true, "123456789012345", now, now, null);
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+ 
+@@ -122,6 +173,9 @@ class PetServiceTest {
+         assertThat(response.name()).isEqualTo("Momo");
+         assertThat(response.petType()).isEqualTo(PetType.CAT);
+         assertThat(response.gender()).isEqualTo(PetGender.FEMALE);
++        assertThat(response.breed()).isEqualTo("Scottish Fold");
++        assertThat(response.neutered()).isTrue();
++        assertThat(response.microchipNumber()).isEqualTo("123456789012345");
+     }
+ 
+     @Test
+@@ -152,7 +206,8 @@ class PetServiceTest {
+         LocalDateTime now = LocalDateTime.now();
+ 
+         Pet pet = new Pet(petId, anotherUserId, "Momo", PetType.CAT,
+-                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), now, now, null);
++                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Scottish Fold", true, "123456789012345", now, now, null);
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+ 
+@@ -176,10 +231,12 @@ class PetServiceTest {
+         LocalDateTime now = LocalDateTime.now();
+ 
+         Pet pet = new Pet(petId, userId, "Momo", PetType.CAT,
+-                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), now, now, null);
++                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Scottish Fold", false, null, now, now, null);
+ 
+         UpdatePetRequest request = new UpdatePetRequest(
+-                "MomoUpdated", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("5.0")
++                "MomoUpdated", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("5.0"),
++                "Scottish Fold", true, "123456789012345"
+         );
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+@@ -207,19 +264,51 @@ class PetServiceTest {
+         LocalDateTime now = LocalDateTime.now();
+ 
+         Pet pet = new Pet(petId, userId, "Momo", PetType.CAT,
+-                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), now, now, null);
++                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), null, false, null, now, now, null);
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+         when(petRepository.updateProfile(any(Pet.class))).thenReturn(false);
+ 
+         // when & then
+         assertThatThrownBy(() -> updatePetService.execute(userId, petId, new UpdatePetRequest(
+-                "MomoUpdated", PetType.CAT, null, PetGender.FEMALE, null)))
++                "MomoUpdated", PetType.CAT, null, PetGender.FEMALE, null, null, false, null)))
+                 .isInstanceOf(CustomException.class)
+                 .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                         .isEqualTo(PetErrorCode.PET_NOT_FOUND.code()));
+     }
+ 
++    @Test
++    @DisplayName("ペット情報更新時、breed・neutered・microchipNumberが更新される")
++    void update_pet_applies_new_fields() {
++        // given
++        Long userId = 1L;
++        Long petId = 1L;
++        LocalDateTime now = LocalDateTime.now();
++
++        Pet pet = new Pet(petId, userId, "Momo", PetType.CAT,
++                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Scottish Fold", false, null, now, now, null);
++
++        UpdatePetRequest request = new UpdatePetRequest(
++                "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Mix", true, "123456789012345"
++        );
++
++        when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
++        when(petRepository.updateProfile(any(Pet.class))).thenReturn(true);
++
++        // when
++        updatePetService.execute(userId, petId, request);
++
++        // then
++        ArgumentCaptor<Pet> captor = ArgumentCaptor.forClass(Pet.class);
++        verify(petRepository).updateProfile(captor.capture());
++        Pet updated = captor.getValue();
++        assertThat(updated.getBreed()).isEqualTo("Mix");
++        assertThat(updated.isNeutered()).isTrue();
++        assertThat(updated.getMicrochipNumber()).isEqualTo("123456789012345");
++    }
++
+     @Test
+     @DisplayName("存在しないペット更新時、PET-001例外が発生する")
+     void update_pet_fail_when_not_found() {
+@@ -228,7 +317,8 @@ class PetServiceTest {
+         Long petId = 999L;
+ 
+         UpdatePetRequest request = new UpdatePetRequest(
+-                "MomoUpdated", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("5.0")
++                "MomoUpdated", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("5.0"),
++                "Scottish Fold", true, "123456789012345"
+         );
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.empty());
+@@ -254,10 +344,12 @@ class PetServiceTest {
+         LocalDateTime now = LocalDateTime.now();
+ 
+         Pet pet = new Pet(petId, anotherUserId, "Momo", PetType.CAT,
+-                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), now, now, null);
++                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Scottish Fold", false, null, now, now, null);
+ 
+         UpdatePetRequest request = new UpdatePetRequest(
+-                "MomoUpdated", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("5.0")
++                "MomoUpdated", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("5.0"),
++                "Scottish Fold", true, "123456789012345"
+         );
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+@@ -284,7 +376,8 @@ class PetServiceTest {
+         LocalDateTime now = LocalDateTime.now();
+ 
+         Pet pet = new Pet(petId, userId, "Momo", PetType.CAT,
+-                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), now, now, null);
++                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Scottish Fold", true, "123456789012345", now, now, null);
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+ 
+@@ -325,7 +418,8 @@ class PetServiceTest {
+         LocalDateTime now = LocalDateTime.now();
+ 
+         Pet pet = new Pet(petId, anotherUserId, "Momo", PetType.CAT,
+-                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), now, now, null);
++                LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Scottish Fold", true, "123456789012345", now, now, null);
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.of(pet));
+ 
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/CreateReservationServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/CreateReservationServiceTest.java
+index fe09c3a..5390eb1 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/CreateReservationServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/CreateReservationServiceTest.java
+@@ -63,7 +63,7 @@ class CreateReservationServiceTest {
+ 
+     private Pet ownedPet() {
+         return new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
+-                LocalDateTime.now(), LocalDateTime.now(), null);
++                null, false, null, LocalDateTime.now(), LocalDateTime.now(), null);
+     }
+ 
+     private HospitalSchedule availableFutureSchedule() {
+@@ -121,7 +121,7 @@ class CreateReservationServiceTest {
+         // given
+         CreateReservationRequest request = new CreateReservationRequest(petId, hospitalId, scheduleId, null);
+         Pet othersPet = new Pet(petId, 999L, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null,
+-                LocalDateTime.now(), LocalDateTime.now(), null);
++                null, false, null, LocalDateTime.now(), LocalDateTime.now(), null);
+ 
+         when(petRepository.findById(petId)).thenReturn(Optional.of(othersPet));
+ 
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/GetReservationServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/GetReservationServiceTest.java
+index 818bcd1..db8ede4 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/GetReservationServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/reservation/service/GetReservationServiceTest.java
+@@ -66,7 +66,7 @@ class GetReservationServiceTest {
+         when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(
+                 new Hospital(hospitalId, "Tokyo Animal Hospital", "Tokyo, Shibuya", "03-1234-5678", HospitalStatus.ACTIVE, now, now, null)));
+         when(petRepository.findByIdIncludingDeleted(petId)).thenReturn(Optional.of(
+-                new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null, now, now, null)));
++                new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null, null, false, null, now, now, null)));
+         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(
+                 new HospitalSchedule(scheduleId, hospitalId, LocalDate.of(2026, 5, 20),
+                         LocalTime.of(10, 0), LocalTime.of(10, 30), HospitalScheduleStatus.AVAILABLE, now, now)));
+@@ -103,7 +103,7 @@ class GetReservationServiceTest {
+                 new HospitalSchedule(scheduleId, hospitalId, LocalDate.of(2026, 5, 20),
+                         LocalTime.of(10, 0), LocalTime.of(10, 30), HospitalScheduleStatus.AVAILABLE, now, now)));
+         when(petRepository.findByIdIncludingDeleted(petId)).thenReturn(Optional.of(
+-                new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null, now, now, now)));
++                new Pet(petId, userId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, null, null, false, null, now, now, now)));
+ 
+         // when
+         List<ReservationSummary> result = getReservationService.execute(userId);
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/vaccination/service/VaccinationServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/vaccination/service/VaccinationServiceTest.java
+index efeea77..eb5375f 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/application/vaccination/service/VaccinationServiceTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/vaccination/service/VaccinationServiceTest.java
+@@ -67,7 +67,7 @@ class VaccinationServiceTest {
+     private Pet pet(Long ownerId) {
+         LocalDateTime now = LocalDateTime.now();
+         return new Pet(petId, ownerId, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE,
+-                new BigDecimal("4.50"), now, now, null);
++                new BigDecimal("4.50"), null, false, null, now, now, null);
+     }
+ 
+     private Vaccination vaccination(VaccinationStatus status) {
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetMapperTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetMapperTest.java
+index 87dba61..63c0464 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetMapperTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetMapperTest.java
+@@ -25,6 +25,7 @@ class PetMapperTest {
+         Pet domain = new Pet(
+                 1L, 10L, "Momo", PetType.CAT,
+                 LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Scottish Fold", true, "123456789012345",
+                 now, now, null
+         );
+ 
+@@ -39,6 +40,9 @@ class PetMapperTest {
+         assertThat(entity.getBirthDate()).isEqualTo(LocalDate.of(2023, 1, 1));
+         assertThat(entity.getGender()).isEqualTo(PetGender.FEMALE);
+         assertThat(entity.getWeight()).isEqualByComparingTo(new BigDecimal("4.5"));
++        assertThat(entity.getBreed()).isEqualTo("Scottish Fold");
++        assertThat(entity.isNeutered()).isTrue();
++        assertThat(entity.getMicrochipNumber()).isEqualTo("123456789012345");
+         assertThat(entity.getCreatedAt()).isEqualTo(now);
+         assertThat(entity.getUpdatedAt()).isEqualTo(now);
+         assertThat(entity.getDeletedAt()).isNull();
+@@ -57,6 +61,9 @@ class PetMapperTest {
+                 .birthDate(LocalDate.of(2023, 1, 1))
+                 .gender(PetGender.FEMALE)
+                 .weight(new BigDecimal("4.5"))
++                .breed("Scottish Fold")
++                .neutered(true)
++                .microchipNumber("123456789012345")
+                 .createdAt(now)
+                 .updatedAt(now)
+                 .deletedAt(null)
+@@ -73,6 +80,9 @@ class PetMapperTest {
+         assertThat(domain.getBirthDate()).isEqualTo(LocalDate.of(2023, 1, 1));
+         assertThat(domain.getGender()).isEqualTo(PetGender.FEMALE);
+         assertThat(domain.getWeight()).isEqualByComparingTo(new BigDecimal("4.5"));
++        assertThat(domain.getBreed()).isEqualTo("Scottish Fold");
++        assertThat(domain.isNeutered()).isTrue();
++        assertThat(domain.getMicrochipNumber()).isEqualTo("123456789012345");
+         assertThat(domain.getCreatedAt()).isEqualTo(now);
+         assertThat(domain.getDeletedAt()).isNull();
+     }
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapterTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapterTest.java
+index 79353e0..46b443c 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapterTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/pet/PetPersistenceAdapterTest.java
+@@ -49,7 +49,7 @@ class PetPersistenceAdapterTest {
+     private Pet renamed(Long id) {
+         LocalDateTime now = LocalDateTime.now();
+         return new Pet(id, 1L, "MomoUpdated", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE,
+-                new BigDecimal("5.00"), now, now, null);
++                new BigDecimal("5.00"), "Mix", true, "392000000000001", now, now, null);
+     }
+ 
+     @Test
+@@ -63,7 +63,12 @@ class PetPersistenceAdapterTest {
+ 
+         // then
+         assertThat(updated).isTrue();
+-        assertThat(petJpaRepository.findById(saved.getId()).orElseThrow().getName()).isEqualTo("MomoUpdated");
++        PetEntity reloaded = petJpaRepository.findById(saved.getId()).orElseThrow();
++        assertThat(reloaded.getName()).isEqualTo("MomoUpdated");
++        // pet-fieldsの列も条件付きUPDATEで書き込まれる（列を足し忘れると更新が黙って失われる）
++        assertThat(reloaded.getBreed()).isEqualTo("Mix");
++        assertThat(reloaded.isNeutered()).isTrue();
++        assertThat(reloaded.getMicrochipNumber()).isEqualTo("392000000000001");
+     }
+ 
+     @Test
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/presentation/notification/NotificationControllerTest.java b/spring-api/src/test/java/koh/portfolio/springapi/presentation/notification/NotificationControllerTest.java
+index ff9dd45..4244d11 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/presentation/notification/NotificationControllerTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/presentation/notification/NotificationControllerTest.java
+@@ -63,7 +63,7 @@ class NotificationControllerTest {
+                         .title("予約が承認されました")
+                         .message("ご予約が承認されました。予約内容をご確認ください。")
+                         .isRead(false)
+-                        .createdAt(LocalDateTime.of(2026, 5, 20, 10, 0))
++                        .createdAt(LocalDateTime.of(2026, 5, 20, 10, 0, 30, 123_000_000))
+                         .build()
+         ));
+ 
+@@ -74,7 +74,9 @@ class NotificationControllerTest {
+                 .andExpect(jsonPath("$.data[0].notificationId").value(100))
+                 .andExpect(jsonPath("$.data[0].type").value("RESERVATION_APPROVED"))
+                 .andExpect(jsonPath("$.data[0].title").value("予約が承認されました"))
+-                .andExpect(jsonPath("$.data[0].isRead").value(false));
++                .andExpect(jsonPath("$.data[0].isRead").value(false))
++                // 日時はJSTのオフセット付き・秒単位（07_API_Design §2-7）
++                .andExpect(jsonPath("$.data[0].createdAt").value("2026-05-20T10:00:30+09:00"));
+     }
+ 
+     @Test
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/presentation/pet/PetControllerTest.java b/spring-api/src/test/java/koh/portfolio/springapi/presentation/pet/PetControllerTest.java
+index 70b7ba5..237b7f6 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/presentation/pet/PetControllerTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/presentation/pet/PetControllerTest.java
+@@ -36,6 +36,7 @@ import java.util.List;
+ import static org.mockito.ArgumentMatchers.any;
+ import static org.mockito.ArgumentMatchers.eq;
+ import static org.mockito.Mockito.verify;
++import static org.mockito.Mockito.verifyNoInteractions;
+ import static org.mockito.Mockito.when;
+ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+@@ -84,7 +85,8 @@ class PetControllerTest {
+     void create_pet_success() throws Exception {
+         // given
+         CreatePetRequest request = new CreatePetRequest(
+-                "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5")
++                "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Scottish Fold", true, "123456789012345"
+         );
+ 
+         when(createPetUseCase.execute(eq(1L), any(CreatePetRequest.class)))
+@@ -100,12 +102,28 @@ class PetControllerTest {
+                 .andExpect(jsonPath("$.data.petId").value(1));
+     }
+ 
++    @Test
++    @DisplayName("POST /api/v1/pets - 性別は任意項目のため省略しても登録できる")
++    void create_pet_without_gender_success() throws Exception {
++        // given
++        when(createPetUseCase.execute(eq(1L), any(CreatePetRequest.class)))
++                .thenReturn(new CreatePetResponse(1L));
++
++        // when & then
++        mockMvc.perform(post("/api/v1/pets")
++                        .principal(auth(1L))
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content("{\"name\":\"Momo\",\"petType\":\"CAT\"}"))
++                .andExpect(status().isCreated())
++                .andExpect(jsonPath("$.data.petId").value(1));
++    }
++
+     @Test
+     @DisplayName("POST /api/v1/pets - nameが空白の場合Validation失敗")
+     void create_pet_validation_fail_when_name_blank() throws Exception {
+         // given
+         CreatePetRequest request = new CreatePetRequest(
+-                "", PetType.CAT, null, PetGender.FEMALE, null
++                "", PetType.CAT, null, PetGender.FEMALE, null, null, false, null
+         );
+ 
+         // when & then
+@@ -118,12 +136,31 @@ class PetControllerTest {
+                 .andExpect(jsonPath("$.code").value("VALIDATION-001"));
+     }
+ 
++    @Test
++    @DisplayName("POST /api/v1/pets - 名前51文字・品種101文字・負の体重・桁数超過の体重はValidation失敗（列の長さ・DECIMAL(5,2)）")
++    void create_pet_validation_fail_when_breed_too_long_or_weight_invalid() throws Exception {
++        for (CreatePetRequest request : List.of(
++                new CreatePetRequest("a".repeat(51), PetType.CAT, null, PetGender.FEMALE, null, null, false, null),
++                new CreatePetRequest("Momo", PetType.CAT, null, PetGender.FEMALE, null, "a".repeat(101), false, null),
++                new CreatePetRequest("Momo", PetType.CAT, null, PetGender.FEMALE, new BigDecimal("-0.1"), null, false, null),
++                new CreatePetRequest("Momo", PetType.CAT, null, PetGender.FEMALE, new BigDecimal("1000.00"), null, false, null)
++        )) {
++            mockMvc.perform(post("/api/v1/pets")
++                            .principal(auth(1L))
++                            .contentType(MediaType.APPLICATION_JSON)
++                            .content(objectMapper.writeValueAsString(request)))
++                    .andExpect(status().isBadRequest())
++                    .andExpect(jsonPath("$.code").value("VALIDATION-001"));
++        }
++        verifyNoInteractions(createPetUseCase);
++    }
++
+     @Test
+     @DisplayName("POST /api/v1/pets - petTypeがnullの場合Validation失敗")
+     void create_pet_validation_fail_when_pettype_null() throws Exception {
+         // given
+         CreatePetRequest request = new CreatePetRequest(
+-                "Momo", null, null, PetGender.FEMALE, null
++                "Momo", null, null, PetGender.FEMALE, null, null, false, null
+         );
+ 
+         // when & then
+@@ -143,8 +180,8 @@ class PetControllerTest {
+     void get_pet_list_success() throws Exception {
+         // given
+         List<PetSummary> summaries = List.of(
+-                new PetSummary(1L, "Momo", PetType.CAT, new BigDecimal("4.5")),
+-                new PetSummary(2L, "Kuma", PetType.DOG, new BigDecimal("8.0"))
++                new PetSummary(1L, "Momo", PetType.CAT, new BigDecimal("4.5"), "Scottish Fold"),
++                new PetSummary(2L, "Kuma", PetType.DOG, new BigDecimal("8.0"), "Shiba")
+         );
+ 
+         when(getPetListUseCase.execute(1L)).thenReturn(summaries);
+@@ -156,8 +193,10 @@ class PetControllerTest {
+                 .andExpect(jsonPath("$.data").isArray())
+                 .andExpect(jsonPath("$.data[0].name").value("Momo"))
+                 .andExpect(jsonPath("$.data[0].petType").value("CAT"))
++                .andExpect(jsonPath("$.data[0].breed").value("Scottish Fold"))
+                 .andExpect(jsonPath("$.data[1].name").value("Kuma"))
+-                .andExpect(jsonPath("$.data[1].petType").value("DOG"));
++                .andExpect(jsonPath("$.data[1].petType").value("DOG"))
++                .andExpect(jsonPath("$.data[1].breed").value("Shiba"));
+     }
+ 
+     // --------------------------------------------------------------- getDetail
+@@ -168,7 +207,8 @@ class PetControllerTest {
+         // given
+         LocalDateTime now = LocalDateTime.now();
+         PetDetailResponse response = new PetDetailResponse(
+-                1L, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"), now
++                1L, "Momo", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("4.5"),
++                "Scottish Fold", true, "123456789012345", now
+         );
+ 
+         when(getPetDetailUseCase.execute(1L, 1L)).thenReturn(response);
+@@ -180,7 +220,10 @@ class PetControllerTest {
+                 .andExpect(jsonPath("$.data.id").value(1))
+                 .andExpect(jsonPath("$.data.name").value("Momo"))
+                 .andExpect(jsonPath("$.data.petType").value("CAT"))
+-                .andExpect(jsonPath("$.data.gender").value("FEMALE"));
++                .andExpect(jsonPath("$.data.gender").value("FEMALE"))
++                .andExpect(jsonPath("$.data.breed").value("Scottish Fold"))
++                .andExpect(jsonPath("$.data.neutered").value(true))
++                .andExpect(jsonPath("$.data.microchipNumber").value("123456789012345"));
+     }
+ 
+     // ----------------------------------------------------------------- update
+@@ -190,7 +233,8 @@ class PetControllerTest {
+     void update_pet_success() throws Exception {
+         // given
+         UpdatePetRequest request = new UpdatePetRequest(
+-                "MomoUpdated", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("5.0")
++                "MomoUpdated", PetType.CAT, LocalDate.of(2023, 1, 1), PetGender.FEMALE, new BigDecimal("5.0"),
++                "Scottish Fold", true, "123456789012345"
+         );
+ 
+         // when & then

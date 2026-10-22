@@ -63,7 +63,7 @@ class NotificationControllerTest {
                         .title("予約が承認されました")
                         .message("ご予約が承認されました。予約内容をご確認ください。")
                         .isRead(false)
-                        .createdAt(LocalDateTime.of(2026, 5, 20, 10, 0))
+                        .createdAt(LocalDateTime.of(2026, 5, 20, 10, 0, 30, 123_000_000))
                         .build()
         ));
 
@@ -74,7 +74,9 @@ class NotificationControllerTest {
                 .andExpect(jsonPath("$.data[0].notificationId").value(100))
                 .andExpect(jsonPath("$.data[0].type").value("RESERVATION_APPROVED"))
                 .andExpect(jsonPath("$.data[0].title").value("予約が承認されました"))
-                .andExpect(jsonPath("$.data[0].isRead").value(false));
+                .andExpect(jsonPath("$.data[0].isRead").value(false))
+                // 日時はJSTのオフセット付き・秒単位（07_API_Design §2-7）
+                .andExpect(jsonPath("$.data[0].createdAt").value("2026-05-20T10:00:30+09:00"));
     }
 
     @Test

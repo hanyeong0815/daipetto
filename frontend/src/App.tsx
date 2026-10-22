@@ -10,6 +10,7 @@ import MyPetPage from './pages/MyPetPage'
 import PetRegisterPage from './pages/PetRegisterPage'
 import PetDetailPage from './pages/PetDetailPage'
 import HealthRecordPage from './pages/HealthRecordPage'
+import VaccinationPage from './pages/VaccinationPage'
 import HospitalSearchPage from './pages/HospitalSearchPage'
 import HospitalDetailPage from './pages/HospitalDetailPage'
 import ReservationPage from './pages/ReservationPage'
@@ -80,7 +81,9 @@ export default function App() {
           <Route element={<DetailLayout />}>
             <Route path="/pets/new" element={<PetRegisterPage />} />
             <Route path="/pets/:petId" element={<PetDetailPage />} />
+            <Route path="/pets/:petId/edit" element={<PetRegisterPage />} />
             <Route path="/pets/:petId/health" element={<HealthRecordPage />} />
+            <Route path="/pets/:petId/vaccinations" element={<VaccinationPage />} />
             <Route path="/hospitals/:hospitalId" element={<HospitalDetailPage />} />
             <Route path="/hospitals/:hospitalId/reserve" element={<ReservationPage />} />
           </Route>

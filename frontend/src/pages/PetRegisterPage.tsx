@@ -1,55 +1,117 @@
-import React, { useState, FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useEffect, useState, FormEvent } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { FaDog, FaCat, FaPaw } from 'react-icons/fa6'
 import { petApi } from '../api/pet'
+import { extractErrorMessage } from '../api/client'
 import { usePetStore } from '../stores/petStore'
 import type { PetSpecies, PetGender } from '../types'
 
+// /pets/new は新規登録、/pets/:petId/edit は編集（同じフォームを使う）。編集はペットごとに作り直す
 export default function PetRegisterPage() {
+  const { petId } = useParams()
+  return <PetForm key={petId ?? 'new'} petId={petId ? Number(petId) : undefined} />
+}
+
+function PetForm({ petId }: { petId?: number }) {
+  const isEdit = petId !== undefined
   const navigate = useNavigate()
   const fetchPets = usePetStore((s) => s.fetchPets)
   const [species, setSpecies] = useState<PetSpecies>('DOG')
-  const [gender, setGender] = useState<PetGender>('MALE')
+  // null = 不明（性別は任意項目）
+  const [gender, setGender] = useState<PetGender | null>('MALE')
   const [name, setName] = useState('')
   const [breed, setBreed] = useState('')
   const [birthDate, setBirthDate] = useState('')
   const [weight, setWeight] = useState('')
   const [microchip, setMicrochip] = useState('')
   const [neutered, setNeutered] = useState(false)
+  // 編集時は現在の値を読み込むまでフォームを出さない（空のまま保存すると全項目が置き換わるため）
+  const [isPrefilling, setIsPrefilling] = useState(isEdit)
+  const [prefillFailed, setPrefillFailed] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isEdit) return
+    let active = true
+    petApi
+      .getDetail(petId)
+      .then((res) => {
+        if (!active) return
+        const pet = res.data
+        if (!res.success || !pet) {
+          setPrefillFailed(true)
+          return
+        }
+        setSpecies(pet.species)
+        setGender(pet.gender ?? null)
+        setName(pet.name)
+        setBreed(pet.breed ?? '')
+        setBirthDate(pet.birthDate ?? '')
+        setWeight(pet.weight != null ? String(pet.weight) : '')
+        setMicrochip(pet.microchipNumber ?? '')
+        setNeutered(pet.neutered)
+      })
+      .catch((err) => {
+        if (!active) return
+        setError(extractErrorMessage(err, 'ペット情報の取得に失敗しました。'))
+        setPrefillFailed(true)
+      })
+      .finally(() => active && setIsPrefilling(false))
+    return () => {
+      active = false
+    }
+  }, [isEdit, petId])
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
     setIsLoading(true)
+    // 更新は全項目置換（docs/07 §5-4）。空欄の任意項目は未設定として送る
+    const body = {
+      name,
+      species,
+      breed: breed || undefined,
+      birthDate: birthDate || undefined,
+      gender: gender ?? undefined,
+      weight: weight ? parseFloat(weight) : undefined,
+      neutered,
+      microchipNumber: microchip || undefined,
+    }
     try {
-      const res = await petApi.create({
-        name,
-        species,
-        breed: breed || undefined,
-        birthDate: birthDate || undefined,
-        gender,
-        weight: weight ? parseFloat(weight) : undefined,
-        neutered,
-        microchipNumber: microchip || undefined,
-      })
+      const res = isEdit ? await petApi.update(petId, body) : await petApi.create(body)
       if (!res.success) {
-        setError(res.message ?? 'ペットの登録に失敗しました。')
+        setError(res.message ?? (isEdit ? 'ペット情報の保存に失敗しました。' : 'ペットの登録に失敗しました。'))
         return
       }
       setIsSuccess(true)
       await fetchPets()
-      setTimeout(() => navigate('/pets'), 2000)
+      setTimeout(() => navigate(isEdit ? `/pets/${petId}` : '/pets'), isEdit ? 800 : 2000)
     } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        ?? 'ペットの登録に失敗しました。もう一度お試しください。'
-      setError(message)
+      setError(extractErrorMessage(err, isEdit ? 'ペット情報の保存に失敗しました。' : 'ペットの登録に失敗しました。もう一度お試しください。'))
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (isPrefilling) {
+    return (
+      <div className="flex items-center justify-center py-xl">
+        <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
+      </div>
+    )
+  }
+
+  if (prefillFailed) {
+    return (
+      <div className="px-container-margin py-lg flex flex-col gap-md items-center">
+        <p className="font-body-md text-body-md text-error-red">{error ?? 'ペット情報の取得に失敗しました。'}</p>
+        <button type="button" onClick={() => navigate(-1)} className="font-button-text text-button-text text-primary px-4 py-2 rounded-xl border border-primary/20">
+          戻る
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -111,6 +173,7 @@ export default function PetRegisterPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="ペットの名前"
+            maxLength={50}
             required
             className="w-full h-[48px] px-sm bg-neutral-gray-50 border border-neutral-gray-100 rounded-lg font-body-md text-body-md text-on-surface placeholder:text-neutral-gray-600 focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all"
           />
@@ -123,6 +186,7 @@ export default function PetRegisterPage() {
             value={breed}
             onChange={(e) => setBreed(e.target.value)}
             placeholder="例：ゴールデン・レトリバー"
+            maxLength={100}
             className="w-full h-[48px] px-sm bg-neutral-gray-50 border border-neutral-gray-100 rounded-lg font-body-md text-body-md text-on-surface placeholder:text-neutral-gray-600 focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all"
           />
         </div>
@@ -139,13 +203,14 @@ export default function PetRegisterPage() {
 
         <div className="flex flex-col gap-xs">
           <label className="font-label-md text-label-md text-on-surface-variant">性別</label>
-          <div className="grid grid-cols-2 gap-sm">
+          <div className="grid grid-cols-3 gap-sm">
             {([
               { value: 'MALE', label: 'オス' },
               { value: 'FEMALE', label: 'メス' },
-            ] as { value: PetGender; label: string }[]).map(({ value, label }) => (
+              { value: null, label: '不明' },
+            ] as { value: PetGender | null; label: string }[]).map(({ value, label }) => (
               <button
-                key={value}
+                key={value ?? 'UNKNOWN'}
                 type="button"
                 onClick={() => setGender(value)}
                 className={`flex items-center justify-center gap-2 h-[48px] rounded-lg border-2 font-button-text text-button-text transition-all ${
@@ -154,7 +219,7 @@ export default function PetRegisterPage() {
                     : 'border-neutral-gray-100 bg-surface-container-lowest text-neutral-gray-600'
                 }`}
               >
-                <span className="material-symbols-outlined text-[18px]">{value === 'MALE' ? 'male' : 'female'}</span>
+                <span className="material-symbols-outlined text-[18px]">{value === 'MALE' ? 'male' : value === 'FEMALE' ? 'female' : 'help'}</span>
                 {label}
               </button>
             ))}
@@ -166,9 +231,9 @@ export default function PetRegisterPage() {
           <div className="relative">
             <input
               type="number"
-              step="0.1"
+              step="0.01"
               min="0"
-              max="200"
+              max="999.99"
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
               placeholder="0.0"
@@ -223,12 +288,12 @@ export default function PetRegisterPage() {
         ) : isSuccess ? (
           <>
             <span className="material-symbols-outlined text-[20px]">check_circle</span>
-            登録完了
+            {isEdit ? '保存完了' : '登録完了'}
           </>
         ) : (
           <>
             <span className="material-symbols-outlined text-[20px]">pets</span>
-            登録する
+            {isEdit ? '保存する' : '登録する'}
           </>
         )}
       </button>

@@ -12,7 +12,7 @@ This is the repository entry point for Codex and the canonical shared project po
 - Agent-facing files in `.codex/` and `.ai-collab/` use concise English. User-facing replies remain Korean; product design docs and code comments retain the language rules below.
 - Operational source of truth: `.ai-collab/PROTOCOL.md`. The original research corrections remain in `docs/codex-workflow/01_CORRECTIONS.md` for reference only.
 
-Last updated: 2026-08-23 (branch `fix/auth-session-issues`)
+Last updated: 2026-10-22 (branch `feat/spring/schedule-generation`, stacked on `feat/spring/hospital-admins`)
 
 ## 1. Areas
 
@@ -60,7 +60,7 @@ Rules:
 6. Role checks via `@PreAuthorize("hasAuthority('ROLE_...')")`; SecurityConfig only guarantees `authenticated()`.
 7. Owner checks with the `Preconditions.validate` pattern (see `UpdatePetService`).
 8. Domain state transitions are methods returning a new immutable instance (see `Hospital.suspend()`, `Reservation.approve()`); Lombok on Domain: `@Getter`/constructors only, never `@Setter`/`@Data`.
-9. Auth policy: access token 30 min / refresh token 14 days, refresh **rotation** (old token revoked on every use), max 1 active refresh token per user, stored in PostgreSQL (no Redis in MVP). Login, refresh and logout all take `SELECT ... FOR UPDATE` on the user row (`UserRepository.lockForSessionUpdate`) before touching tokens — without that per-user serialization the bulk revoke misses a successor token inserted by a concurrent refresh (docs/12 §3-11).
+9. Auth policy: access token 30 min / refresh token 14 days, refresh **rotation** (old token revoked on every use), max 1 active refresh token per user, stored in PostgreSQL (no Redis in MVP). Login, refresh and logout all take `SELECT ... FOR UPDATE` on the user row (`UserRepository.lockForSessionUpdate`) before touching tokens — without that per-user serialization the bulk revoke misses a successor token inserted by a concurrent refresh (docs/12 §3-11). `JwtAuthenticationFilter` loads the user on every authenticated request: suspended, deleted or missing users are not authenticated (401) and authorities come from the current DB role, so admin suspension and role changes apply on the next request (docs/09 §3-5). Admin suspension also takes the session lock and revokes all refresh tokens.
 
 ## 4. API common spec
 
@@ -82,12 +82,19 @@ Error messages in Japanese. New codes follow `{DOMAIN}-{seq}`; `{DOMAIN}-999` is
 | USER-002 | 入力バリデーション | 400 |
 | USER-003 | 存在しないユーザー | 404 |
 | USER-004 | 利用停止中ユーザー | 403 |
+| USER-005 | 自分自身の停止・停止解除・権限変更 | 400 |
 | PET-001 | 存在しないペット | 404 |
 | PET-002 | 飼い主不一致 | 401 |
 | HOSPITAL-001 | 存在しない病院 | 404 |
 | HOSPITAL-002 | 存在しない予約枠 / hospitalId不一致 | 404 |
 | HOSPITAL-003 | 存在しない営業時間 / hospitalId不一致 | 404 |
 | HOSPITAL-004 | 曜日重複登録 | 409 |
+| HOSPITAL-005 | 管理対象外の病院（病院管理者が未紐付け） | 403 |
+| HOSPITAL-006 | 病院管理者権限でないユーザーの紐付け | 400 |
+| HOSPITAL-007 | 紐付けの重複 | 409 |
+| HOSPITAL-008 | 存在しない紐付けの解除 | 404 |
+| HOSPITAL-009 | 不正な営業時間（開始>=終了、単位5〜240分外、休憩の片方のみ・営業時間外） | 400 |
+| HOSPITAL-010 | 予約枠を生成できない月（過去・13か月以上先） | 400 |
 | RESERVATION-001 | 重複予約（同一枠にREQUESTED/APPROVED既存） | 409 |
 | RESERVATION-002 | 存在しない予約枠 / hospitalId不一致 | 404 |
 | RESERVATION-003 | BLOCKED枠への予約 | 409 |
@@ -101,7 +108,10 @@ Error messages in Japanese. New codes follow `{DOMAIN}-{seq}`; `{DOMAIN}-999` is
 | HEALTH-002 | 存在しないペット / 他ユーザーのペット | 403 |
 | NOTIFICATION-001 | 存在しない通知 | 404 |
 | NOTIFICATION-002 | 受信者本人でない | 403 |
-| AUTH/USER/PET/HOSPITAL/RESERVATION/HEALTH/NOTIFICATION-999 | domain default | 500 |
+| VACCINATION-001 | 存在しないワクチン接種予定 | 404 |
+| VACCINATION-002 | 存在しないペット / 他ユーザーのペット | 403 |
+| VACCINATION-003 | 不正な状態遷移（同時実行で負けた側を含む） | 409 |
+| AUTH/USER/PET/HOSPITAL/RESERVATION/HEALTH/NOTIFICATION/VACCINATION-999 | domain default | 500 |
 | VALIDATION-001 | `@Valid` failure (GlobalExceptionHandler) | 400 |
 | SERVER-001 | unhandled exception fallback | 500 |
 
@@ -131,11 +141,10 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 ## 7. DB / Flyway
 
 - DB changes only via Flyway; logical delete (`deleted_at`) is the default.
-- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile), V9 health_records, V10 notifications.
-- ⚠ Unmerged `feat/spring/pet-fields` also uses **V4** (`V4__alter_pets_add_columns.sql` — breed/neutered/microchip_number). Renumber one side at merge. New migrations start at **V11**; check every branch for number collisions before numbering.
-- `notifications.vaccination_id` exists as a column with no FK yet; add the constraint when `vaccinations` is created (docs/06 §15 note).
+- Applied on this branch: V1 users, V2 refresh_tokens, V3 pets, V4 hospitals, V5 hospital_business_hours, V6 hospital_schedules, V7 reservations, V8 partial unique index `uq_reservations_active_schedule` (at most one REQUESTED/APPROVED reservation per schedule — PostgreSQL partial index, not replayed by the H2 test profile), V9 health_records, V10 notifications, V11 vaccinations (+ FK `notifications.vaccination_id`), V12 `vaccinations.reminded_date` (reminder dedupe marker), V13 pets breed/neutered/microchip_number (the former pet-fields V4, renumbered at merge), V14 `pets.gender` nullable (matches docs/06), V15 hospital_admins (user↔hospital links, unique per pair).
+- New migrations start at **V16**; check every branch for number collisions before numbering.
 - ⚠ V8 fails on an existing database that already holds duplicate active reservations for one schedule; clean those rows before applying.
-- Not created yet: vaccinations / hospital_admins (definitions in docs/06). Because `hospital_admins` is missing, admin APIs cannot verify "own hospital" — hospital-affiliation checks are intentionally skipped for now.
+- Hospital affiliation: services that manage a hospital call `HospitalAccessChecker.checkManageable(userId, hospitalId)` first (SYSTEM_ADMIN: any hospital; HOSPITAL_ADMIN: only hospitals linked in `hospital_admins`; else HOSPITAL-005). Reservation transitions check the reservation's hospital. Docs: docs/07 §2-8, docs/09 §4-5.
 
 ## 8. Test rules
 
@@ -144,8 +153,8 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 - Controller tests: `@WebMvcTest` + `@AutoConfigureMockMvc(addFilters = false)` + `@Import(GlobalExceptionHandler.class)`. If `JwtAuthenticationFilter` breaks context creation, exclude it via `excludeFilters`. Mock **every** UseCase the controller depends on.
 - Principal is `Long`: use `new UsernamePasswordAuthenticationToken(1L, null, authorities)` — `.with(user(...))` fails.
 - Most unit tests mock repositories. H2 **is** available for `@DataJpaTest` (`application-test.yml`, `MODE=PostgreSQL`, `ddl-auto=create-drop`, Flyway disabled) — see `RefreshTokenPersistenceAdapterTest`; Testcontainers is not introduced.
-- Mocked repositories prove neither real SQL nor concurrency. Null-tolerant `@Query` bugs escape them (docs/12 §3-10) and so do races (docs/12 §3-11). No PostgreSQL concurrency test exists yet.
-- Verify: `./gradlew clean test` in `spring-api/` (209 green as of 2026-10-04).
+- Mocked repositories prove neither real SQL nor concurrency. Null-tolerant `@Query` bugs escape them (docs/12 §3-10) and so do races (docs/12 §3-11). `./gradlew test` has no PostgreSQL concurrency test (H2/mocks only). Manual PostgreSQL race checks exist as task scripts run against a scratch DB: refresh/login vs suspension (`.ai-collab/tasks/2026-10-21-user-management/scripts/`) and concurrent/racing hospital-admin links (`.ai-collab/tasks/2026-10-22-hospital-admins/scripts/` HA-12/HA-13). Their results are implementer-reported unless a reviewer reruns them.
+- Verify: `./gradlew clean test` in `spring-api/` (318 green as of 2026-10-22).
 
 ## 9. Environment
 
@@ -161,11 +170,20 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 Start: `docker compose up -d` (postgres) → `./gradlew bootRun` / `npm run dev`.
 API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (`VITE_API_BASE_URL_WEB` / `_ANDROID` / `_IOS`).
 
-## 10. Status (2026-09-13)
+## 10. Status (2026-10-22)
 
-**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · HealthRecord CRUD · Notification (list/read + generation on reservation approve/reject/complete, 2026-10-03) · Frontend all screens SC-001〜015 (auth·pet·hospital wired to real API) · ProtectedRoute + role guards · token restore on reload.
+**Vaccination (2026-10-05, branch `feat/spring/vaccination`, stacked on `feat/react-api-integration`)**: register/list/complete/cancel/reschedule/delete APIs + daily 09:00 JST reminder Scheduler creating VACCINATION notifications (dedupe: `reminded_date` claimed by a conditional UPDATE per scheduled date, cleared on reschedule). Task record `.ai-collab/tasks/2026-10-05-vaccination/`; Codex REVIEW-001 found R-01..R-04 (stale pet rows, failed load shown as empty, rescheduled reminder lost to a timestamp race, copy); fixed in HANDOFF-002 and ACCEPTED in REVIEW-002 (2026-10-21). Frontend: SC-016 vaccination screen and the SC-006 upcoming-vaccination panel (2026-10-21).
 
-**Practice gaps** (user implements these personally — do NOT implement unless explicitly asked; list in TODO.md is authoritative): none outstanding. The user waived the gap for the HealthRecord/Notification round (2026-10-03); the §11 rule still applies to future domains unless they waive it again.
+**Pet fields + datetime format (2026-10-21, branch `feat/spring/pet-fields-datetime`)**: merged the July pet-fields branch (breed/neutered/microchip, V13) and added those columns to the conditional `updateProfile`; pet update stays a full replacement (user decision, docs/07 §5-4); `pets.gender` made nullable (V14) and request validation added for name/breed/weight lengths; all response `LocalDateTime`s serialize as JST with offset (`LocalDateTimeJsonSerializer`, docs/07 §2-7, user decision). Frontend: pet edit screen (`/pets/:petId/edit`, reuses SC-005), breed on the pet list, 「不明」 gender. Task record `.ai-collab/tasks/2026-10-21-pet-fields-datetime/`; Codex REVIEW-001 ACCEPTED (2026-10-21, one P3 comment fix deferred).
+**User management (2026-10-21, branch `feat/spring/user-management`)**: SYSTEM_ADMIN APIs `GET /admin/users` (keyword/role/status, paged `PageResponse`), `PATCH /admin/users/{id}/suspend|activate|role` (self → USER-005; suspension locks the user row and revokes refresh tokens). The JWT filter now checks the current user status/role per request. `GlobalExceptionHandler` maps unreadable params/JSON (bad enum values) to 400 VALIDATION-001 instead of 500. Frontend: real SC-015 `AdminUserPage`, a role-dependent admin menu on the dashboard (admin screens had no entry point), `UserProfile.userId` fixed (the type said `id`). Task record `.ai-collab/tasks/2026-10-21-user-management/`; REVIEW-001 found R-01 (login overlapping suspension could issue a token), R-02 (admin list stranded on an empty page), R-03 (status lines); fixed in HANDOFF-002 and ACCEPTED in REVIEW-002 (2026-10-22).
+**Hospital affiliation (2026-10-22, branch `feat/spring/hospital-admins`)**: V15 `hospital_admins`; SYSTEM_ADMIN links/unlinks HOSPITAL_ADMIN users (`GET/POST/DELETE /admin/hospitals/{id}/admins`; assignment takes the user row lock so a concurrent demotion cannot leave a link); demotion away from HOSPITAL_ADMIN deletes all links. Every hospital-managing service checks affiliation first (HOSPITAL-005..008). New `GET /admin/hospitals/mine` and `GET /admin/reservations?hospitalId=&status=&date=`; a missing required query param is 400 instead of 500. Frontend: SC-013 `AdminReservationPage` on the real API (was mock data), SC-014 lists managed hospitals (suspended included) with a SYSTEM_ADMIN hospital-admin section. Task record `.ai-collab/tasks/2026-10-22-hospital-admins/`; REVIEW-001 found R-01 (a late refresh after suspend/save could swap the selected hospital's data), R-02 (failed list load shown as "no affiliation"), R-03 (AGENTS wording); fixed in HANDOFF-002 and ACCEPTED in REVIEW-002 (2026-10-22).
+**Slot auto-generation (2026-10-22, branch `feat/spring/schedule-generation`)**: `HospitalScheduleGenerationScheduler` (1st of each month 00:00 JST) generates next month's `hospital_schedules` for every ACTIVE hospital from `hospital_business_hours`, one transaction per hospital (`HospitalScheduleGenerator`, failures logged and skipped). `POST /admin/hospitals/{id}/schedules/generate {month}` does the same for this month..+12 (affiliation-checked, HOSPITAL-010 otherwise; this month from today). Segments are split by the slot length, break slots are BLOCKED, a day with any existing slot is skipped, and the hospital row lock serializes generations. Business hours are now validated on create/update (HOSPITAL-009; previously 0-minute slots or reversed times were accepted, docs/12 §3-18). Frontend: SC-014 「予約枠の自動生成」 (month picker + result counts). Task record `.ai-collab/tasks/2026-10-22-schedule-generation/`; REVIEW-001 found R-01 (a stored break outside opening hours produced slots outside the hours), R-02 (second-precision boundaries truncated), R-03 (zero-result UI message asserted a cause); fixed in HANDOFF-002 and ACCEPTED in REVIEW-002 (2026-10-22).
+
+**Frontend review (2026-10-04)**: API wiring is implemented, but review is CHANGES_REQUESTED in `.ai-collab/tasks/2026-10-04-frontend-api-integration/REVIEW-001.md`: F-01 private pet cache survives account changes, F-02 stale hospital schedules can overwrite the current hospital, F-03 same-day past slots remain selectable. Codex verified the frontend build and reproduced F-01/F-02 with the actual stores. Browser/Capacitor evidence remains implementer-reported; native runtime verification is pending in TODO.md. Codex owns only this review and the user-requested TODO/status update; application fixes remain with Claude. Claude fixed F-01..F-03 on 2026-10-04 (session-scoped pet store reset/guard, hospital-keyed reservation data with latest-response-wins hospital store, JST start-time rule `isUpcoming`); response in `HANDOFF-002.md`, ACCEPTED in `REVIEW-002.md` (2026-10-04). Browser and APK evidence there is implementer-reported.
+
+**Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · HealthRecord CRUD · Notification (list/read + generation on reservation approve/reject/complete, 2026-10-03) · Vaccination (register/list/complete/reschedule + reminder Scheduler, 2026-10-05) · Frontend all screens SC-001〜015 (auth·pet·hospital·reservation·health record·notification·dashboard·logout wired to real API, 2026-10-04) · ProtectedRoute + role guards · token restore on reload.
+
+**Practice gaps**: none open. The user asked on 2026-10-21 to finish all Spring work, so the Vaccination cancel/delete gaps (2026-10-05) were implemented by Claude Code. The same request covers the rest of this round (admin features, pet fields, schedule generation): no new gaps. Later new domains follow §11-1 again unless the user waives it.
 
 **HealthRecord/Notification review (Codex REVIEW-001, 2026-10-03)** in `.ai-collab/tasks/2026-10-03-health-notification/`: partial PATCH erased omitted fields (R-01), and stale full-entity saves could resurrect deleted health records (R-02) or undo a hospital suspension (R-03, pre-existing). Fixed with column-specific conditional updates (§3 rule 5), applied also to the same pattern in Pet and HospitalBusinessHours updates. Response in `HANDOFF-002.md`. Re-review REVIEW-002 (2026-10-04) accepted those and found R-04: a concurrent partial PATCH still wrote back stale values of unsent fields; fixed by reading the health record with a row lock (§3 rule 5). Response in `HANDOFF-003.md`.
 
@@ -173,9 +191,9 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
 
 **Review round 2026-09-13** (Codex REVIEW-001 → fixes in `.ai-collab/tasks/2026-09-13-implementation-review/HANDOFF-002.md`): R-01〜R-08 addressed — refresh rotation now single-consumption (conditional revoke must affect exactly 1 row), refresh tokens carry `jti`, access/refresh separated by a `type` claim so a refresh token used as Bearer no longer throws inside the filter, reservations are protected by a DB-level partial unique index plus expected-status conditional updates, SUSPENDED hospitals reject new reservations (RESERVATION-009), deleted pets no longer break reservation history, and the frontend refresh queue settles every waiter on failure. **Still unverified**: real PostgreSQL concurrency runs for the race fixes.
 
-**Not started**: Vaccination API (needed before the VACCINATION notification type and its reminder can work) · schedule auto-generation Scheduler (from `hospital_business_hours`) · vaccine reminder Scheduler · django-api entirely · frontend wiring for reservation/health/notification/admin(reservation·user) screens.
+**Not started**: django-api entirely (out of scope of the 2026-10-21 "finish Spring" request).
 
-**Unmerged branches**: `feat/spring/pet-fields` (pet columns + docs 06/07 updates); verify current unmerged set with `git branch --all` and `git log` before relying on this line — not re-audited in this update.
+**Unmerged branches**: `feat/spring/pet-fields` was merged into `feat/spring/pet-fields-datetime` on 2026-10-21 (migration renumbered to V13). Feature branches are stacked and await user PRs: `feat/react-api-integration` → `feat/spring/vaccination` → `feat/spring/pet-fields-datetime` → `feat/spring/user-management` → `feat/spring/hospital-admins` → `feat/spring/schedule-generation`. Verify with `git branch --all` and `git log`.
 
 ## 11. Workflow rules
 
@@ -202,4 +220,4 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
 | 12 Trouble_Shooting | newly solved issues |
 | 13 Retrospective | as needed |
 
-Known remaining gaps: docs keep Status "Draft" by design; pets breed/neutered/microchip_number columns exist only on unmerged `feat/spring/pet-fields` (docs/06 §8 note).
+Known remaining gaps: docs keep Status "Draft" by design; `pets.image_url` is designed but not implemented (image upload policy undecided, docs/06 §8 note).

@@ -12,11 +12,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class DeleteHospitalBusinessHoursService implements DeleteHospitalBusinessHoursUseCase {
+    private final HospitalAccessChecker hospitalAccessChecker;
     private final HospitalBusinessHoursRepository hospitalBusinessHoursRepository;
 
     @Override
     @Transactional
-    public void execute(Long hospitalId, Long businessHoursId) {
+    public void execute(Long userId, Long hospitalId, Long businessHoursId) {
+        hospitalAccessChecker.checkManageable(userId, hospitalId);
+
         HospitalBusinessHours businessHours = hospitalBusinessHoursRepository.findById(businessHoursId)
                 .orElseThrow(HospitalErrorCode.HOSPITAL_BUSINESS_HOURS_NOT_FOUND::defaultException);
 

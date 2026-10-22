@@ -63,6 +63,9 @@ public class PetPersistenceAdapter implements PetRepository {
                 pet.getBirthDate(),
                 pet.getGender(),
                 pet.getWeight(),
+                pet.getBreed(),
+                pet.isNeutered(),
+                pet.getMicrochipNumber(),
                 pet.getUpdatedAt()
         ) == 1;
     }

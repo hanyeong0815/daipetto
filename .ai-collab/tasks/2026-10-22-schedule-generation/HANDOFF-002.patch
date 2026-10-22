@@ -1,0 +1,1516 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index c7ae946..e416903 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -12,7 +12,7 @@ This is the repository entry point for Codex and the canonical shared project po
+ - Agent-facing files in `.codex/` and `.ai-collab/` use concise English. User-facing replies remain Korean; product design docs and code comments retain the language rules below.
+ - Operational source of truth: `.ai-collab/PROTOCOL.md`. The original research corrections remain in `docs/codex-workflow/01_CORRECTIONS.md` for reference only.
+ 
+-Last updated: 2026-10-22 (branch `feat/spring/hospital-admins`, stacked on `feat/spring/user-management`)
++Last updated: 2026-10-22 (branch `feat/spring/schedule-generation`, stacked on `feat/spring/hospital-admins`)
+ 
+ ## 1. Areas
+ 
+@@ -93,6 +93,8 @@ Error messages in Japanese. New codes follow `{DOMAIN}-{seq}`; `{DOMAIN}-999` is
+ | HOSPITAL-006 | 病院管理者権限でないユーザーの紐付け | 400 |
+ | HOSPITAL-007 | 紐付けの重複 | 409 |
+ | HOSPITAL-008 | 存在しない紐付けの解除 | 404 |
++| HOSPITAL-009 | 不正な営業時間（開始>=終了、単位5〜240分外、休憩の片方のみ・営業時間外） | 400 |
++| HOSPITAL-010 | 予約枠を生成できない月（過去・13か月以上先） | 400 |
+ | RESERVATION-001 | 重複予約（同一枠にREQUESTED/APPROVED既存） | 409 |
+ | RESERVATION-002 | 存在しない予約枠 / hospitalId不一致 | 404 |
+ | RESERVATION-003 | BLOCKED枠への予約 | 409 |
+@@ -152,7 +154,7 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
+ - Principal is `Long`: use `new UsernamePasswordAuthenticationToken(1L, null, authorities)` — `.with(user(...))` fails.
+ - Most unit tests mock repositories. H2 **is** available for `@DataJpaTest` (`application-test.yml`, `MODE=PostgreSQL`, `ddl-auto=create-drop`, Flyway disabled) — see `RefreshTokenPersistenceAdapterTest`; Testcontainers is not introduced.
+ - Mocked repositories prove neither real SQL nor concurrency. Null-tolerant `@Query` bugs escape them (docs/12 §3-10) and so do races (docs/12 §3-11). `./gradlew test` has no PostgreSQL concurrency test (H2/mocks only). Manual PostgreSQL race checks exist as task scripts run against a scratch DB: refresh/login vs suspension (`.ai-collab/tasks/2026-10-21-user-management/scripts/`) and concurrent/racing hospital-admin links (`.ai-collab/tasks/2026-10-22-hospital-admins/scripts/` HA-12/HA-13). Their results are implementer-reported unless a reviewer reruns them.
+-- Verify: `./gradlew clean test` in `spring-api/` (301 green as of 2026-10-22).
++- Verify: `./gradlew clean test` in `spring-api/` (318 green as of 2026-10-22).
+ 
+ ## 9. Environment
+ 
+@@ -175,6 +177,7 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
+ **Pet fields + datetime format (2026-10-21, branch `feat/spring/pet-fields-datetime`)**: merged the July pet-fields branch (breed/neutered/microchip, V13) and added those columns to the conditional `updateProfile`; pet update stays a full replacement (user decision, docs/07 §5-4); `pets.gender` made nullable (V14) and request validation added for name/breed/weight lengths; all response `LocalDateTime`s serialize as JST with offset (`LocalDateTimeJsonSerializer`, docs/07 §2-7, user decision). Frontend: pet edit screen (`/pets/:petId/edit`, reuses SC-005), breed on the pet list, 「不明」 gender. Task record `.ai-collab/tasks/2026-10-21-pet-fields-datetime/`; Codex REVIEW-001 ACCEPTED (2026-10-21, one P3 comment fix deferred).
+ **User management (2026-10-21, branch `feat/spring/user-management`)**: SYSTEM_ADMIN APIs `GET /admin/users` (keyword/role/status, paged `PageResponse`), `PATCH /admin/users/{id}/suspend|activate|role` (self → USER-005; suspension locks the user row and revokes refresh tokens). The JWT filter now checks the current user status/role per request. `GlobalExceptionHandler` maps unreadable params/JSON (bad enum values) to 400 VALIDATION-001 instead of 500. Frontend: real SC-015 `AdminUserPage`, a role-dependent admin menu on the dashboard (admin screens had no entry point), `UserProfile.userId` fixed (the type said `id`). Task record `.ai-collab/tasks/2026-10-21-user-management/`; REVIEW-001 found R-01 (login overlapping suspension could issue a token), R-02 (admin list stranded on an empty page), R-03 (status lines); fixed in HANDOFF-002 and ACCEPTED in REVIEW-002 (2026-10-22).
+ **Hospital affiliation (2026-10-22, branch `feat/spring/hospital-admins`)**: V15 `hospital_admins`; SYSTEM_ADMIN links/unlinks HOSPITAL_ADMIN users (`GET/POST/DELETE /admin/hospitals/{id}/admins`; assignment takes the user row lock so a concurrent demotion cannot leave a link); demotion away from HOSPITAL_ADMIN deletes all links. Every hospital-managing service checks affiliation first (HOSPITAL-005..008). New `GET /admin/hospitals/mine` and `GET /admin/reservations?hospitalId=&status=&date=`; a missing required query param is 400 instead of 500. Frontend: SC-013 `AdminReservationPage` on the real API (was mock data), SC-014 lists managed hospitals (suspended included) with a SYSTEM_ADMIN hospital-admin section. Task record `.ai-collab/tasks/2026-10-22-hospital-admins/`; REVIEW-001 found R-01 (a late refresh after suspend/save could swap the selected hospital's data), R-02 (failed list load shown as "no affiliation"), R-03 (AGENTS wording); fixed in HANDOFF-002 and ACCEPTED in REVIEW-002 (2026-10-22).
++**Slot auto-generation (2026-10-22, branch `feat/spring/schedule-generation`)**: `HospitalScheduleGenerationScheduler` (1st of each month 00:00 JST) generates next month's `hospital_schedules` for every ACTIVE hospital from `hospital_business_hours`, one transaction per hospital (`HospitalScheduleGenerator`, failures logged and skipped). `POST /admin/hospitals/{id}/schedules/generate {month}` does the same for this month..+12 (affiliation-checked, HOSPITAL-010 otherwise; this month from today). Segments are split by the slot length, break slots are BLOCKED, a day with any existing slot is skipped, and the hospital row lock serializes generations. Business hours are now validated on create/update (HOSPITAL-009; previously 0-minute slots or reversed times were accepted, docs/12 §3-18). Frontend: SC-014 「予約枠の自動生成」 (month picker + result counts). Task record `.ai-collab/tasks/2026-10-22-schedule-generation/` (in review).
+ 
+ **Frontend review (2026-10-04)**: API wiring is implemented, but review is CHANGES_REQUESTED in `.ai-collab/tasks/2026-10-04-frontend-api-integration/REVIEW-001.md`: F-01 private pet cache survives account changes, F-02 stale hospital schedules can overwrite the current hospital, F-03 same-day past slots remain selectable. Codex verified the frontend build and reproduced F-01/F-02 with the actual stores. Browser/Capacitor evidence remains implementer-reported; native runtime verification is pending in TODO.md. Codex owns only this review and the user-requested TODO/status update; application fixes remain with Claude. Claude fixed F-01..F-03 on 2026-10-04 (session-scoped pet store reset/guard, hospital-keyed reservation data with latest-response-wins hospital store, JST start-time rule `isUpcoming`); response in `HANDOFF-002.md`, ACCEPTED in `REVIEW-002.md` (2026-10-04). Browser and APK evidence there is implementer-reported.
+ 
+@@ -188,9 +191,9 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
+ 
+ **Review round 2026-09-13** (Codex REVIEW-001 → fixes in `.ai-collab/tasks/2026-09-13-implementation-review/HANDOFF-002.md`): R-01〜R-08 addressed — refresh rotation now single-consumption (conditional revoke must affect exactly 1 row), refresh tokens carry `jti`, access/refresh separated by a `type` claim so a refresh token used as Bearer no longer throws inside the filter, reservations are protected by a DB-level partial unique index plus expected-status conditional updates, SUSPENDED hospitals reject new reservations (RESERVATION-009), deleted pets no longer break reservation history, and the frontend refresh queue settles every waiter on failure. **Still unverified**: real PostgreSQL concurrency runs for the race fixes.
+ 
+-**Not started**: schedule auto-generation Scheduler (from `hospital_business_hours`; in scope for the 2026-10-21 "finish Spring" request, next round) · django-api entirely.
++**Not started**: django-api entirely (out of scope of the 2026-10-21 "finish Spring" request).
+ 
+-**Unmerged branches**: `feat/spring/pet-fields` was merged into `feat/spring/pet-fields-datetime` on 2026-10-21 (migration renumbered to V13). Feature branches are stacked and await user PRs: `feat/react-api-integration` → `feat/spring/vaccination` → `feat/spring/pet-fields-datetime` → `feat/spring/user-management` → `feat/spring/hospital-admins`. Verify with `git branch --all` and `git log`.
++**Unmerged branches**: `feat/spring/pet-fields` was merged into `feat/spring/pet-fields-datetime` on 2026-10-21 (migration renumbered to V13). Feature branches are stacked and await user PRs: `feat/react-api-integration` → `feat/spring/vaccination` → `feat/spring/pet-fields-datetime` → `feat/spring/user-management` → `feat/spring/hospital-admins` → `feat/spring/schedule-generation`. Verify with `git branch --all` and `git log`.
+ 
+ ## 11. Workflow rules
+ 
+diff --git a/TODO.md b/TODO.md
+index def93cd..15ddc07 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -150,13 +150,16 @@
+ - [x] Codexレビュー（`.ai-collab/tasks/2026-10-22-hospital-admins/`）: REVIEW-001でR-01（停止・保存の応答待ちに別病院を選ぶと前の病院のデータに入れ替わる）・R-02（一覧の取得失敗を「管理対象なし」と表示）・R-03 → HANDOFF-002で修正 → REVIEW-002で **ACCEPTED**（2026-10-22）
+ - [x] フロントエンド: SC-013 `AdminReservationPage`をモックから実API連動、SC-014 `AdminHospitalPage`を管理対象病院の選択＋病院管理者の紐付け欄に変更
+ 
+-### 予約枠自動生成バッチ（設計決定、未実装 — 2026-08-02）
+-> ユーザーとの設計議論の結論。`hospital_business_hours`管理APIは実装済みだが、これを元に`hospital_schedules`を自動生成するScheduler本体は未着手
++### 予約枠自動生成バッチ（設計決定 2026-08-02、実装 2026-10-22 — Claude Code、ブランチ `feat/spring/schedule-generation`）
++> ユーザーとの設計議論の結論に沿って実装。毎月1日のSchedulerと、管理画面からの手動生成（任意の月）の2経路
+ 
+-- [ ] 予約枠自動生成Scheduler（`@Scheduled`、`04_System_Architecture` §14参照）
++- [x] 予約枠自動生成Scheduler（`HospitalScheduleGenerationScheduler`、毎月1日 00:00 JST、営業中の全病院の翌月分。`04_System_Architecture` §14参照）
+   - `hospital_business_hours`を元に、翌月分など一定期間の`hospital_schedules`を`slot_duration_minutes`単位で分割生成
+   - 休憩時間帯も同じ単位で分割し`BLOCKED`として生成（行を作らず空白にする方式は採らない — 画面上「休憩中」と表示できるようにするため）
+-  - 既に生成済みの期間は再生成しない（手動BLOCKEDの上書き防止）
++  - 既に生成済みの期間は再生成しない（手動BLOCKEDの上書き防止）→ 実装では枠が1つでもある日を作らない（病院行の排他で生成を直列化）
++- [x] 手動生成API `POST /api/v1/admin/hospitals/{id}/schedules/generate`（今月〜12か月先、今月は今日以降。HOSPITAL-010）と SC-014「予約枠の自動生成」
++- [x] 営業時間の入力検証（開始<終了、単位5〜240分、休憩は両方指定かつ営業時間内。HOSPITAL-009、`docs/12` §3-18）
++- [ ] Codexレビュー（`.ai-collab/tasks/2026-10-22-schedule-generation/`）
+ 
+ ### Reservation API（2026-08-23実装、Claude Code）
+ - [x] `Reservation` ドメイン・エンティティ・テーブル作成 (`V7__create_reservations.sql`。V5/V6はHospitalBusinessHours/HospitalScheduleが使用済みのためV7から)
+diff --git a/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md b/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md
+index 1b2fb81..f53afb9 100644
+--- a/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md	
++++ b/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md	
+@@ -283,7 +283,7 @@
+ 
+ ### **内容**
+ 
+-SYSTEM_ADMINは病院の登録・停止と、病院管理者（HOSPITAL_ADMIN）の病院への紐付け・解除を行える。HOSPITAL_ADMIN・SYSTEM_ADMINは病院情報更新・予約枠の登録／BLOCKED切替・曜日別営業時間のCRUDを行える。HOSPITAL_ADMINは紐付いた病院だけを管理できる（`07_API_Design` §2-8）。
++SYSTEM_ADMINは病院の登録・停止と、病院管理者（HOSPITAL_ADMIN）の病院への紐付け・解除を行える。HOSPITAL_ADMIN・SYSTEM_ADMINは病院情報更新・予約枠の登録／BLOCKED切替・曜日別営業時間のCRUDを行える。HOSPITAL_ADMINは紐付いた病院だけを管理できる（`07_API_Design` §2-8）。予約枠は曜日別営業時間から自動生成する（毎月1日に翌月分、管理画面から任意の月も可。既に枠がある日は作らない）。
+ 
+ ### **異常系**
+ 
+@@ -293,6 +293,7 @@ SYSTEM_ADMINは病院の登録・停止と、病院管理者（HOSPITAL_ADMIN）
+ | 曜日重複登録 | HOSPITAL-004 |
+ | 紐付いていない病院の管理 | HOSPITAL-005 |
+ | 病院管理者権限でないユーザーの紐付け / 紐付けの重複 / 存在しない紐付けの解除 | HOSPITAL-006 / 007 / 008 |
++| 不正な営業時間 / 生成できない月 | HOSPITAL-009 / 010 |
+ 
+ ---
+ 
+diff --git a/docs/04_System_Architecture 362d097bd4f780b6b4d2c28d4ae357a1.md b/docs/04_System_Architecture 362d097bd4f780b6b4d2c28d4ae357a1.md
+index 8b2ea41..60c3225 100644
+--- a/docs/04_System_Architecture 362d097bd4f780b6b4d2c28d4ae357a1.md	
++++ b/docs/04_System_Architecture 362d097bd4f780b6b4d2c28d4ae357a1.md	
+@@ -10,7 +10,7 @@
+ | Document | System Architecture |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-08-23 |
++| Updated | 2026-10-22 |
+ 
+ ---
+ 
+@@ -483,7 +483,9 @@ flowchart TB
+ | **Scheduler** | **実行時間** |
+ | --- | --- |
+ | ワクチン通知 | 毎日 09:00 |
+-| 予約枠自動生成 | 例: 毎月1日 00:00（`hospital_business_hours`を元に翌月分の`hospital_schedules`を生成） |
++| 予約枠自動生成 | 毎月1日 00:00 JST（`hospital_business_hours`を元に翌月分の`hospital_schedules`を生成） |
++
++**予約枠自動生成（2026-10-22実装）:** `HospitalScheduleGenerationScheduler`（`@Scheduled(cron = "0 0 0 1 * *", zone = "Asia/Tokyo")`）が営業中（`ACTIVE`）の全病院について翌月分を生成する。病院ごとに別トランザクション（`HospitalScheduleGenerator`）で処理し、1病院の失敗は記録して他の病院の生成を続ける。各病院の生成は病院行を`SELECT ... FOR UPDATE`で排他取得してから行い、既に枠が1つでもある日は作らない（手動の枠・臨時BLOCKEDを上書きしない、`06_ERD` §18）。同じ処理を管理画面から任意の月（今月〜12か月先）に実行するAPIもある（`07_API_Design` §8-11）。導入直後の今月・翌月分は、Schedulerの次回実行を待たず手動生成で作る。
+ 
+ ---
+ 
+diff --git a/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md b/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md
+index 3877d17..e2341b2 100644
+--- a/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md	
++++ b/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md	
+@@ -747,6 +747,7 @@ flowchart TB
+ | 利用停止 | 停止処理（§11-3）。停止後も一覧に残り「停止中」と表示する | SYSTEM_ADMIN |
+ | 病院管理者 | 紐付いたユーザーの一覧・解除（確認ダイアログあり）、追加（§11-9〜11-11）。追加の候補は利用中の`ROLE_HOSPITAL_ADMIN`ユーザー（先頭100名）から、紐付け済みを除いたもの | SYSTEM_ADMIN |
+ | 診療時間（曜日別） | 登録・更新・削除（§8-7〜8-10） | 両方 |
++| 予約枠の自動生成 | 月（今月〜12か月先、既定は来月）を選び「生成する」。作成した枠数・日数と、既に枠があり対象外にした日数を表示する（§8-11）。翌月分は毎月1日に自動で作成される | 両方 |
+ | 個別予約枠 | 追加、予約可能 ⇔ ブロック（§8-4〜8-6） | 両方 |
+ 
+ 病院管理者が紐付いていない病院のAPIを呼ぶと403 HOSPITAL-005（`07_API_Design` §2-8）。病院一覧の取得に失敗した場合は「管理対象なし」と表示せず、再試行ボタンを表示する。更新・停止の応答を待つ間に別の病院を選んだ場合、応答後の再取得は行わず、選択中の病院の表示・保存対象を変えない。
+diff --git a/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md b/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md
+index be016b5..f2cef44 100644
+--- a/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md	
++++ b/docs/06_ERD 363d097bd4f780699f2cd5859607c3c8.md	
+@@ -555,6 +555,8 @@ Refresh TokenはDBで管理する。
+ - 同一病院・同一曜日のレコードが`hospital_business_hours`に無い場合、その曜日は予約枠を生成しない（休診扱い）。
+ - 手動で`hospital_schedules`を`BLOCKED`にした枠（臨時休診等）は、バッチの再実行で上書きしない（生成済みの期間は再生成しないか、既存レコードをスキップする）。
+ 
++**実装（2026-10-22）:** 予約枠が1つでもある日は丸ごと作らない（日単位のスキップ）。区間の端数（予約枠単位に満たない残り）は作らない。休憩は両端とも営業時間内に切り詰め、営業時間と重ならない休憩・片方だけの休憩（検証の追加前に保存された値）は休憩なしとして扱う（営業時間外に枠を作らない）。秒を含む時刻もその時刻から区切る。同じ病院の生成は病院行の排他で直列化する。毎月1日のSchedulerが翌月分を、管理画面の手動生成（`07_API_Design` §8-11）が任意の月を作る（`04_System_Architecture` §14）。営業時間の登録・更新では、開始 < 終了、予約枠単位5〜240分、休憩は両方指定かつ営業時間内を検証する（HOSPITAL-009）。
++
+ **予約による自動BLOCKEDは行わない。** `hospital_schedules.status`は病院側の都合による提供可否のみを表し、「その枠がすでに予約で埋まっているか」は`reservations`側で`schedule_id`に対するREQUESTED/APPROVED件数を確認して判定する（§12 業務制約 参照）。この2つを分けることで、予約キャンセル時に`hospital_schedules`側の状態を戻す同期処理が不要になる。
+ 
+ ---
+diff --git a/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md b/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md
+index 7d5e20c..a111d95 100644
+--- a/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md	
++++ b/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md	
+@@ -130,7 +130,7 @@ ISO-8601形式を利用する。
+ 
+ | **対象API** | **確認する病院** |
+ | --- | --- |
+-| 8-4〜8-7・8-9・8-10（予約枠・営業時間の管理）、11-2 病院更新 | パスの`hospitalId` |
++| 8-4〜8-7・8-9〜8-11（予約枠・営業時間の管理、予約枠の自動生成）、11-2 病院更新 | パスの`hospitalId` |
+ | 9-5〜9-7（予約の承認・却下・診療完了） | 予約の病院（予約が存在しなければ先にRESERVATION-006） |
+ | 9-8 予約一覧（病院管理者） | Queryの`hospitalId` |
+ 
+@@ -1023,7 +1023,7 @@ POST /api/v1/admin/hospitals/{hospitalId}/schedules
+ 
+ ---
+ 
+-> **注記:** 本APIは管理者が個別に1枠を手動登録する用途（臨時追加・修正等）。通常の月次分の予約枠は `hospital_business_hours`（曜日別デフォルト営業時間、`06_ERD` §9-1参照）を元にSchedulerが自動生成する（`04_System_Architecture` §14参照）。両者は併存する別経路であり、本APIはバッチを置き換えるものではない。
++> **注記:** 本APIは管理者が個別に1枠を手動登録する用途（臨時追加・修正等）。通常の月次分の予約枠は `hospital_business_hours`（曜日別デフォルト営業時間、`06_ERD` §9-1参照）を元に自動生成する（毎月1日のScheduler、または8-11の手動生成。`04_System_Architecture` §14参照）。両者は併存する別経路であり、本APIで枠を作った日は自動生成の対象外になる。
+ 
+ ---
+ 
+@@ -1111,7 +1111,9 @@ POST /api/v1/admin/hospitals/{hospitalId}/business-hours
+ 
+ ## **説明**
+ 
+-曜日別のデフォルト営業時間（`hospital_business_hours`）を登録する。同一`hospitalId`・`dayOfWeek`の組み合わせは1件のみ登録できる（`06_ERD` §9-1のUNIQUE制約）。本APIで登録した内容は将来の予約枠自動生成バッチ（`04_System_Architecture` §14参照）の元データとなるが、バッチ自体は別途実装する。
++曜日別のデフォルト営業時間（`hospital_business_hours`）を登録する。同一`hospitalId`・`dayOfWeek`の組み合わせは1件のみ登録できる（`06_ERD` §9-1のUNIQUE制約）。本APIで登録した内容は予約枠自動生成（8-11、`04_System_Architecture` §14参照）の元データとなる。
++
++入力の規則（8-9の更新も同じ）: 開始 < 終了、予約枠単位は5〜240分、休憩は開始・終了の両方を指定（休憩なしは両方`null`）し、営業時間内で開始 < 終了。違反はHOSPITAL-009。
+ 
+ ## **権限**
+ 
+@@ -1152,6 +1154,7 @@ POST /api/v1/admin/hospitals/{hospitalId}/business-hours
+ | --- | --- |
+ | HOSPITAL-001 | 存在しない病院 |
+ | HOSPITAL-004 | 既に登録されている曜日への重複登録 |
++| HOSPITAL-009 | 診療時間の設定が不正（上記の入力の規則） |
+ 
+ ---
+ 
+@@ -1239,6 +1242,7 @@ PATCH /api/v1/admin/hospitals/{hospitalId}/business-hours/{businessHoursId}
+ | **Code** | **内容** |
+ | --- | --- |
+ | HOSPITAL-003 | 存在しない営業時間、または指定した`hospitalId`に属さない営業時間 |
++| HOSPITAL-009 | 診療時間の設定が不正（8-7の入力の規則） |
+ 
+ ---
+ 
+@@ -1278,6 +1282,66 @@ DELETE /api/v1/admin/hospitals/{hospitalId}/business-hours/{businessHoursId}
+ 
+ ---
+ 
++# **8-11. 予約枠の自動生成（手動実行）**
++
++## **Endpoint**
++
++```
++POST /api/v1/admin/hospitals/{hospitalId}/schedules/generate
++```
++
++## **説明**
++
++曜日別営業時間（8-7）を元に、指定した月の予約枠を生成する（`06_ERD` §18の生成ロジック）。毎月1日のScheduler（翌月分、`04_System_Architecture` §14）と同じ処理を、管理画面から任意の月に対して実行する。
++
++- 営業開始〜休憩開始・休憩終了〜営業終了を予約枠単位で区切って`AVAILABLE`、休憩時間も同じ単位で区切って`BLOCKED`の枠を作る。区間の端数（単位に満たない残り）は作らない。
++- 営業時間の無い曜日は作らない（休診）。
++- **既に予約枠が1つでもある日は作らない**（手動の枠や臨時の`BLOCKED`を上書きしないため）。同じ月を再実行しても枠は増えない。
++- 指定できるのは今月〜12か月先（JST）。今月を指定した場合は今日以降の日だけを作る。
++- 同じ病院の生成は病院行の排他（`SELECT ... FOR UPDATE`）で直列化し、同時に実行しても同じ日に枠が二重にできない。
++- 停止中（`SUSPENDED`）の病院も生成できる（Schedulerは営業中の病院だけが対象）。
++
++## **権限**
++
++| **Role** |
++| --- |
++| ROLE_HOSPITAL_ADMIN（紐付いた病院のみ、§2-8） |
++| ROLE_SYSTEM_ADMIN |
++
++## **Request**
++
++```json
++{
++  "month": "2026-11"
++}
++```
++
++## **Response**
++
++```json
++{
++  "success": true,
++  "data": {
++    "createdSlots": 120,
++    "generatedDates": 20,
++    "skippedDates": 1
++  }
++}
++```
++
++`createdSlots`は作成した枠数、`generatedDates`は枠を作った日数、`skippedDates`は既存の枠があったため作らなかった日数（休診日は含まない）。
++
++## **異常系**
++
++| **Code** | **内容** |
++| --- | --- |
++| VALIDATION-001 | `month`なし、`YYYY-MM`形式でない |
++| HOSPITAL-010 | 過去の月、または13か月以上先の月 |
++| HOSPITAL-005 | 管理対象外の病院 |
++| HOSPITAL-001 | 存在しない病院（システム管理者） |
++
++---
++
+ # **9. 予約API**
+ 
+ # **9-1. 予約一覧取得**
+@@ -2115,7 +2179,7 @@ DELETE /api/v1/admin/hospitals/{hospitalId}/admins/{userId}
+ | ペット登録 | ○ | × | ○ |
+ | 予約申請 | ○ | × | ○ |
+ | 予約承認・却下・診療完了、予約一覧（9-5〜9-8） | × | △ | ○ |
+-| 予約枠・営業時間の管理、病院更新（8-4〜8-10、11-2） | × | △ | ○ |
++| 予約枠・営業時間の管理、予約枠の自動生成、病院更新（8-4〜8-11、11-2） | × | △ | ○ |
+ | 管理対象の病院一覧（11-8） | × | ○ | ○ |
+ | 病院登録・停止、病院管理者の紐付け（11-1・11-3・11-9〜11-11） | × | × | ○ |
+ | ユーザー管理（11-4〜11-7） | × | × | ○ |
+@@ -2178,6 +2242,5 @@ DELETE /api/v1/admin/hospitals/{hospitalId}/admins/{userId}
+ | AI分析API | 健康予測 |
+ | レビューAPI | 病院レビュー |
+ | 画像Upload API | S3/GCS連携 |
+-| 予約枠自動生成バッチ | `hospital_business_hours`を元に`hospital_schedules`を先読み生成するScheduler。`04_System_Architecture` §14参照 |
+ 
+ ---
+diff --git a/docs/08_State_Design 365d097bd4f7808f9b01de0aa34fa730.md b/docs/08_State_Design 365d097bd4f7808f9b01de0aa34fa730.md
+index 3605ca4..62d80f3 100644
+--- a/docs/08_State_Design 365d097bd4f7808f9b01de0aa34fa730.md	
++++ b/docs/08_State_Design 365d097bd4f7808f9b01de0aa34fa730.md	
+@@ -10,7 +10,7 @@
+ | Document | State Design |
+ | Author | Koh Hanyeong |
+ | Status | Draft |
+-| Updated | 2026-10-05 |
++| Updated | 2026-10-22 |
+ 
+ ---
+ 
+@@ -377,6 +377,8 @@ stateDiagram-v2
+ 
+ # **11. Scheduler連携**
+ 
++予約枠自動生成Scheduler（毎月1日）は状態遷移を行わず、新しい`hospital_schedules`行を`AVAILABLE`（休憩時間は`BLOCKED`）で作るだけである（`04_System_Architecture` §14、`07_API_Design` §8-11）。
++
+ # **11-1. ワクチン通知Scheduler**
+ 
+ ## **実行時間**
+diff --git a/docs/09_Security_Design 366d097bd4f78074af53e3854d02bdc6.md b/docs/09_Security_Design 366d097bd4f78074af53e3854d02bdc6.md
+index 675813d..369ce3e 100644
+--- a/docs/09_Security_Design 366d097bd4f78074af53e3854d02bdc6.md	
++++ b/docs/09_Security_Design 366d097bd4f78074af53e3854d02bdc6.md	
+@@ -506,6 +506,7 @@ flowchart TB
+ | **Scheduler** | **用途** |
+ | --- | --- |
+ | ワクチン通知 | 通知生成 |
++| 予約枠自動生成 | 営業中の全病院の翌月分の予約枠生成（毎月1日 00:00 JST）。ユーザー権限を持たないため所属チェックは行わず、管理画面からの手動生成（`07_API_Design` §8-11）は所属チェック（§4-5）を通す |
+ 
+ ---
+ 
+diff --git a/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md b/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md
+index fbfef19..5a25503 100644
+--- a/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md	
++++ b/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md	
+@@ -244,6 +244,14 @@ flowchart TB
+ | SCH-T001 | AVAILABLE予約枠取得 | 取得成功 |
+ | SCH-T002 | BLOCKED予約枠予約 | RESERVATION-003 |
+ | SCH-T003 | 過去予約枠予約 | RESERVATION-005 |
++| GEN-T001 | 営業時間から予約枠を生成 | 開始〜休憩開始・休憩終了〜終了はAVAILABLE、休憩はBLOCKED。区間の端数は作らない。0時をまたぐ枠を作らない。秒を含む境界を切り捨てない。保存済みの営業時間外の休憩でも営業時間外に枠を作らない |
++| GEN-T002 | 既に枠がある日・営業時間の無い曜日 | 枠がある日は作らず`skippedDates`に数える（手動のBLOCKEDを上書きしない）。休診日は作らない |
++| GEN-T003 | 同じ月の再実行・同時実行 | 枠は増えない。同時実行でも同じ（日付・開始時刻）の枠が二重にできない（病院行の排他） |
++| GEN-T004 | 月の範囲 | 過去の月・13か月以上先はHOSPITAL-010。今月は今日（JST）以降だけ |
++| GEN-T005 | 月次バッチ | 営業中の病院だけ、翌月の1日〜月末。1病院の失敗で他の病院を止めない |
++| GEN-T006 | 営業時間の入力検証 | 開始>=終了、単位5分未満・240分超、休憩の片方だけ・営業時間外はHOSPITAL-009 |
++
++> GEN-T001・T006は`HospitalBusinessHoursTest`、GEN-T002〜T005は`HospitalScheduleGenerationServiceTest`、日付の問い合わせ・一括保存・病院行の排他取得は`HospitalSchedulePersistenceAdapterTest`（H2）で検証する。実PostgreSQL・実HTTPでの確認（同時実行と排他待ちを含む）は受け入れスクリプト（`.ai-collab/tasks/2026-10-22-schedule-generation/scripts/`）で行う。cron起動そのものは自動テストしていない。
+ 
+ ---
+ 
+diff --git a/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md b/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md
+index ee7f204..1bcf160 100644
+--- a/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md	
++++ b/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md	
+@@ -719,6 +719,28 @@ migrationを書いたら、`06_ERD`のNULL可否・型と1列ずつ突き合わ
+ 
+ ---
+ 
++# **3-18. 営業時間の不正値で予約枠生成が終わらない・逆転した枠を作る恐れ（2026-10-22 予約枠自動生成の実装時に発見）**
++
++## **症状**
++
++営業時間API（`docs/07` §8-7・8-9）は`slotDurationMinutes`に0や負の値、`openTime`より前の`closeTime`、営業時間外の休憩を受け付けていた。これを元に予約枠を区切ると、0分単位では繰り返しが終わらず、開始 > 終了では逆転した枠を作り得る。また`LocalTime.plusMinutes`は24時を超えると0時に巻き戻るため、23:30開始の30分枠の終了が00:00になり、「終了 ≦ 営業終了」の判定が成立し続けてループが止まらない。
++
++---
++
++## **原因**
++
++営業時間は予約枠自動生成の元データだが、Schedulerが未実装の間は値を使う処理が無く、入力検証も無かった。時刻の計算に`LocalTime`をそのまま使うと日付の境界を扱えない。
++
++---
++
++## **対応方法**
++
++- 登録・更新時に`HospitalBusinessHours`で検証する（開始 < 終了、単位5〜240分、休憩は両方指定かつ営業時間内で開始 < 終了。違反はHOSPITAL-009）。
++- 生成は0時からのナノ秒（long）で計算し、`開始 + 単位 ≦ 区間の終了`の枠だけを作る。最初は分（秒を切り捨て）で計算していたため、`09:00:30`開始の営業時間で`09:00`開始の枠を作っていた（Codex REVIEW-001 R-02）。
++- 検証の追加前に保存された不正値: 単位0以下・開始 >= 終了では枠を作らない。休憩は両端を営業時間内に切り詰める。最初は片側だけを切り詰めていたため、営業時間後の休憩（例: 営業9〜18時、休憩19〜20時）で18〜19時の予約可能枠を作っていた（Codex REVIEW-001 R-01）。営業時間と重ならない休憩・片方だけの休憩は休憩なしとして扱う。いずれも`HospitalBusinessHoursTest`で確認する。
++
++---
++
+ # **4. Django関連**
+ 
+ # **4-1. Python Version不一致**
+diff --git a/frontend/src/api/hospital.ts b/frontend/src/api/hospital.ts
+index 1a0b07a..cb0eaca 100644
+--- a/frontend/src/api/hospital.ts
++++ b/frontend/src/api/hospital.ts
+@@ -12,6 +12,7 @@ import type {
+   HospitalUpdateRequest,
+   HospitalAdminUser,
+   ManagedHospital,
++  ScheduleGenerationResult,
+ } from '../types'
+ 
+ export const hospitalApi = {
+@@ -45,6 +46,12 @@ export const hospitalApi = {
+       .post<ApiResponse<{ scheduleId: number }>>(`/api/v1/admin/hospitals/${hospitalId}/schedules`, body)
+       .then((r) => r.data),
+ 
++  // 曜日別の診療時間から指定月（YYYY-MM）の予約枠を自動生成する。既に枠がある日は作らない
++  generateSchedules: (hospitalId: number, month: string) =>
++    apiClient
++      .post<ApiResponse<ScheduleGenerationResult>>(`/api/v1/admin/hospitals/${hospitalId}/schedules/generate`, { month })
++      .then((r) => r.data),
++
+   blockSchedule: (hospitalId: number, scheduleId: number) =>
+     apiClient
+       .patch<ApiResponse<null>>(`/api/v1/admin/hospitals/${hospitalId}/schedules/${scheduleId}/block`)
+diff --git a/frontend/src/pages/admin/AdminHospitalPage.tsx b/frontend/src/pages/admin/AdminHospitalPage.tsx
+index 2d2dc71..4a50d92 100644
+--- a/frontend/src/pages/admin/AdminHospitalPage.tsx
++++ b/frontend/src/pages/admin/AdminHospitalPage.tsx
+@@ -4,7 +4,7 @@ import { useHospitalStore } from '../../stores/hospitalStore'
+ import { hospitalApi } from '../../api/hospital'
+ import { adminUserApi } from '../../api/adminUser'
+ import { extractErrorMessage } from '../../api/client'
+-import { formatTime } from '../../utils/date'
++import { addMonths, formatTime, todayInJapan } from '../../utils/date'
+ import type { AdminUser, DayOfWeek, HospitalAdminUser, HospitalBusinessHours, HospitalSchedule, ManagedHospital } from '../../types'
+ 
+ const DAY_ORDER: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
+@@ -75,6 +75,11 @@ export default function AdminHospitalPage() {
+ 
+   const [scheduleForm, setScheduleForm] = useState({ availableDate: '', startTime: '', endTime: '' })
+ 
++  // 予約枠の自動生成は今月〜12か月先（APIの範囲と同じ）。既定は来月
++  const currentMonth = todayInJapan().slice(0, 7)
++  const [generateMonth, setGenerateMonth] = useState(() => addMonths(todayInJapan().slice(0, 7), 1))
++  const [isGenerating, setIsGenerating] = useState(false)
++
+   const fetchHospitals = useCallback(async () => {
+     try {
+       const res = await hospitalApi.getManagedHospitals()
+@@ -241,6 +246,32 @@ export default function AdminHospitalPage() {
+     }
+   }
+ 
++  const handleGenerateSchedules = async (e: FormEvent) => {
++    e.preventDefault()
++    if (!selectedHospitalId) return
++    const hospitalId = selectedHospitalId
++    setActionError(null)
++    setIsGenerating(true)
++    try {
++      const res = await hospitalApi.generateSchedules(hospitalId, generateMonth)
++      if (res.success && res.data) {
++        await refreshIfSelected(hospitalId, fetchSchedules)
++        const { createdSlots, generatedDates, skippedDates } = res.data
++        const skipped = skippedDates > 0 ? `、既に枠がある${skippedDates}日は対象外` : ''
++        // 0件の理由（営業時間の未登録・枠の長さより短い営業時間・既存の枠）は応答から特定できないため断定しない（REVIEW-001 R-03）
++        flashSaved(
++          createdSlots > 0
++            ? `${generateMonth}の予約枠を${createdSlots}件作成しました（${generatedDates}日分${skipped}）`
++            : `${generateMonth}の予約枠は作成されませんでした（既に枠があり対象外: ${skippedDates}日）。診療時間（曜日別）と予約枠単位を確認してください`,
++        )
++      }
++    } catch (err) {
++      setActionError(extractErrorMessage(err, '予約枠の自動生成に失敗しました。'))
++    } finally {
++      setIsGenerating(false)
++    }
++  }
++
+   const handleToggleSchedule = async (schedule: HospitalSchedule) => {
+     if (!selectedHospitalId) return
+     const hospitalId = selectedHospitalId
+@@ -461,6 +492,24 @@ export default function AdminHospitalPage() {
+             </div>
+           </section>
+ 
++          {/* 予約枠の自動生成（翌月分は毎月1日にバッチでも作成される） */}
++          {canManage && (
++            <section className="flex flex-col gap-sm">
++              <h2 className="font-headline-md text-headline-md text-neutral-gray-900">予約枠の自動生成</h2>
++              <p className="font-label-md text-label-md text-neutral-gray-600">
++                診療時間（曜日別）から、選んだ月の予約枠を作成します。休憩時間は「ブロック中」の枠になり、既に枠がある日は作成しません。翌月分は毎月1日に自動で作成されます。
++              </p>
++              <form onSubmit={handleGenerateSchedules} className="bg-surface-container-lowest rounded-xl border border-neutral-gray-100 p-container-margin flex gap-2">
++                <input required type="month" value={generateMonth} min={currentMonth} max={addMonths(currentMonth, 12)}
++                  onChange={(e) => setGenerateMonth(e.target.value)} aria-label="予約枠を生成する月" className={inputClass} />
++                <button type="submit" disabled={isGenerating}
++                  className="flex-shrink-0 px-4 h-[44px] bg-pet-green-vibrant text-white font-button-text text-button-text rounded-lg hover:bg-primary transition-colors disabled:opacity-50">
++                  生成する
++                </button>
++              </form>
++            </section>
++          )}
++
+           {/* 予約枠 */}
+           {canManage && (
+             <section className="flex flex-col gap-sm">
+diff --git a/frontend/src/types/hospital.ts b/frontend/src/types/hospital.ts
+index 4aae280..d1f29e4 100644
+--- a/frontend/src/types/hospital.ts
++++ b/frontend/src/types/hospital.ts
+@@ -86,3 +86,10 @@ export interface HospitalAdminUser {
+   email: string
+   nickname: string
+ }
++
++// 予約枠の自動生成結果（POST /api/v1/admin/hospitals/{id}/schedules/generate）
++export interface ScheduleGenerationResult {
++  createdSlots: number
++  generatedDates: number
++  skippedDates: number
++}
+diff --git a/frontend/src/utils/date.ts b/frontend/src/utils/date.ts
+index bad77e0..6d63baf 100644
+--- a/frontend/src/utils/date.ts
++++ b/frontend/src/utils/date.ts
+@@ -30,3 +30,10 @@ export const formatTime = (time: string) => time.slice(0, 5)
+ export function daysFromToday(date: string): number {
+   return Math.round((Date.parse(date) - Date.parse(todayInJapan())) / 86_400_000)
+ }
++
++// YYYY-MM に月数を足す（JSTの今月を基準に「来月」「12か月先」を求める）
++export function addMonths(yearMonth: string, months: number): string {
++  const [year, month] = yearMonth.split('-').map(Number)
++  const total = year * 12 + (month - 1) + months
++  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/dto/HospitalScheduleDto.java b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/dto/HospitalScheduleDto.java
+index 518e72f..f0322d0 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/dto/HospitalScheduleDto.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/dto/HospitalScheduleDto.java
+@@ -6,8 +6,21 @@ import lombok.Builder;
+ 
+ import java.time.LocalDate;
+ import java.time.LocalTime;
++import java.time.YearMonth;
+ 
+ public record HospitalScheduleDto() {
++    // 予約枠の自動生成（手動実行）。month は "2026-11" 形式
++    public record GenerateHospitalSchedulesRequest(
++            @NotNull YearMonth month
++    ) {}
++
++    // 作成した枠数、枠を作った日数、既存の枠があったため飛ばした日数（休診日は含まない）
++    public record GenerateHospitalSchedulesResponse(
++            int createdSlots,
++            int generatedDates,
++            int skippedDates
++    ) {}
++
+     @Builder
+     public record HospitalScheduleResponse(
+             Long scheduleId,
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/HospitalScheduleGenerationService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/HospitalScheduleGenerationService.java
+new file mode 100644
+index 0000000..6c47fc8
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/HospitalScheduleGenerationService.java
+@@ -0,0 +1,62 @@
++package koh.portfolio.springapi.application.hospital.service;
++
++import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.GenerateHospitalSchedulesResponse;
++import koh.portfolio.springapi.application.hospital.usecase.GenerateHospitalSchedulesUseCase;
++import koh.portfolio.springapi.application.hospital.usecase.GenerateMonthlyHospitalSchedulesUseCase;
++import koh.portfolio.springapi.common.time.ServerTime;
++import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
++import koh.portfolio.springapi.domain.hospital.model.Hospital;
++import koh.portfolio.springapi.domain.hospital.model.HospitalStatus;
++import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
++import lombok.RequiredArgsConstructor;
++import lombok.extern.slf4j.Slf4j;
++import org.springframework.stereotype.Service;
++
++import java.time.LocalDate;
++import java.time.YearMonth;
++
++import static koh.portfolio.springapi.common.exception.Preconditions.validate;
++
++@Slf4j
++@Service
++@RequiredArgsConstructor
++public class HospitalScheduleGenerationService implements GenerateHospitalSchedulesUseCase, GenerateMonthlyHospitalSchedulesUseCase {
++    static final int MAX_MONTHS_AHEAD = 12;
++
++    private final HospitalAccessChecker hospitalAccessChecker;
++    private final HospitalRepository hospitalRepository;
++    private final HospitalScheduleGenerator hospitalScheduleGenerator;
++
++    // 管理画面からの手動生成。今月〜12か月先の月を指定でき、今月は今日（JST）以降の日だけを作る
++    @Override
++    public GenerateHospitalSchedulesResponse execute(Long userId, Long hospitalId, YearMonth month) {
++        hospitalAccessChecker.checkManageable(userId, hospitalId);
++
++        LocalDate today = LocalDate.now(ServerTime.ZONE_ID);
++        YearMonth currentMonth = YearMonth.from(today);
++        validate(
++                !month.isBefore(currentMonth) && !month.isAfter(currentMonth.plusMonths(MAX_MONTHS_AHEAD)),
++                HospitalErrorCode.INVALID_GENERATION_MONTH
++        );
++
++        LocalDate from = month.equals(currentMonth) ? today : month.atDay(1);
++        return hospitalScheduleGenerator.generate(hospitalId, from, month.atEndOfMonth());
++    }
++
++    // 月次バッチ。営業中の全病院が対象で、1病院の失敗で他の病院の生成を止めない（病院ごとに別トランザクション）
++    @Override
++    public int execute(YearMonth month) {
++        int created = 0;
++        for (Hospital hospital : hospitalRepository.findAllForManagement()) {
++            if (hospital.getStatus() != HospitalStatus.ACTIVE) {
++                continue;
++            }
++            try {
++                created += hospitalScheduleGenerator.generate(hospital.getId(), month.atDay(1), month.atEndOfMonth()).createdSlots();
++            } catch (RuntimeException exception) {
++                log.error("予約枠の自動生成に失敗しました。hospitalId={}, month={}", hospital.getId(), month, exception);
++            }
++        }
++        return created;
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/HospitalScheduleGenerator.java b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/HospitalScheduleGenerator.java
+new file mode 100644
+index 0000000..ee54297
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/service/HospitalScheduleGenerator.java
+@@ -0,0 +1,66 @@
++package koh.portfolio.springapi.application.hospital.service;
++
++import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.GenerateHospitalSchedulesResponse;
++import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
++import koh.portfolio.springapi.domain.hospital.model.HospitalBusinessHours;
++import koh.portfolio.springapi.domain.hospital.model.HospitalSchedule;
++import koh.portfolio.springapi.domain.hospital.port.HospitalBusinessHoursRepository;
++import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
++import koh.portfolio.springapi.domain.hospital.port.HospitalScheduleRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Component;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++import java.util.function.Function;
++import java.util.stream.Collectors;
++
++import static koh.portfolio.springapi.common.exception.Preconditions.validate;
++
++// 1病院・1期間の予約枠を曜日別営業時間から生成する（06_ERD §18）。月次バッチで病院ごとに別トランザクションにするため別Bean
++@Component
++@RequiredArgsConstructor
++public class HospitalScheduleGenerator {
++    private final HospitalRepository hospitalRepository;
++    private final HospitalBusinessHoursRepository hospitalBusinessHoursRepository;
++    private final HospitalScheduleRepository hospitalScheduleRepository;
++
++    @Transactional
++    public GenerateHospitalSchedulesResponse generate(Long hospitalId, LocalDate from, LocalDate to) {
++        // 同じ病院の生成（月次バッチと手動、手動の同時実行）を直列化する。これが無いと、
++        // 両方が「枠のない日」と判定してから保存し、同じ日に枠が二重にできる
++        validate(hospitalRepository.findByIdForUpdate(hospitalId).isPresent(), HospitalErrorCode.HOSPITAL_NOT_FOUND);
++
++        Map<DayOfWeek, HospitalBusinessHours> hoursByDay = hospitalBusinessHoursRepository.findByHospitalId(hospitalId).stream()
++                .collect(Collectors.toMap(HospitalBusinessHours::getDayOfWeek, Function.identity()));
++        Set<LocalDate> datesWithSchedules = new HashSet<>(hospitalScheduleRepository.findDatesWithSchedules(hospitalId, from, to));
++
++        List<HospitalSchedule> slots = new ArrayList<>();
++        int generatedDates = 0;
++        int skippedDates = 0;
++        for (LocalDate date = from; !date.isAfter(to); date = date.plusDays(1)) {
++            HospitalBusinessHours hours = hoursByDay.get(date.getDayOfWeek());
++            if (hours == null) {
++                continue; // 営業時間の無い曜日は休診
++            }
++            if (datesWithSchedules.contains(date)) {
++                skippedDates++; // 手動の枠や臨時のBLOCKEDを上書きしないよう、枠が1つでもある日は作らない
++                continue;
++            }
++            List<HospitalSchedule> daySlots = hours.slotsOn(date);
++            if (!daySlots.isEmpty()) {
++                slots.addAll(daySlots);
++                generatedDates++;
++            }
++        }
++
++        hospitalScheduleRepository.saveAll(slots);
++        return new GenerateHospitalSchedulesResponse(slots.size(), generatedDates, skippedDates);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/usecase/GenerateHospitalSchedulesUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/usecase/GenerateHospitalSchedulesUseCase.java
+new file mode 100644
+index 0000000..4529920
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/usecase/GenerateHospitalSchedulesUseCase.java
+@@ -0,0 +1,9 @@
++package koh.portfolio.springapi.application.hospital.usecase;
++
++import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.GenerateHospitalSchedulesResponse;
++
++import java.time.YearMonth;
++
++public interface GenerateHospitalSchedulesUseCase {
++    GenerateHospitalSchedulesResponse execute(Long userId, Long hospitalId, YearMonth month);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/usecase/GenerateMonthlyHospitalSchedulesUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/usecase/GenerateMonthlyHospitalSchedulesUseCase.java
+new file mode 100644
+index 0000000..e96d633
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/hospital/usecase/GenerateMonthlyHospitalSchedulesUseCase.java
+@@ -0,0 +1,8 @@
++package koh.portfolio.springapi.application.hospital.usecase;
++
++import java.time.YearMonth;
++
++public interface GenerateMonthlyHospitalSchedulesUseCase {
++    // 営業中の全病院について、指定月の予約枠を生成し、作成した枠の合計を返す
++    int execute(YearMonth month);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/exception/HospitalErrorCode.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/exception/HospitalErrorCode.java
+index aae077a..e0a3ef1 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/exception/HospitalErrorCode.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/exception/HospitalErrorCode.java
+@@ -14,6 +14,8 @@ public enum HospitalErrorCode implements ErrorCode {
+     NOT_HOSPITAL_ADMIN_USER("HOSPITAL-006", "病院管理者権限のないユーザーです。", HttpStatus.BAD_REQUEST),
+     HOSPITAL_ADMIN_DUPLICATED("HOSPITAL-007", "既に紐付けられている病院管理者です。", HttpStatus.CONFLICT),
+     HOSPITAL_ADMIN_NOT_FOUND("HOSPITAL-008", "病院管理者の紐付けが存在しません。", HttpStatus.NOT_FOUND),
++    INVALID_BUSINESS_HOURS("HOSPITAL-009", "診療時間の設定が正しくありません。", HttpStatus.BAD_REQUEST),
++    INVALID_GENERATION_MONTH("HOSPITAL-010", "予約枠を生成できない月です。", HttpStatus.BAD_REQUEST),
+     DEFAULT("HOSPITAL-999", "病院関連エラーです。", HttpStatus.INTERNAL_SERVER_ERROR);
+ 
+     private final String code;
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/model/HospitalBusinessHours.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/model/HospitalBusinessHours.java
+index c5dd4fe..7ba9e5c 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/model/HospitalBusinessHours.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/model/HospitalBusinessHours.java
+@@ -1,15 +1,23 @@
+ package koh.portfolio.springapi.domain.hospital.model;
+ 
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
+ import lombok.AllArgsConstructor;
+ import lombok.Getter;
+ 
+ import java.time.DayOfWeek;
++import java.time.LocalDate;
+ import java.time.LocalDateTime;
+ import java.time.LocalTime;
++import java.util.ArrayList;
++import java.util.List;
+ 
+ @Getter
+ @AllArgsConstructor
+ public class HospitalBusinessHours {
++    private static final int MIN_SLOT_MINUTES = 5;
++    private static final int MAX_SLOT_MINUTES = 240;
++
+     private Long id;
+     private Long hospitalId;
+     private DayOfWeek dayOfWeek;
+@@ -22,12 +30,70 @@ public class HospitalBusinessHours {
+     private LocalDateTime updatedAt;
+ 
+     public static HospitalBusinessHours create(Long hospitalId, DayOfWeek dayOfWeek, LocalTime openTime, LocalTime closeTime, LocalTime breakStartTime, LocalTime breakEndTime, Integer slotDurationMinutes) {
++        validateHours(openTime, closeTime, breakStartTime, breakEndTime, slotDurationMinutes);
+         LocalDateTime now = LocalDateTime.now();
+ 
+         return new HospitalBusinessHours(null, hospitalId, dayOfWeek, openTime, closeTime, breakStartTime, breakEndTime, slotDurationMinutes, now, now);
+     }
+ 
+     public HospitalBusinessHours update(LocalTime openTime, LocalTime closeTime, LocalTime breakStartTime, LocalTime breakEndTime, Integer slotDurationMinutes) {
++        validateHours(openTime, closeTime, breakStartTime, breakEndTime, slotDurationMinutes);
++
+         return new HospitalBusinessHours(this.id, this.hospitalId, this.dayOfWeek, openTime, closeTime, breakStartTime, breakEndTime, slotDurationMinutes, this.createdAt, LocalDateTime.now());
+     }
++
++    // 予約枠の自動生成（06_ERD §18）。開始〜休憩開始・休憩終了〜終了をそれぞれ枠の長さで区切ってAVAILABLE、
++    // 休憩時間も同じ長さで区切ってBLOCKEDの枠にする。区間の端数（枠の長さに満たない残り）は作らない
++    public List<HospitalSchedule> slotsOn(LocalDate date) {
++        List<HospitalSchedule> slots = new ArrayList<>();
++        // 登録時の検証より前に保存された不正な値でも無限ループや逆転した枠を作らない
++        if (slotDurationMinutes == null || slotDurationMinutes <= 0 || !openTime.isBefore(closeTime)) {
++            return slots;
++        }
++
++        // LocalTime の加算は 0 時をまたいで巻き戻るため、0 時からのナノ秒で計算する（秒以下も切り捨てない。REVIEW-001 R-02）
++        long open = openTime.toNanoOfDay();
++        long close = closeTime.toNanoOfDay();
++        // 休憩は両端とも営業時間内に収める。営業時間外・営業時間と重ならない休憩（検証前の保存値）は休憩なしとして扱い、
++        // 営業時間外に枠を作らない（REVIEW-001 R-01）
++        boolean hasBreak = breakStartTime != null && breakEndTime != null;
++        long breakStart = hasBreak ? clamp(breakStartTime.toNanoOfDay(), open, close) : close;
++        long breakEnd = hasBreak ? clamp(breakEndTime.toNanoOfDay(), open, close) : close;
++        if (breakStart >= breakEnd) {
++            addSlots(slots, date, open, close, false);
++            return slots;
++        }
++
++        addSlots(slots, date, open, breakStart, false);
++        addSlots(slots, date, breakStart, breakEnd, true);
++        addSlots(slots, date, breakEnd, close, false);
++        return slots;
++    }
++
++    private void addSlots(List<HospitalSchedule> slots, LocalDate date, long from, long to, boolean blocked) {
++        long duration = slotDurationMinutes * 60_000_000_000L;
++        for (long start = from; start + duration <= to; start += duration) {
++            HospitalSchedule slot = HospitalSchedule.create(
++                    hospitalId, date, LocalTime.ofNanoOfDay(start), LocalTime.ofNanoOfDay(start + duration));
++            slots.add(blocked ? slot.block() : slot);
++        }
++    }
++
++    private static long clamp(long value, long min, long max) {
++        return Math.max(min, Math.min(max, value));
++    }
++
++    // 開始 < 終了、枠の長さ 5〜240 分、休憩は開始・終了の両方を指定し、営業時間内で 開始 < 終了
++    private static void validateHours(LocalTime openTime, LocalTime closeTime, LocalTime breakStartTime, LocalTime breakEndTime, Integer slotDurationMinutes) {
++        boolean noBreak = breakStartTime == null && breakEndTime == null;
++        boolean validBreak = breakStartTime != null && breakEndTime != null
++                && !breakStartTime.isBefore(openTime) && breakStartTime.isBefore(breakEndTime) && !breakEndTime.isAfter(closeTime);
++
++        Preconditions.validate(
++                openTime.isBefore(closeTime)
++                        && slotDurationMinutes >= MIN_SLOT_MINUTES && slotDurationMinutes <= MAX_SLOT_MINUTES
++                        && (noBreak || validBreak),
++                HospitalErrorCode.INVALID_BUSINESS_HOURS
++        );
++    }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalRepository.java
+index 1075ba0..08e5f24 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalRepository.java
+@@ -13,6 +13,9 @@ public interface HospitalRepository {
+     List<Hospital> search(String keyword, String area);
+     boolean existsById(Long id);
+ 
++    // 病院行を排他取得して読む（SELECT ... FOR UPDATE）。同じ病院の予約枠自動生成を直列化する
++    Optional<Hospital> findByIdForUpdate(Long id);
++
+     // 管理画面用。停止中も含め、論理削除されていない病院をID昇順で返す（ids 指定時はその病院だけ）
+     List<Hospital> findAllForManagement();
+     List<Hospital> findAllForManagement(List<Long> ids);
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalScheduleRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalScheduleRepository.java
+index d0ab75e..3e49e1c 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalScheduleRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/hospital/port/HospitalScheduleRepository.java
+@@ -2,6 +2,7 @@ package koh.portfolio.springapi.domain.hospital.port;
+ 
+ import koh.portfolio.springapi.domain.hospital.model.HospitalSchedule;
+ 
++import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Optional;
+ 
+@@ -9,4 +10,8 @@ public interface HospitalScheduleRepository {
+     List<HospitalSchedule> findAllByHospitalId(Long hospitalId);
+     HospitalSchedule save(HospitalSchedule hospitalSchedule);
+     Optional<HospitalSchedule> findById(Long id);
++
++    // 予約枠の自動生成用。期間内で既に予約枠がある日（手動の枠・BLOCKEDを含む）と、一括保存
++    List<LocalDate> findDatesWithSchedules(Long hospitalId, LocalDate from, LocalDate to);
++    void saveAll(List<HospitalSchedule> hospitalSchedules);
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalJpaRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalJpaRepository.java
+index 22b439a..6c69300 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalJpaRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalJpaRepository.java
+@@ -1,7 +1,9 @@
+ package koh.portfolio.springapi.infrastructure.persistence.hospital;
+ 
++import jakarta.persistence.LockModeType;
+ import koh.portfolio.springapi.domain.hospital.model.HospitalStatus;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Lock;
+ import org.springframework.data.jpa.repository.Modifying;
+ import org.springframework.data.jpa.repository.Query;
+ import org.springframework.data.repository.query.Param;
+@@ -17,6 +19,10 @@ public interface HospitalJpaRepository extends JpaRepository<HospitalEntity, Lon
+ 
+     Optional<HospitalEntity> findByIdAndDeletedAtIsNull(Long id);
+ 
++    @Lock(LockModeType.PESSIMISTIC_WRITE)
++    @Query("select h from HospitalEntity h where h.id = :id and h.deletedAt is null")
++    Optional<HospitalEntity> findByIdForUpdate(@Param("id") Long id);
++
+     @Query("""
+             SELECT h FROM HospitalEntity h
+             WHERE h.deletedAt IS NULL
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalPersistenceAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalPersistenceAdapter.java
+index 7bea289..2d3feff 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalPersistenceAdapter.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalPersistenceAdapter.java
+@@ -42,6 +42,12 @@ public class HospitalPersistenceAdapter implements HospitalRepository {
+         return hospitalJpaRepository.existsById(id);
+     }
+ 
++    @Override
++    public Optional<Hospital> findByIdForUpdate(Long id) {
++        return hospitalJpaRepository.findByIdForUpdate(id)
++                .map(hospitalMapper::toDomain);
++    }
++
+     @Override
+     public List<Hospital> findAllForManagement() {
+         return hospitalJpaRepository.findAllByDeletedAtIsNullOrderByIdAsc().stream()
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalScheduleJpaRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalScheduleJpaRepository.java
+index 31af047..d538568 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalScheduleJpaRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalScheduleJpaRepository.java
+@@ -1,9 +1,20 @@
+ package koh.portfolio.springapi.infrastructure.persistence.hospital;
+ 
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
+ 
++import java.time.LocalDate;
+ import java.util.List;
+ 
+ public interface HospitalScheduleJpaRepository extends JpaRepository<HospitalScheduleEntity, Long> {
+     List<HospitalScheduleEntity> findAllByHospitalIdOrderByAvailableDateAscStartTimeAsc(Long hospitalId);
++
++    @Query("select distinct s.availableDate from HospitalScheduleEntity s "
++            + "where s.hospitalId = :hospitalId and s.availableDate between :from and :to")
++    List<LocalDate> findDatesWithSchedules(
++            @Param("hospitalId") Long hospitalId,
++            @Param("from") LocalDate from,
++            @Param("to") LocalDate to
++    );
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalSchedulePersistenceAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalSchedulePersistenceAdapter.java
+index b2c7b30..22e4ea6 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalSchedulePersistenceAdapter.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalSchedulePersistenceAdapter.java
+@@ -5,6 +5,7 @@ import koh.portfolio.springapi.domain.hospital.port.HospitalScheduleRepository;
+ import lombok.RequiredArgsConstructor;
+ import org.springframework.stereotype.Repository;
+ 
++import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Optional;
+ 
+@@ -34,4 +35,14 @@ public class HospitalSchedulePersistenceAdapter implements HospitalScheduleRepos
+         return hospitalScheduleJpaRepository.findById(id)
+                 .map(hospitalScheduleMapper::toDomain);
+     }
++
++    @Override
++    public List<LocalDate> findDatesWithSchedules(Long hospitalId, LocalDate from, LocalDate to) {
++        return hospitalScheduleJpaRepository.findDatesWithSchedules(hospitalId, from, to);
++    }
++
++    @Override
++    public void saveAll(List<HospitalSchedule> hospitalSchedules) {
++        hospitalScheduleJpaRepository.saveAll(hospitalSchedules.stream().map(hospitalScheduleMapper::toEntity).toList());
++    }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/scheduler/HospitalScheduleGenerationScheduler.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/scheduler/HospitalScheduleGenerationScheduler.java
+new file mode 100644
+index 0000000..9ffca03
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/scheduler/HospitalScheduleGenerationScheduler.java
+@@ -0,0 +1,25 @@
++package koh.portfolio.springapi.infrastructure.scheduler;
++
++import koh.portfolio.springapi.application.hospital.usecase.GenerateMonthlyHospitalSchedulesUseCase;
++import koh.portfolio.springapi.common.time.ServerTime;
++import lombok.RequiredArgsConstructor;
++import lombok.extern.slf4j.Slf4j;
++import org.springframework.scheduling.annotation.Scheduled;
++import org.springframework.stereotype.Component;
++
++import java.time.YearMonth;
++
++@Slf4j
++@Component
++@RequiredArgsConstructor
++public class HospitalScheduleGenerationScheduler {
++    private final GenerateMonthlyHospitalSchedulesUseCase generateMonthlyHospitalSchedulesUseCase;
++
++    // 04_System_Architecture §14: 毎月1日 00:00（JST）に翌月分の予約枠を生成する
++    @Scheduled(cron = "0 0 0 1 * *", zone = "Asia/Tokyo")
++    public void generateNextMonth() {
++        YearMonth month = YearMonth.now(ServerTime.ZONE_ID).plusMonths(1);
++        int created = generateMonthlyHospitalSchedulesUseCase.execute(month);
++        log.info("{}の予約枠を{}件自動生成しました", month, created);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/presentation/hospital/HospitalScheduleAdminController.java b/spring-api/src/main/java/koh/portfolio/springapi/presentation/hospital/HospitalScheduleAdminController.java
+index 34f6374..9a296e1 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/presentation/hospital/HospitalScheduleAdminController.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/presentation/hospital/HospitalScheduleAdminController.java
+@@ -3,8 +3,11 @@ package koh.portfolio.springapi.presentation.hospital;
+ import jakarta.validation.Valid;
+ import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.CreateHospitalScheduleRequest;
+ import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.CreateHospitalScheduleResponse;
++import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.GenerateHospitalSchedulesRequest;
++import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.GenerateHospitalSchedulesResponse;
+ import koh.portfolio.springapi.application.hospital.usecase.BlockHospitalScheduleUseCase;
+ import koh.portfolio.springapi.application.hospital.usecase.CreateHospitalScheduleUseCase;
++import koh.portfolio.springapi.application.hospital.usecase.GenerateHospitalSchedulesUseCase;
+ import koh.portfolio.springapi.application.hospital.usecase.UnblockHospitalScheduleUseCase;
+ import koh.portfolio.springapi.common.response.ApiResponse;
+ import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
+@@ -22,6 +25,7 @@ public class HospitalScheduleAdminController {
+     private final CreateHospitalScheduleUseCase createHospitalScheduleUseCase;
+     private final BlockHospitalScheduleUseCase blockHospitalScheduleUseCase;
+     private final UnblockHospitalScheduleUseCase unblockHospitalScheduleUseCase;
++    private final GenerateHospitalSchedulesUseCase generateHospitalSchedulesUseCase;
+ 
+     @PostMapping("{hospitalId}/schedules")
+     @PreAuthorize("hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')")
+@@ -37,6 +41,17 @@ public class HospitalScheduleAdminController {
+                 .body(ApiResponse.success(createdHospitalScheduleId));
+     }
+ 
++    @PostMapping("/{hospitalId}/schedules/generate")
++    @PreAuthorize("hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')")
++    public ResponseEntity<ApiResponse<GenerateHospitalSchedulesResponse>> generateHospitalSchedules(
++            Authentication authentication,
++            @PathVariable Long hospitalId,
++            @RequestBody @Valid GenerateHospitalSchedulesRequest request
++    ) {
++        return ResponseEntity.ok(ApiResponse.success(
++                generateHospitalSchedulesUseCase.execute(extractUserId(authentication), hospitalId, request.month())));
++    }
++
+     @PatchMapping("/{hospitalId}/schedules/{scheduleId}/block")
+     @PreAuthorize("hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')")
+     public ResponseEntity<ApiResponse<Void>> blockHospitalSchedule(
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/hospital/service/HospitalScheduleGenerationServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/hospital/service/HospitalScheduleGenerationServiceTest.java
+new file mode 100644
+index 0000000..dd30d2a
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/hospital/service/HospitalScheduleGenerationServiceTest.java
+@@ -0,0 +1,186 @@
++package koh.portfolio.springapi.application.hospital.service;
++
++import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.GenerateHospitalSchedulesResponse;
++import koh.portfolio.springapi.common.exception.CustomException;
++import koh.portfolio.springapi.common.exception.ErrorCode;
++import koh.portfolio.springapi.common.time.ServerTime;
++import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
++import koh.portfolio.springapi.domain.hospital.model.Hospital;
++import koh.portfolio.springapi.domain.hospital.model.HospitalBusinessHours;
++import koh.portfolio.springapi.domain.hospital.model.HospitalSchedule;
++import koh.portfolio.springapi.domain.hospital.model.HospitalScheduleStatus;
++import koh.portfolio.springapi.domain.hospital.model.HospitalStatus;
++import koh.portfolio.springapi.domain.hospital.port.HospitalBusinessHoursRepository;
++import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
++import koh.portfolio.springapi.domain.hospital.port.HospitalScheduleRepository;
++import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.mockito.ArgumentCaptor;
++import org.mockito.InOrder;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++import java.time.LocalTime;
++import java.time.YearMonth;
++import java.util.List;
++import java.util.Optional;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.anyLong;
++import static org.mockito.Mockito.*;
++
++class HospitalScheduleGenerationServiceTest {
++
++    private final HospitalRepository hospitalRepository = mock(HospitalRepository.class);
++    private final HospitalBusinessHoursRepository hospitalBusinessHoursRepository = mock(HospitalBusinessHoursRepository.class);
++    private final HospitalScheduleRepository hospitalScheduleRepository = mock(HospitalScheduleRepository.class);
++    private final HospitalAccessChecker hospitalAccessChecker = mock(HospitalAccessChecker.class);
++    private final HospitalScheduleGenerator generator =
++            new HospitalScheduleGenerator(hospitalRepository, hospitalBusinessHoursRepository, hospitalScheduleRepository);
++
++    // 2026-11: 2日・9日・16日・23日・30日が月曜、4日・11日・18日・25日が水曜
++    private static final LocalDate FROM = LocalDate.of(2026, 11, 1);
++    private static final LocalDate TO = LocalDate.of(2026, 11, 30);
++
++    private Hospital hospital(Long id, HospitalStatus status) {
++        LocalDateTime now = LocalDateTime.now();
++        return new Hospital(id, "病院" + id, "東京都", "03", status, now, now, null);
++    }
++
++    private HospitalBusinessHours hours(DayOfWeek day, String open, String close, String breakStart, String breakEnd, int slot) {
++        return HospitalBusinessHours.create(1L, day, LocalTime.parse(open), LocalTime.parse(close),
++                breakStart == null ? null : LocalTime.parse(breakStart), breakEnd == null ? null : LocalTime.parse(breakEnd), slot);
++    }
++
++    private void assertErrorCode(ThrowingCallable call, ErrorCode errorCode) {
++        assertThatThrownBy(call)
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code()).isEqualTo(errorCode.code()));
++    }
++
++    @SuppressWarnings("unchecked")
++    private List<HospitalSchedule> savedSlots() {
++        ArgumentCaptor<List<HospitalSchedule>> captor = ArgumentCaptor.forClass(List.class);
++        verify(hospitalScheduleRepository).saveAll(captor.capture());
++        return captor.getValue();
++    }
++
++    // ------------------------------------------------------------- generator
++
++    @Test
++    @DisplayName("病院行を排他取得してから、営業時間のある曜日だけ枠を作る。既に枠がある日は飛ばす")
++    void generate_slots_for_open_days_and_skip_existing_dates() {
++        // given: 月曜 9:00〜12:00（休憩 10:00〜10:30、30分枠）、水曜 14:00〜15:00（60分枠）。11/9（月）は手動の枠あり
++        when(hospitalRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(hospital(1L, HospitalStatus.ACTIVE)));
++        when(hospitalBusinessHoursRepository.findByHospitalId(1L)).thenReturn(List.of(
++                hours(DayOfWeek.MONDAY, "09:00", "12:00", "10:00", "10:30", 30),
++                hours(DayOfWeek.WEDNESDAY, "14:00", "15:00", null, null, 60)));
++        when(hospitalScheduleRepository.findDatesWithSchedules(1L, FROM, TO)).thenReturn(List.of(LocalDate.of(2026, 11, 9)));
++
++        // when
++        GenerateHospitalSchedulesResponse result = generator.generate(1L, FROM, TO);
++
++        // then: 月曜 4日 × 6枠 + 水曜 4日 × 1枠
++        assertThat(result).isEqualTo(new GenerateHospitalSchedulesResponse(28, 8, 1));
++        List<HospitalSchedule> slots = savedSlots();
++        assertThat(slots).hasSize(28);
++        assertThat(slots).noneMatch(s -> s.getAvailableDate().equals(LocalDate.of(2026, 11, 9)));
++        assertThat(slots).filteredOn(s -> s.getAvailableDate().equals(LocalDate.of(2026, 11, 2)))
++                .extracting(s -> s.getStartTime() + " " + s.getStatus())
++                .containsExactly("09:00 AVAILABLE", "09:30 AVAILABLE", "10:00 BLOCKED", "10:30 AVAILABLE", "11:00 AVAILABLE", "11:30 AVAILABLE");
++        assertThat(slots).allMatch(s -> s.getHospitalId().equals(1L));
++        assertThat(slots).filteredOn(s -> s.getStatus() == HospitalScheduleStatus.BLOCKED).hasSize(4);
++
++        InOrder order = inOrder(hospitalRepository, hospitalScheduleRepository);
++        order.verify(hospitalRepository).findByIdForUpdate(1L);
++        order.verify(hospitalScheduleRepository).findDatesWithSchedules(1L, FROM, TO);
++        order.verify(hospitalScheduleRepository).saveAll(any());
++    }
++
++    @Test
++    @DisplayName("営業時間が未登録なら枠を作らない。存在しない病院はHOSPITAL-001で何も保存しない")
++    void generate_nothing_without_hours_and_fail_for_missing_hospital() {
++        // given
++        when(hospitalRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(hospital(1L, HospitalStatus.ACTIVE)));
++        when(hospitalBusinessHoursRepository.findByHospitalId(1L)).thenReturn(List.of());
++        when(hospitalRepository.findByIdForUpdate(2L)).thenReturn(Optional.empty());
++
++        // when & then
++        assertThat(generator.generate(1L, FROM, TO)).isEqualTo(new GenerateHospitalSchedulesResponse(0, 0, 0));
++        assertThat(savedSlots()).isEmpty();
++        assertErrorCode(() -> generator.generate(2L, FROM, TO), HospitalErrorCode.HOSPITAL_NOT_FOUND);
++        verify(hospitalBusinessHoursRepository, never()).findByHospitalId(2L);
++    }
++
++    // ---------------------------------------------------- manual generation
++
++    private final HospitalScheduleGenerator mockGenerator = mock(HospitalScheduleGenerator.class);
++    private final HospitalScheduleGenerationService service =
++            new HospitalScheduleGenerationService(hospitalAccessChecker, hospitalRepository, mockGenerator);
++
++    @Test
++    @DisplayName("手動生成: 所属確認の後、翌月以降は1日から月末、今月は今日（JST）から月末で生成する")
++    void manual_generation_ranges() {
++        // given
++        YearMonth current = YearMonth.now(ServerTime.ZONE_ID);
++        LocalDate today = LocalDate.now(ServerTime.ZONE_ID);
++        YearMonth next = current.plusMonths(1);
++        GenerateHospitalSchedulesResponse response = new GenerateHospitalSchedulesResponse(10, 5, 0);
++        when(mockGenerator.generate(anyLong(), any(), any())).thenReturn(response);
++
++        // when
++        GenerateHospitalSchedulesResponse result = service.execute(99L, 1L, next);
++        service.execute(99L, 1L, current);
++        service.execute(99L, 1L, current.plusMonths(12));
++
++        // then
++        assertThat(result).isEqualTo(response);
++        InOrder order = inOrder(hospitalAccessChecker, mockGenerator);
++        order.verify(hospitalAccessChecker).checkManageable(99L, 1L);
++        order.verify(mockGenerator).generate(1L, next.atDay(1), next.atEndOfMonth());
++        verify(mockGenerator).generate(1L, today, current.atEndOfMonth());
++        verify(mockGenerator).generate(1L, current.plusMonths(12).atDay(1), current.plusMonths(12).atEndOfMonth());
++    }
++
++    @Test
++    @DisplayName("手動生成: 過去の月・13か月以上先はHOSPITAL-010、管理対象外はHOSPITAL-005で生成しない")
++    void manual_generation_rejects_out_of_range_month_and_unmanaged_hospital() {
++        // given
++        YearMonth current = YearMonth.now(ServerTime.ZONE_ID);
++        doThrow(HospitalErrorCode.NOT_HOSPITAL_MANAGER.defaultException()).when(hospitalAccessChecker).checkManageable(99L, 2L);
++
++        // when & then
++        assertErrorCode(() -> service.execute(99L, 1L, current.minusMonths(1)), HospitalErrorCode.INVALID_GENERATION_MONTH);
++        assertErrorCode(() -> service.execute(99L, 1L, current.plusMonths(13)), HospitalErrorCode.INVALID_GENERATION_MONTH);
++        assertErrorCode(() -> service.execute(99L, 2L, current.plusMonths(1)), HospitalErrorCode.NOT_HOSPITAL_MANAGER);
++        verifyNoInteractions(mockGenerator);
++    }
++
++    // ------------------------------------------------------ monthly batch
++
++    @Test
++    @DisplayName("月次バッチ: 営業中の病院だけを月初〜月末で生成し、1病院の失敗で他を止めず作成数を合計する")
++    void monthly_generation_covers_active_hospitals_and_continues_after_failure() {
++        // given
++        YearMonth month = YearMonth.of(2026, 12);
++        when(hospitalRepository.findAllForManagement()).thenReturn(List.of(
++                hospital(1L, HospitalStatus.ACTIVE), hospital(2L, HospitalStatus.SUSPENDED),
++                hospital(3L, HospitalStatus.ACTIVE), hospital(4L, HospitalStatus.ACTIVE)));
++        when(mockGenerator.generate(1L, month.atDay(1), month.atEndOfMonth())).thenReturn(new GenerateHospitalSchedulesResponse(40, 20, 0));
++        when(mockGenerator.generate(3L, month.atDay(1), month.atEndOfMonth())).thenThrow(new IllegalStateException("db down"));
++        when(mockGenerator.generate(4L, month.atDay(1), month.atEndOfMonth())).thenReturn(new GenerateHospitalSchedulesResponse(5, 5, 2));
++
++        // when
++        int created = service.execute(month);
++
++        // then
++        assertThat(created).isEqualTo(45);
++        verify(mockGenerator, never()).generate(eq(2L), any(), any());
++        verify(mockGenerator).generate(4L, month.atDay(1), month.atEndOfMonth());
++        verifyNoInteractions(hospitalAccessChecker);
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/domain/hospital/model/HospitalBusinessHoursTest.java b/spring-api/src/test/java/koh/portfolio/springapi/domain/hospital/model/HospitalBusinessHoursTest.java
+new file mode 100644
+index 0000000..20b1464
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/domain/hospital/model/HospitalBusinessHoursTest.java
+@@ -0,0 +1,121 @@
++package koh.portfolio.springapi.domain.hospital.model;
++
++import koh.portfolio.springapi.common.exception.CustomException;
++import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
++import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++import java.time.LocalTime;
++import java.util.List;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatCode;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++class HospitalBusinessHoursTest {
++
++    private static final LocalDate DAY = LocalDate.of(2026, 11, 2);
++
++    private static LocalTime t(String hhmm) {
++        return LocalTime.parse(hhmm);
++    }
++
++    // 検証を通さずに作る（検証の追加前に保存された値を想定）
++    private static HospitalBusinessHours stored(String open, String close, String breakStart, String breakEnd, int slot) {
++        LocalDateTime now = LocalDateTime.now();
++        return new HospitalBusinessHours(1L, 7L, DayOfWeek.MONDAY, t(open), t(close),
++                breakStart == null ? null : t(breakStart), breakEnd == null ? null : t(breakEnd), slot, now, now);
++    }
++
++    private static List<String> describe(List<HospitalSchedule> slots) {
++        return slots.stream().map(s -> s.getStartTime() + "-" + s.getEndTime() + (s.getStatus() == HospitalScheduleStatus.BLOCKED ? " B" : "")).toList();
++    }
++
++    private static void assertInvalid(ThrowingCallable call) {
++        assertThatThrownBy(call)
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
++                        .isEqualTo(HospitalErrorCode.INVALID_BUSINESS_HOURS.code()));
++    }
++
++    @Test
++    @DisplayName("営業開始〜休憩開始・休憩終了〜営業終了をAVAILABLE、休憩をBLOCKEDの枠に区切る")
++    void slots_split_by_break() {
++        List<HospitalSchedule> slots = stored("09:00", "15:00", "12:00", "13:00", 60).slotsOn(DAY);
++
++        assertThat(describe(slots)).containsExactly(
++                "09:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00 B", "13:00-14:00", "14:00-15:00");
++        assertThat(slots).allSatisfy(s -> {
++            assertThat(s.getHospitalId()).isEqualTo(7L);
++            assertThat(s.getAvailableDate()).isEqualTo(DAY);
++            assertThat(s.getId()).isNull();
++        });
++    }
++
++    @Test
++    @DisplayName("区間ごとに区切り、枠の長さに満たない残りは作らない")
++    void slots_drop_remainder_per_segment() {
++        List<HospitalSchedule> slots = stored("09:00", "13:00", "11:00", "11:30", 45).slotsOn(DAY);
++
++        // 09:00〜11:00 は 2 枠（10:30〜11:15 は休憩にかかるため作らない）、休憩 30 分は 45 分に満たない
++        assertThat(describe(slots)).containsExactly("09:00-09:45", "09:45-10:30", "11:30-12:15", "12:15-13:00");
++    }
++
++    @Test
++    @DisplayName("0時をまたぐ枠は作らない（LocalTimeの巻き戻りで無限ループしない）")
++    void slots_do_not_wrap_midnight() {
++        assertThat(describe(stored("23:00", "23:59", null, null, 30).slotsOn(DAY))).containsExactly("23:00-23:30");
++    }
++
++    @Test
++    @DisplayName("検証前に保存された営業時間外・一部だけ重なる・片方だけの休憩でも、営業時間外に枠を作らない（REVIEW-001 R-01）")
++    void slots_stay_within_opening_hours_for_invalid_stored_breaks() {
++        // 営業時間の後・前の休憩は休憩なしとして扱う
++        assertThat(describe(stored("09:00", "11:00", "19:00", "20:00", 60).slotsOn(DAY))).containsExactly("09:00-10:00", "10:00-11:00");
++        assertThat(describe(stored("09:00", "11:00", "07:00", "08:00", 60).slotsOn(DAY))).containsExactly("09:00-10:00", "10:00-11:00");
++        // 一部だけ重なる休憩は営業時間内の部分だけを休憩にする
++        assertThat(describe(stored("09:00", "11:00", "08:00", "10:00", 60).slotsOn(DAY))).containsExactly("09:00-10:00 B", "10:00-11:00");
++        assertThat(describe(stored("09:00", "11:00", "10:00", "12:00", 60).slotsOn(DAY))).containsExactly("09:00-10:00", "10:00-11:00 B");
++        // 片方だけの休憩は休憩なし
++        assertThat(describe(stored("09:00", "11:00", "10:00", null, 60).slotsOn(DAY))).containsExactly("09:00-10:00", "10:00-11:00");
++    }
++
++    @Test
++    @DisplayName("秒を含む営業時間・休憩の境界を切り捨てず、その時刻から区切る（REVIEW-001 R-02）")
++    void slots_keep_second_precision() {
++        List<HospitalSchedule> slots = stored("09:00:30", "11:00:30", "10:00:30", "10:30:30", 30).slotsOn(DAY);
++
++        assertThat(describe(slots)).containsExactly("09:00:30-09:30:30", "09:30:30-10:00:30", "10:00:30-10:30:30 B", "10:30:30-11:00:30");
++    }
++
++    @Test
++    @DisplayName("検証前に保存された不正な値（枠0分・開始>=終了）では枠を作らない")
++    void slots_empty_for_invalid_stored_values() {
++        assertThat(stored("09:00", "18:00", null, null, 0).slotsOn(DAY)).isEmpty();
++        assertThat(stored("18:00", "09:00", null, null, 30).slotsOn(DAY)).isEmpty();
++    }
++
++    @Test
++    @DisplayName("登録・更新の検証: 開始<終了、枠5〜240分、休憩は両方指定かつ営業時間内（それ以外HOSPITAL-009）")
++    void create_and_update_validate_hours() {
++        assertThatCode(() -> HospitalBusinessHours.create(1L, DayOfWeek.MONDAY, t("09:00"), t("18:00"), t("12:00"), t("13:00"), 30))
++                .doesNotThrowAnyException();
++        assertThatCode(() -> HospitalBusinessHours.create(1L, DayOfWeek.MONDAY, t("09:00"), t("18:00"), null, null, 5))
++                .doesNotThrowAnyException();
++
++        assertInvalid(() -> HospitalBusinessHours.create(1L, DayOfWeek.MONDAY, t("18:00"), t("09:00"), null, null, 30));
++        assertInvalid(() -> HospitalBusinessHours.create(1L, DayOfWeek.MONDAY, t("09:00"), t("09:00"), null, null, 30));
++        assertInvalid(() -> HospitalBusinessHours.create(1L, DayOfWeek.MONDAY, t("09:00"), t("18:00"), null, null, 4));
++        assertInvalid(() -> HospitalBusinessHours.create(1L, DayOfWeek.MONDAY, t("09:00"), t("18:00"), null, null, 241));
++        assertInvalid(() -> HospitalBusinessHours.create(1L, DayOfWeek.MONDAY, t("09:00"), t("18:00"), t("12:00"), null, 30));
++        assertInvalid(() -> HospitalBusinessHours.create(1L, DayOfWeek.MONDAY, t("09:00"), t("18:00"), t("13:00"), t("12:00"), 30));
++        assertInvalid(() -> HospitalBusinessHours.create(1L, DayOfWeek.MONDAY, t("09:00"), t("18:00"), t("08:00"), t("10:00"), 30));
++        assertInvalid(() -> HospitalBusinessHours.create(1L, DayOfWeek.MONDAY, t("09:00"), t("18:00"), t("17:00"), t("19:00"), 30));
++
++        assertInvalid(() -> stored("09:00", "18:00", null, null, 30).update(t("10:00"), t("09:00"), null, null, 30));
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalSchedulePersistenceAdapterTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalSchedulePersistenceAdapterTest.java
+new file mode 100644
+index 0000000..23c379f
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/hospital/HospitalSchedulePersistenceAdapterTest.java
+@@ -0,0 +1,83 @@
++package koh.portfolio.springapi.infrastructure.persistence.hospital;
++
++import koh.portfolio.springapi.domain.hospital.model.HospitalSchedule;
++import koh.portfolio.springapi.domain.hospital.model.HospitalScheduleStatus;
++import koh.portfolio.springapi.domain.hospital.model.HospitalStatus;
++import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
++import koh.portfolio.springapi.domain.hospital.port.HospitalScheduleRepository;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
++import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
++import org.springframework.context.annotation.Import;
++import org.springframework.test.context.ActiveProfiles;
++
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++import java.time.LocalTime;
++import java.util.List;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++// 予約枠の自動生成で使う問い合わせ（既に枠がある日・一括保存・病院行の排他取得）を実DB（H2）で実行する
++@DataJpaTest
++@ActiveProfiles("test")
++@Import({
++        HospitalSchedulePersistenceAdapter.class,
++        HospitalScheduleMapperImpl.class,
++        HospitalPersistenceAdapter.class,
++        HospitalMapperImpl.class
++})
++class HospitalSchedulePersistenceAdapterTest {
++
++    private static final LocalDateTime AT = LocalDateTime.of(2026, 10, 20, 9, 0);
++
++    @Autowired
++    private HospitalScheduleRepository hospitalScheduleRepository;
++
++    @Autowired
++    private HospitalRepository hospitalRepository;
++
++    @Autowired
++    private TestEntityManager em;
++
++    @Test
++    @DisplayName("期間内で枠がある日を重複なく返し、一括保存した枠（BLOCKEDを含む）もその日として数える")
++    void find_dates_with_schedules_and_save_all() {
++        // given
++        LocalDate d1 = LocalDate.of(2026, 11, 2);
++        LocalDate d2 = LocalDate.of(2026, 11, 3);
++        hospitalScheduleRepository.saveAll(List.of(
++                HospitalSchedule.create(1L, d1, LocalTime.of(9, 0), LocalTime.of(9, 30)),
++                HospitalSchedule.create(1L, d1, LocalTime.of(9, 30), LocalTime.of(10, 0)).block(),
++                HospitalSchedule.create(1L, LocalDate.of(2026, 12, 1), LocalTime.of(9, 0), LocalTime.of(9, 30)), // 期間外
++                HospitalSchedule.create(2L, d2, LocalTime.of(9, 0), LocalTime.of(9, 30)))); // 別の病院
++        em.flush();
++        em.clear();
++
++        // when
++        List<LocalDate> dates = hospitalScheduleRepository.findDatesWithSchedules(1L, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30));
++
++        // then
++        assertThat(dates).containsExactly(d1);
++        assertThat(hospitalScheduleRepository.findAllByHospitalId(1L))
++                .extracting(HospitalSchedule::getStatus)
++                .containsExactly(HospitalScheduleStatus.AVAILABLE, HospitalScheduleStatus.BLOCKED, HospitalScheduleStatus.AVAILABLE);
++    }
++
++    @Test
++    @DisplayName("病院行の排他取得は論理削除されていない病院だけを返す")
++    void find_hospital_by_id_for_update() {
++        // given
++        Long active = em.persist(HospitalEntity.builder().name("A").address("Tokyo").status(HospitalStatus.ACTIVE)
++                .createdAt(AT).updatedAt(AT).build()).getId();
++        Long deleted = em.persist(HospitalEntity.builder().name("D").address("Tokyo").status(HospitalStatus.ACTIVE)
++                .createdAt(AT).updatedAt(AT).deletedAt(AT).build()).getId();
++        em.flush();
++
++        // when & then
++        assertThat(hospitalRepository.findByIdForUpdate(active)).hasValueSatisfying(h -> assertThat(h.getName()).isEqualTo("A"));
++        assertThat(hospitalRepository.findByIdForUpdate(deleted)).isEmpty();
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/presentation/hospital/HospitalScheduleAdminControllerTest.java b/spring-api/src/test/java/koh/portfolio/springapi/presentation/hospital/HospitalScheduleAdminControllerTest.java
+index cac0eee..8453da9 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/presentation/hospital/HospitalScheduleAdminControllerTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/presentation/hospital/HospitalScheduleAdminControllerTest.java
+@@ -3,10 +3,13 @@ package koh.portfolio.springapi.presentation.hospital;
+ import com.fasterxml.jackson.databind.ObjectMapper;
+ import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.CreateHospitalScheduleRequest;
+ import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.CreateHospitalScheduleResponse;
++import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.GenerateHospitalSchedulesResponse;
+ import koh.portfolio.springapi.application.hospital.usecase.BlockHospitalScheduleUseCase;
+ import koh.portfolio.springapi.application.hospital.usecase.CreateHospitalScheduleUseCase;
++import koh.portfolio.springapi.application.hospital.usecase.GenerateHospitalSchedulesUseCase;
+ import koh.portfolio.springapi.application.hospital.usecase.UnblockHospitalScheduleUseCase;
+ import koh.portfolio.springapi.common.exception.GlobalExceptionHandler;
++import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
+ import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
+ import org.junit.jupiter.api.DisplayName;
+ import org.junit.jupiter.api.Test;
+@@ -23,12 +26,14 @@ import org.springframework.test.web.servlet.MockMvc;
+ 
+ import java.time.LocalDate;
+ import java.time.LocalTime;
++import java.time.YearMonth;
+ 
+ import java.util.List;
+ 
+ import static org.mockito.ArgumentMatchers.any;
+ import static org.mockito.ArgumentMatchers.eq;
+ import static org.mockito.Mockito.verify;
++import static org.mockito.Mockito.verifyNoInteractions;
+ import static org.mockito.Mockito.when;
+ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+@@ -61,6 +66,9 @@ class HospitalScheduleAdminControllerTest {
+     @MockBean
+     private UnblockHospitalScheduleUseCase unblockHospitalScheduleUseCase;
+ 
++    @MockBean
++    private GenerateHospitalSchedulesUseCase generateHospitalSchedulesUseCase;
++
+     // ------------------------------------------------------------------ create
+ 
+     @Test
+@@ -100,6 +108,53 @@ class HospitalScheduleAdminControllerTest {
+                 .andExpect(jsonPath("$.code").value("VALIDATION-001"));
+     }
+ 
++    // ---------------------------------------------------------------- generate
++
++    @Test
++    @DisplayName("POST /api/v1/admin/hospitals/{hospitalId}/schedules/generate - 月を指定して自動生成し、件数を返す")
++    void generate_hospital_schedules_success() throws Exception {
++        // given
++        when(generateHospitalSchedulesUseCase.execute(99L, 1L, YearMonth.of(2026, 11)))
++                .thenReturn(new GenerateHospitalSchedulesResponse(120, 20, 1));
++
++        // when & then
++        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules/generate").principal(admin())
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content("{\"month\":\"2026-11\"}"))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.data.createdSlots").value(120))
++                .andExpect(jsonPath("$.data.generatedDates").value(20))
++                .andExpect(jsonPath("$.data.skippedDates").value(1));
++    }
++
++    @Test
++    @DisplayName("POST /api/v1/admin/hospitals/{hospitalId}/schedules/generate - monthなし・形式誤りは400")
++    void generate_hospital_schedules_validation_fail() throws Exception {
++        for (String body : List.of("{}", "{\"month\":\"2026-13\"}", "{\"month\":\"2026/11\"}")) {
++            mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules/generate").principal(admin())
++                            .contentType(MediaType.APPLICATION_JSON)
++                            .content(body))
++                    .andExpect(status().isBadRequest())
++                    .andExpect(jsonPath("$.code").value("VALIDATION-001"));
++        }
++        verifyNoInteractions(generateHospitalSchedulesUseCase);
++    }
++
++    @Test
++    @DisplayName("POST /api/v1/admin/hospitals/{hospitalId}/schedules/generate - 過去の月はHOSPITAL-010（400）")
++    void generate_hospital_schedules_fail_for_invalid_month() throws Exception {
++        // given
++        when(generateHospitalSchedulesUseCase.execute(99L, 1L, YearMonth.of(2020, 1)))
++                .thenThrow(HospitalErrorCode.INVALID_GENERATION_MONTH.defaultException());
++
++        // when & then
++        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules/generate").principal(admin())
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content("{\"month\":\"2020-01\"}"))
++                .andExpect(status().isBadRequest())
++                .andExpect(jsonPath("$.code").value("HOSPITAL-010"));
++    }
++
+     // ------------------------------------------------------------------- block
+ 
+     @Test

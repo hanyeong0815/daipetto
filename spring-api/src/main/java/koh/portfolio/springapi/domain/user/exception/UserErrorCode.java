@@ -11,6 +11,7 @@ public enum UserErrorCode implements ErrorCode {
     VALIDATION_ERROR("USER-002", "入力内容を確認してください。", HttpStatus.BAD_REQUEST),
     NO_SUCH_USER("USER-003", "存在しないユーザーです。", HttpStatus.NOT_FOUND),
     SUSPENDED_USER("USER-004", "利用停止中のアカウントです。", HttpStatus.FORBIDDEN),
+    CANNOT_CHANGE_SELF("USER-005", "自分自身のアカウントの状態・権限は変更できません。", HttpStatus.BAD_REQUEST),
     DEFAULT("USER-999", "ユーザー関連エラーです。", HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final String code;

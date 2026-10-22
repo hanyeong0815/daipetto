@@ -1,0 +1,68 @@
+package koh.portfolio.springapi;
+
+import koh.portfolio.springapi.application.vaccination.usecase.SendVaccinationRemindersUseCase;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.Date;
+import java.sql.PreparedStatement;
+import java.time.LocalDate;
+import java.util.concurrent.CompletableFuture;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+// Temporary PostgreSQL check for REVIEW-001 R-03 (removed from src after the run; kept as text in the task scripts).
+@SpringBootTest
+@ActiveProfiles("local")
+class TmpReminderPostgresCheck {
+    @Autowired JdbcTemplate jdbc;
+    @Autowired DataSource dataSource;
+    @Autowired SendVaccinationRemindersUseCase reminders;
+
+    @Test
+    void check() throws Exception {
+        LocalDate today = LocalDate.now();
+        LocalDate d1 = today.plusDays(3);
+        LocalDate d2 = today.plusDays(5);
+        Long userId = jdbc.queryForObject("insert into users(email,password,nickname,role,status) values ('r03@x.jp','p','n','ROLE_USER','ACTIVE') returning id", Long.class);
+        Long petId = jdbc.queryForObject("insert into pets(user_id,name,pet_type,gender) values (?, 'Momo','CAT','FEMALE') returning id", Long.class, userId);
+        Long v = jdbc.queryForObject("insert into vaccinations(pet_id,vaccine_name,scheduled_date) values (?, '混合', ?) returning id", Long.class, petId, d1);
+
+        // 1) The scheduler run blocks on its claim while a cancel+reschedule to D2 is uncommitted, then loses.
+        Connection holder = dataSource.getConnection();
+        holder.setAutoCommit(false);
+        try (PreparedStatement ps = holder.prepareStatement(
+                "update vaccinations set status='SCHEDULED', scheduled_date=?, reminded_date=null, updated_at=now() where id=?")) {
+            ps.setDate(1, Date.valueOf(d2));
+            ps.setLong(2, v);
+            assertThat(ps.executeUpdate()).isEqualTo(1);
+        }
+        CompletableFuture<Integer> run = CompletableFuture.supplyAsync(() -> reminders.execute(today));
+        boolean blocked = false;
+        for (int i = 0; i < 100 && !blocked; i++) {
+            Thread.sleep(100);
+            blocked = jdbc.queryForObject("select count(*) from pg_stat_activity where datname=current_database() "
+                    + "and wait_event_type='Lock' and query like 'update vaccinations%'", Integer.class) > 0;
+        }
+        assertThat(blocked).as("reminder claim blocked behind the uncommitted reschedule").isTrue();
+        holder.commit();
+        holder.close();
+
+        assertThat(run.get()).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from notifications where vaccination_id=?", Integer.class, v)).isZero();
+        assertThat(jdbc.queryForObject("select reminded_date is null from vaccinations where id=?", Boolean.class, v)).isTrue();
+
+        // 2) The next run reminds the new date exactly once.
+        assertThat(reminders.execute(today)).isEqualTo(1);
+        assertThat(reminders.execute(today)).isZero();
+        assertThat(jdbc.queryForObject("select message from notifications where vaccination_id=?", String.class, v))
+                .contains("（" + d2 + "）");
+        assertThat(jdbc.queryForObject("select reminded_date from vaccinations where id=?", LocalDate.class, v)).isEqualTo(d2);
+        System.out.println("TMP_R03_PG_CHECK_OK");
+    }
+}

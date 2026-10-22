@@ -1,6 +1,7 @@
 package koh.portfolio.springapi.infrastructure.persistence.reservation;
 
 import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
+import koh.portfolio.springapi.domain.reservation.model.AdminReservationView;
 import koh.portfolio.springapi.domain.reservation.model.Reservation;
 import koh.portfolio.springapi.domain.reservation.model.ReservationStatus;
 import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
@@ -9,6 +10,7 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -52,6 +54,11 @@ public class ReservationPersistenceAdapter implements ReservationRepository {
 
         return message != null && message.toLowerCase().contains(ACTIVE_SCHEDULE_CONSTRAINT);
     }
+    @Override
+    public List<AdminReservationView> findAllForAdmin(Long hospitalId, ReservationStatus status, LocalDate date) {
+        return reservationJpaRepository.findAllForAdmin(hospitalId, status, date);
+    }
+
 
     @Override
     public boolean updateStatus(Long reservationId, ReservationStatus expectedStatus, ReservationStatus newStatus, LocalDateTime updatedAt) {

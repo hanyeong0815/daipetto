@@ -13,11 +13,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class UpdateHospitalService implements UpdateHospitalUseCase {
+    private final HospitalAccessChecker hospitalAccessChecker;
     private final HospitalRepository hospitalRepository;
 
     @Override
     @Transactional
-    public void execute(Long hospitalId, UpdateHospitalRequest request) {
+    public void execute(Long userId, Long hospitalId, UpdateHospitalRequest request) {
+        hospitalAccessChecker.checkManageable(userId, hospitalId);
+
         Hospital hospital = hospitalRepository.findById(hospitalId)
                 .orElseThrow(HospitalErrorCode.HOSPITAL_NOT_FOUND::defaultException);
 

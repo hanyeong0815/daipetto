@@ -112,3 +112,8 @@ apiClient.interceptors.response.use(
     }
   },
 )
+
+// APIのエラーレスポンス（{ success:false, code, message }）から表示用メッセージを取り出す
+export function extractErrorMessage(err: unknown, fallback: string): string {
+  return (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback
+}

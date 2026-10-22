@@ -5,7 +5,7 @@ import { useAuthStore } from '../stores/authStore'
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const { setTokens, setUser } = useAuthStore()
+  const { setTokens, setUser, clearAuth } = useAuthStore()
   const [showPw, setShowPw] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -22,6 +22,8 @@ export default function LoginPage() {
         setError(res.message ?? 'ログインに失敗しました。')
         return
       }
+      // ログアウトせずに別アカウントでログインした場合も、前のユーザーのキャッシュを捨てて新しいセッションにする
+      clearAuth()
       setTokens(res.data.accessToken, res.data.refreshToken)
       const meRes = await authApi.getMe()
       if (meRes.success && meRes.data) setUser(meRes.data)

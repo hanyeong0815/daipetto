@@ -3,10 +3,13 @@ package koh.portfolio.springapi.presentation.hospital;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.CreateHospitalScheduleRequest;
 import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.CreateHospitalScheduleResponse;
+import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.GenerateHospitalSchedulesResponse;
 import koh.portfolio.springapi.application.hospital.usecase.BlockHospitalScheduleUseCase;
 import koh.portfolio.springapi.application.hospital.usecase.CreateHospitalScheduleUseCase;
+import koh.portfolio.springapi.application.hospital.usecase.GenerateHospitalSchedulesUseCase;
 import koh.portfolio.springapi.application.hospital.usecase.UnblockHospitalScheduleUseCase;
 import koh.portfolio.springapi.common.exception.GlobalExceptionHandler;
+import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
 import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,14 +21,19 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.YearMonth;
+
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -58,6 +66,9 @@ class HospitalScheduleAdminControllerTest {
     @MockBean
     private UnblockHospitalScheduleUseCase unblockHospitalScheduleUseCase;
 
+    @MockBean
+    private GenerateHospitalSchedulesUseCase generateHospitalSchedulesUseCase;
+
     // ------------------------------------------------------------------ create
 
     @Test
@@ -68,11 +79,11 @@ class HospitalScheduleAdminControllerTest {
                 LocalDate.of(2026, 5, 20), LocalTime.of(10, 0), LocalTime.of(10, 30)
         );
 
-        when(createHospitalScheduleUseCase.execute(eq(1L), any(CreateHospitalScheduleRequest.class)))
+        when(createHospitalScheduleUseCase.execute(eq(99L), eq(1L), any(CreateHospitalScheduleRequest.class)))
                 .thenReturn(new CreateHospitalScheduleResponse(1L));
 
         // when & then
-        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules")
+        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules").principal(admin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -89,12 +100,59 @@ class HospitalScheduleAdminControllerTest {
         );
 
         // when & then
-        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules")
+        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules").principal(admin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("VALIDATION-001"));
+    }
+
+    // ---------------------------------------------------------------- generate
+
+    @Test
+    @DisplayName("POST /api/v1/admin/hospitals/{hospitalId}/schedules/generate - 月を指定して自動生成し、件数を返す")
+    void generate_hospital_schedules_success() throws Exception {
+        // given
+        when(generateHospitalSchedulesUseCase.execute(99L, 1L, YearMonth.of(2026, 11)))
+                .thenReturn(new GenerateHospitalSchedulesResponse(120, 20, 1));
+
+        // when & then
+        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules/generate").principal(admin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"month\":\"2026-11\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.createdSlots").value(120))
+                .andExpect(jsonPath("$.data.generatedDates").value(20))
+                .andExpect(jsonPath("$.data.skippedDates").value(1));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/admin/hospitals/{hospitalId}/schedules/generate - monthなし・形式誤りは400")
+    void generate_hospital_schedules_validation_fail() throws Exception {
+        for (String body : List.of("{}", "{\"month\":\"2026-13\"}", "{\"month\":\"2026/11\"}")) {
+            mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules/generate").principal(admin())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("VALIDATION-001"));
+        }
+        verifyNoInteractions(generateHospitalSchedulesUseCase);
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/admin/hospitals/{hospitalId}/schedules/generate - 過去の月はHOSPITAL-010（400）")
+    void generate_hospital_schedules_fail_for_invalid_month() throws Exception {
+        // given
+        when(generateHospitalSchedulesUseCase.execute(99L, 1L, YearMonth.of(2020, 1)))
+                .thenThrow(HospitalErrorCode.INVALID_GENERATION_MONTH.defaultException());
+
+        // when & then
+        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules/generate").principal(admin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"month\":\"2020-01\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("HOSPITAL-010"));
     }
 
     // ------------------------------------------------------------------- block
@@ -103,21 +161,25 @@ class HospitalScheduleAdminControllerTest {
     @DisplayName("PATCH /api/v1/admin/hospitals/{hospitalId}/schedules/{scheduleId}/block - BLOCKED設定成功")
     void block_hospital_schedule_success() throws Exception {
         // when & then
-        mockMvc.perform(patch("/api/v1/admin/hospitals/1/schedules/10/block"))
+        mockMvc.perform(patch("/api/v1/admin/hospitals/1/schedules/10/block").principal(admin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        verify(blockHospitalScheduleUseCase).execute(1L, 10L);
+        verify(blockHospitalScheduleUseCase).execute(99L, 1L, 10L);
     }
 
     @Test
     @DisplayName("PATCH /api/v1/admin/hospitals/{hospitalId}/schedules/{scheduleId}/unblock - AVAILABLE設定成功")
     void unblock_hospital_schedule_success() throws Exception {
         // when & then
-        mockMvc.perform(patch("/api/v1/admin/hospitals/1/schedules/10/unblock"))
+        mockMvc.perform(patch("/api/v1/admin/hospitals/1/schedules/10/unblock").principal(admin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        verify(unblockHospitalScheduleUseCase).execute(1L, 10L);
+        verify(unblockHospitalScheduleUseCase).execute(99L, 1L, 10L);
+    }
+
+    private UsernamePasswordAuthenticationToken admin() {
+        return new UsernamePasswordAuthenticationToken(99L, null, List.of());
     }
 }

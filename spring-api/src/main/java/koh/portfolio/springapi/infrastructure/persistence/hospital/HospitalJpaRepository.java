@@ -1,7 +1,9 @@
 package koh.portfolio.springapi.infrastructure.persistence.hospital;
 
+import jakarta.persistence.LockModeType;
 import koh.portfolio.springapi.domain.hospital.model.HospitalStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,7 +13,15 @@ import java.util.List;
 import java.util.Optional;
 
 public interface HospitalJpaRepository extends JpaRepository<HospitalEntity, Long> {
+    List<HospitalEntity> findAllByDeletedAtIsNullOrderByIdAsc();
+
+    List<HospitalEntity> findAllByIdInAndDeletedAtIsNullOrderByIdAsc(List<Long> ids);
+
     Optional<HospitalEntity> findByIdAndDeletedAtIsNull(Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select h from HospitalEntity h where h.id = :id and h.deletedAt is null")
+    Optional<HospitalEntity> findByIdForUpdate(@Param("id") Long id);
 
     @Query("""
             SELECT h FROM HospitalEntity h
