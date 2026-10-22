@@ -35,13 +35,19 @@ class HospitalScheduleServiceTest {
     private BlockHospitalScheduleService blockHospitalScheduleService;
     private UnblockHospitalScheduleService unblockHospitalScheduleService;
 
+    private static final Long ADMIN_ID = 1L;
+
+    private HospitalAccessChecker hospitalAccessChecker;
+
+
     @BeforeEach
     void setUp() {
+        hospitalAccessChecker = mock(HospitalAccessChecker.class);
         hospitalRepository = mock(HospitalRepository.class);
         hospitalScheduleRepository = mock(HospitalScheduleRepository.class);
-        hospitalScheduleService = new HospitalScheduleService(hospitalRepository, hospitalScheduleRepository);
-        blockHospitalScheduleService = new BlockHospitalScheduleService(hospitalScheduleRepository);
-        unblockHospitalScheduleService = new UnblockHospitalScheduleService(hospitalScheduleRepository);
+        hospitalScheduleService = new HospitalScheduleService(hospitalAccessChecker, hospitalRepository, hospitalScheduleRepository);
+        blockHospitalScheduleService = new BlockHospitalScheduleService(hospitalAccessChecker, hospitalScheduleRepository);
+        unblockHospitalScheduleService = new UnblockHospitalScheduleService(hospitalAccessChecker, hospitalScheduleRepository);
     }
 
     @Test
@@ -109,7 +115,7 @@ class HospitalScheduleServiceTest {
                 });
 
         // when
-        CreateHospitalScheduleResponse response = hospitalScheduleService.execute(hospitalId, request);
+        CreateHospitalScheduleResponse response = hospitalScheduleService.execute(ADMIN_ID, hospitalId, request);
 
         // then
         assertThat(response.scheduleId()).isEqualTo(1L);
@@ -128,7 +134,7 @@ class HospitalScheduleServiceTest {
         when(hospitalRepository.existsById(hospitalId)).thenReturn(false);
 
         // when & then
-        assertThatThrownBy(() -> hospitalScheduleService.execute(hospitalId, request))
+        assertThatThrownBy(() -> hospitalScheduleService.execute(ADMIN_ID, hospitalId, request))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> {
                     CustomException ce = (CustomException) e;
@@ -154,7 +160,7 @@ class HospitalScheduleServiceTest {
         when(hospitalScheduleRepository.save(any(HospitalSchedule.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         // when
-        blockHospitalScheduleService.execute(hospitalId, scheduleId);
+        blockHospitalScheduleService.execute(ADMIN_ID, hospitalId, scheduleId);
 
         // then
         ArgumentCaptor<HospitalSchedule> captor = ArgumentCaptor.forClass(HospitalSchedule.class);
@@ -171,7 +177,7 @@ class HospitalScheduleServiceTest {
         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> blockHospitalScheduleService.execute(hospitalId, scheduleId))
+        assertThatThrownBy(() -> blockHospitalScheduleService.execute(ADMIN_ID, hospitalId, scheduleId))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> {
                     CustomException ce = (CustomException) e;
@@ -195,7 +201,7 @@ class HospitalScheduleServiceTest {
         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(schedule));
 
         // when & then
-        assertThatThrownBy(() -> blockHospitalScheduleService.execute(hospitalId, scheduleId))
+        assertThatThrownBy(() -> blockHospitalScheduleService.execute(ADMIN_ID, hospitalId, scheduleId))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> {
                     CustomException ce = (CustomException) e;
@@ -221,7 +227,7 @@ class HospitalScheduleServiceTest {
         when(hospitalScheduleRepository.save(any(HospitalSchedule.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         // when
-        unblockHospitalScheduleService.execute(hospitalId, scheduleId);
+        unblockHospitalScheduleService.execute(ADMIN_ID, hospitalId, scheduleId);
 
         // then
         ArgumentCaptor<HospitalSchedule> captor = ArgumentCaptor.forClass(HospitalSchedule.class);
@@ -238,7 +244,7 @@ class HospitalScheduleServiceTest {
         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> unblockHospitalScheduleService.execute(hospitalId, scheduleId))
+        assertThatThrownBy(() -> unblockHospitalScheduleService.execute(ADMIN_ID, hospitalId, scheduleId))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> {
                     CustomException ce = (CustomException) e;
@@ -262,7 +268,7 @@ class HospitalScheduleServiceTest {
         when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(schedule));
 
         // when & then
-        assertThatThrownBy(() -> unblockHospitalScheduleService.execute(hospitalId, scheduleId))
+        assertThatThrownBy(() -> unblockHospitalScheduleService.execute(ADMIN_ID, hospitalId, scheduleId))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> {
                     CustomException ce = (CustomException) e;

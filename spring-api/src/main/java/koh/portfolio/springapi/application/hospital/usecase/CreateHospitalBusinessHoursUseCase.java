@@ -4,5 +4,5 @@ import koh.portfolio.springapi.application.hospital.dto.HospitalBusinessHoursDto
 import koh.portfolio.springapi.application.hospital.dto.HospitalBusinessHoursDto.CreateHospitalBusinessHoursResponse;
 
 public interface CreateHospitalBusinessHoursUseCase {
-    CreateHospitalBusinessHoursResponse execute(Long hospitalId, CreateHospitalBusinessHoursRequest request);
+    CreateHospitalBusinessHoursResponse execute(Long userId, Long hospitalId, CreateHospitalBusinessHoursRequest request);
 }

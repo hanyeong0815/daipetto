@@ -1,10 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useAuthStore } from '../../stores/authStore'
 import { useHospitalStore } from '../../stores/hospitalStore'
 import { hospitalApi } from '../../api/hospital'
+import { adminUserApi } from '../../api/adminUser'
 import { extractErrorMessage } from '../../api/client'
 import { formatTime } from '../../utils/date'
-import type { DayOfWeek, HospitalBusinessHours, HospitalSchedule } from '../../types'
+import type { AdminUser, DayOfWeek, HospitalAdminUser, HospitalBusinessHours, HospitalSchedule, ManagedHospital } from '../../types'
 
 const DAY_ORDER: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
 const DAY_LABEL: Record<DayOfWeek, string> = {
@@ -40,18 +41,28 @@ export default function AdminHospitalPage() {
   const canManage = isSystemAdmin || user?.role === 'ROLE_HOSPITAL_ADMIN'
 
   const {
-    hospitals,
     selectedHospital,
     schedules,
     businessHours,
     isLoading,
-    fetchHospitals,
     fetchHospitalDetail,
     fetchSchedules,
     fetchBusinessHours,
   } = useHospitalStore()
 
+  // 選択肢はログイン中の管理者が操作できる病院だけ（システム管理者は停止中を含む全病院、病院管理者は紐付いた病院）
+  const [hospitals, setHospitals] = useState<ManagedHospital[] | null>(null)
+  const [hospitalsFailed, setHospitalsFailed] = useState(false)
   const [selectedHospitalId, setSelectedHospitalId] = useState<number | null>(null)
+  // 更新後の再取得は、応答を待つ間に別の病院を選んでいたら行わない。遅れた再取得がstoreの最新要求になり、
+  // 選択中とは別の病院を表示・保存対象にしてしまうため（REVIEW-001 R-01）
+  const selectedRef = useRef<number | null>(null)
+  const selectHospital = useCallback((hospitalId: number | null) => {
+    selectedRef.current = hospitalId
+    setSelectedHospitalId(hospitalId)
+  }, [])
+  const refreshIfSelected = (hospitalId: number, ...fetches: Array<(id: number) => Promise<void>>) =>
+    selectedRef.current === hospitalId ? Promise.all(fetches.map((fetch) => fetch(hospitalId))) : Promise.resolve()
   const [basicInfoForm, setBasicInfoForm] = useState({ name: '', address: '', phoneNumber: '' })
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -63,6 +74,21 @@ export default function AdminHospitalPage() {
   const [businessHoursForm, setBusinessHoursForm] = useState<BusinessHoursFormState>(emptyBusinessHoursForm)
 
   const [scheduleForm, setScheduleForm] = useState({ availableDate: '', startTime: '', endTime: '' })
+
+  const fetchHospitals = useCallback(async () => {
+    try {
+      const res = await hospitalApi.getManagedHospitals()
+      const list = res.data ?? []
+      setHospitals(list)
+      setHospitalsFailed(false)
+      // 1件だけなら選択の手間を省く（病院管理者は通常1病院）
+      if (selectedRef.current == null && list.length === 1) selectHospital(list[0].hospitalId)
+    } catch (err) {
+      // 取得失敗を「管理対象なし」と表示しない（再試行ボタンを出す。REVIEW-001 R-02）
+      setActionError(extractErrorMessage(err, '管理対象の病院の取得に失敗しました。'))
+      setHospitalsFailed(true)
+    }
+  }, [selectHospital])
 
   useEffect(() => {
     fetchHospitals()
@@ -100,7 +126,7 @@ export default function AdminHospitalPage() {
         setShowCreateForm(false)
         setCreateForm({ name: '', address: '', phoneNumber: '' })
         await fetchHospitals()
-        if (res.data) setSelectedHospitalId(res.data.hospitalId)
+        if (res.data) selectHospital(res.data.hospitalId)
         flashSaved('病院を登録しました')
       }
     } catch (err) {
@@ -110,15 +136,16 @@ export default function AdminHospitalPage() {
 
   const handleSaveBasicInfo = async () => {
     if (!selectedHospitalId) return
+    const hospitalId = selectedHospitalId
     setActionError(null)
     try {
-      const res = await hospitalApi.update(selectedHospitalId, {
+      const res = await hospitalApi.update(hospitalId, {
         name: basicInfoForm.name,
         address: basicInfoForm.address,
         phoneNumber: basicInfoForm.phoneNumber || undefined,
       })
       if (res.success) {
-        await fetchHospitalDetail(selectedHospitalId)
+        await Promise.all([refreshIfSelected(hospitalId, fetchHospitalDetail), fetchHospitals()])
         flashSaved('保存しました')
       }
     } catch (err) {
@@ -128,12 +155,13 @@ export default function AdminHospitalPage() {
 
   const handleSuspend = async () => {
     if (!selectedHospitalId || !window.confirm('この病院を停止しますか？停止後は現時点でAPIから再開できません。')) return
+    const hospitalId = selectedHospitalId
     setActionError(null)
     try {
-      const res = await hospitalApi.suspend(selectedHospitalId)
+      const res = await hospitalApi.suspend(hospitalId)
       if (res.success) {
-        setSelectedHospitalId(null)
-        await fetchHospitals()
+        // 停止中の病院も管理一覧に残るため、選択したまま状態表示を更新する
+        await Promise.all([refreshIfSelected(hospitalId, fetchHospitalDetail), fetchHospitals()])
         flashSaved('病院を停止しました')
       }
     } catch (err) {
@@ -158,6 +186,7 @@ export default function AdminHospitalPage() {
 
   const handleSaveBusinessHours = async (day: DayOfWeek, existing?: HospitalBusinessHours) => {
     if (!selectedHospitalId) return
+    const hospitalId = selectedHospitalId
     setActionError(null)
     const body = {
       openTime: businessHoursForm.openTime,
@@ -168,11 +197,11 @@ export default function AdminHospitalPage() {
     }
     try {
       const res = existing
-        ? await hospitalApi.updateBusinessHours(selectedHospitalId, existing.businessHoursId, body)
-        : await hospitalApi.createBusinessHours(selectedHospitalId, { dayOfWeek: day, ...body })
+        ? await hospitalApi.updateBusinessHours(hospitalId, existing.businessHoursId, body)
+        : await hospitalApi.createBusinessHours(hospitalId, { dayOfWeek: day, ...body })
       if (res.success) {
         setEditingDay(null)
-        await fetchBusinessHours(selectedHospitalId)
+        await refreshIfSelected(hospitalId, fetchBusinessHours)
         flashSaved('診療時間を保存しました')
       }
     } catch (err) {
@@ -182,11 +211,12 @@ export default function AdminHospitalPage() {
 
   const handleDeleteBusinessHours = async (businessHoursId: number) => {
     if (!selectedHospitalId || !window.confirm('この曜日の診療時間を削除しますか？削除すると休診扱いになります。')) return
+    const hospitalId = selectedHospitalId
     setActionError(null)
     try {
-      const res = await hospitalApi.deleteBusinessHours(selectedHospitalId, businessHoursId)
+      const res = await hospitalApi.deleteBusinessHours(hospitalId, businessHoursId)
       if (res.success) {
-        await fetchBusinessHours(selectedHospitalId)
+        await refreshIfSelected(hospitalId, fetchBusinessHours)
         flashSaved('削除しました')
       }
     } catch (err) {
@@ -197,12 +227,13 @@ export default function AdminHospitalPage() {
   const handleCreateSchedule = async (e: FormEvent) => {
     e.preventDefault()
     if (!selectedHospitalId) return
+    const hospitalId = selectedHospitalId
     setActionError(null)
     try {
-      const res = await hospitalApi.createSchedule(selectedHospitalId, scheduleForm)
+      const res = await hospitalApi.createSchedule(hospitalId, scheduleForm)
       if (res.success) {
         setScheduleForm({ availableDate: '', startTime: '', endTime: '' })
-        await fetchSchedules(selectedHospitalId)
+        await refreshIfSelected(hospitalId, fetchSchedules)
         flashSaved('予約枠を追加しました')
       }
     } catch (err) {
@@ -212,14 +243,15 @@ export default function AdminHospitalPage() {
 
   const handleToggleSchedule = async (schedule: HospitalSchedule) => {
     if (!selectedHospitalId) return
+    const hospitalId = selectedHospitalId
     setActionError(null)
     try {
       const res =
         schedule.status === 'AVAILABLE'
-          ? await hospitalApi.blockSchedule(selectedHospitalId, schedule.scheduleId)
-          : await hospitalApi.unblockSchedule(selectedHospitalId, schedule.scheduleId)
+          ? await hospitalApi.blockSchedule(hospitalId, schedule.scheduleId)
+          : await hospitalApi.unblockSchedule(hospitalId, schedule.scheduleId)
       if (res.success) {
-        await fetchSchedules(selectedHospitalId)
+        await refreshIfSelected(hospitalId, fetchSchedules)
       }
     } catch (err) {
       setActionError(extractErrorMessage(err, '予約枠の状態変更に失敗しました。'))
@@ -267,19 +299,29 @@ export default function AdminHospitalPage() {
         </div>
         <select
           value={selectedHospitalId ?? ''}
-          onChange={(e) => setSelectedHospitalId(e.target.value ? Number(e.target.value) : null)}
+          onChange={(e) => selectHospital(e.target.value ? Number(e.target.value) : null)}
           className={inputClass}
         >
           <option value="">病院を選択してください</option>
-          {hospitals.map((h) => (
-            <option key={h.id} value={h.id}>
-              {h.name}
+          {(hospitals ?? []).map((h) => (
+            <option key={h.hospitalId} value={h.hospitalId}>
+              {h.name}{h.status === 'SUSPENDED' ? '（停止中）' : ''}
             </option>
           ))}
         </select>
-        <p className="font-label-md text-label-md text-neutral-gray-600">
-          ※ 現時点では病院と管理者の紐付け（hospital_admins）が未実装のため、一覧から選択する方式になっています。
-        </p>
+        {hospitals == null && hospitalsFailed && (
+          <button type="button" onClick={() => { setActionError(null); fetchHospitals() }}
+            className="self-start font-button-text text-button-text text-primary px-4 py-2 rounded-xl border border-primary/20 hover:bg-primary/10">
+            再試行
+          </button>
+        )}
+        {hospitals?.length === 0 && (
+          <p className="font-label-md text-label-md text-neutral-gray-600">
+            {isSystemAdmin
+              ? '登録されている病院はありません。「新規病院登録」から追加してください。'
+              : '管理対象の病院がありません。システム管理者に病院への紐付けを依頼してください。'}
+          </p>
+        )}
       </section>
 
       {showCreateForm && isSystemAdmin && (
@@ -300,7 +342,8 @@ export default function AdminHospitalPage() {
         </div>
       )}
 
-      {!isLoading && selectedHospital && (
+      {/* 表示・編集するのは選択中の病院の詳細だけ（R-01の防御。保存先は常に選択中の病院） */}
+      {!isLoading && selectedHospital && selectedHospital.id === selectedHospitalId && (
         <>
           {!canManage && (
             <div className="bg-warning-yellow/10 text-neutral-gray-900 font-label-md text-label-md px-4 py-2.5 rounded-lg">
@@ -343,6 +386,9 @@ export default function AdminHospitalPage() {
               </button>
             )}
           </section>
+
+          {/* 病院管理者の紐付け（システム管理者のみ）。病院ごとに作り直して前の病院の表示を残さない */}
+          {isSystemAdmin && <HospitalAdminSection key={selectedHospital.id} hospitalId={selectedHospital.id} />}
 
           {/* 営業時間 */}
           <section className="flex flex-col gap-sm">
@@ -452,5 +498,120 @@ export default function AdminHospitalPage() {
         </>
       )}
     </div>
+  )
+}
+
+// ponytail: 候補は利用中の病院管理者権限ユーザーの先頭100名まで。超えるようならキーワード検索を足す
+const CANDIDATE_LIMIT = 100
+
+// SC-014 病院管理者の紐付け（システム管理者のみ）。紐付いたユーザーだけがこの病院を管理できる
+function HospitalAdminSection({ hospitalId }: { hospitalId: number }) {
+  const [admins, setAdmins] = useState<HospitalAdminUser[] | null>(null)
+  const [candidates, setCandidates] = useState<AdminUser[]>([])
+  const [selectedUserId, setSelectedUserId] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [isBusy, setIsBusy] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    Promise.all([
+      hospitalApi.getAdmins(hospitalId),
+      adminUserApi.search({ role: 'ROLE_HOSPITAL_ADMIN', status: 'ACTIVE', page: 0, size: CANDIDATE_LIMIT }),
+    ])
+      .then(([adminRes, userRes]) => {
+        if (!active) return
+        setAdmins(adminRes.data ?? [])
+        setCandidates(userRes.data?.content ?? [])
+      })
+      .catch((err) => active && setError(extractErrorMessage(err, '病院管理者の取得に失敗しました。')))
+    return () => {
+      active = false
+    }
+  }, [hospitalId, reloadKey])
+
+  const run = async (action: () => Promise<unknown>, fallback: string) => {
+    setError(null)
+    setIsBusy(true)
+    try {
+      await action()
+      setSelectedUserId('')
+    } catch (err) {
+      setError(extractErrorMessage(err, fallback))
+    } finally {
+      setIsBusy(false)
+      // 成功・失敗どちらでも最新の紐付けを表示する（他の管理者による変更や権限変更による解除も反映）
+      setReloadKey((k) => k + 1)
+    }
+  }
+
+  const unassign = (admin: HospitalAdminUser) => {
+    if (!window.confirm(`${admin.nickname}（${admin.email}）をこの病院の管理者から外しますか？`)) return
+    run(() => hospitalApi.unassignAdmin(hospitalId, admin.userId), '病院管理者の解除に失敗しました。')
+  }
+
+  const linked = new Set((admins ?? []).map((a) => a.userId))
+  const options = candidates.filter((u) => !linked.has(u.userId))
+
+  return (
+    <section className="flex flex-col gap-sm">
+      <h2 className="font-headline-md text-headline-md text-neutral-gray-900">病院管理者</h2>
+      <p className="font-label-md text-label-md text-neutral-gray-600">
+        紐付けたユーザーだけが、この病院の予約・診療時間・予約枠を管理できます。候補はユーザー管理で「病院管理者」権限にした利用中のユーザーです。
+      </p>
+
+      {error && (
+        <div className="bg-error-red/10 text-error-red font-label-md text-label-md px-4 py-2.5 rounded-lg flex items-center gap-2">
+          <span className="material-symbols-outlined text-[18px]">error</span>
+          {error}
+        </div>
+      )}
+
+      {admins == null ? (
+        error ? (
+          <button onClick={() => { setError(null); setReloadKey((k) => k + 1) }} className="self-center font-button-text text-button-text text-primary px-4 py-2 rounded-xl border border-primary/20 hover:bg-primary/10">
+            再試行
+          </button>
+        ) : (
+          <div className="flex items-center justify-center py-md">
+            <span className="material-symbols-outlined animate-spin text-primary text-[24px]">progress_activity</span>
+          </div>
+        )
+      ) : (
+        <>
+          <div className="bg-surface-container-lowest rounded-xl border border-neutral-gray-100 divide-y divide-neutral-gray-100">
+            {admins.map((a) => (
+              <div key={a.userId} className="px-container-margin py-sm flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-body-md text-body-md text-neutral-gray-900 truncate">{a.nickname}</p>
+                  <p className="font-label-md text-label-md text-neutral-gray-600 truncate">{a.email}</p>
+                </div>
+                <button onClick={() => unassign(a)} disabled={isBusy}
+                  className="flex-shrink-0 px-3 py-1.5 rounded-full bg-error-red/10 text-error-red font-label-md text-label-md disabled:opacity-50">
+                  解除
+                </button>
+              </div>
+            ))}
+            {admins.length === 0 && (
+              <p className="px-container-margin py-md font-body-md text-body-md text-neutral-gray-600">まだ病院管理者が紐付けられていません。</p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} disabled={isBusy} aria-label="追加する病院管理者"
+              className="flex-1 min-w-0 h-[44px] px-sm bg-neutral-gray-50 border border-neutral-gray-100 rounded-lg font-body-md text-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant">
+              <option value="">{options.length === 0 ? '追加できるユーザーはいません' : '追加するユーザーを選択'}</option>
+              {options.map((u) => (
+                <option key={u.userId} value={u.userId}>{u.nickname}（{u.email}）</option>
+              ))}
+            </select>
+            <button disabled={!selectedUserId || isBusy}
+              onClick={() => run(() => hospitalApi.assignAdmin(hospitalId, Number(selectedUserId)), '病院管理者の追加に失敗しました。')}
+              className="flex-shrink-0 px-4 h-[44px] bg-pet-green-vibrant text-white font-button-text text-button-text rounded-lg hover:bg-primary transition-colors disabled:opacity-50">
+              追加
+            </button>
+          </div>
+        </>
+      )}
+    </section>
   )
 }

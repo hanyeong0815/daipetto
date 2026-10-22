@@ -4,6 +4,7 @@ import koh.portfolio.springapi.application.user.dto.AdminUserDto.AdminUserRespon
 import koh.portfolio.springapi.common.exception.CustomException;
 import koh.portfolio.springapi.common.response.PageResponse;
 import koh.portfolio.springapi.domain.auth.port.RefreshTokenRepository;
+import koh.portfolio.springapi.domain.hospital.port.HospitalAdminRepository;
 import koh.portfolio.springapi.domain.user.exception.UserErrorCode;
 import koh.portfolio.springapi.domain.user.model.Role;
 import koh.portfolio.springapi.domain.user.model.User;
@@ -31,6 +32,7 @@ class AdminUserServiceTest {
 
     private UserRepository userRepository;
     private RefreshTokenRepository refreshTokenRepository;
+    private HospitalAdminRepository hospitalAdminRepository;
     private SearchUsersService searchUsersService;
     private ChangeUserStatusService changeUserStatusService;
     private ChangeUserRoleService changeUserRoleService;
@@ -42,9 +44,10 @@ class AdminUserServiceTest {
     void setUp() {
         userRepository = mock(UserRepository.class);
         refreshTokenRepository = mock(RefreshTokenRepository.class);
+        hospitalAdminRepository = mock(HospitalAdminRepository.class);
         searchUsersService = new SearchUsersService(userRepository);
         changeUserStatusService = new ChangeUserStatusService(userRepository, refreshTokenRepository);
-        changeUserRoleService = new ChangeUserRoleService(userRepository);
+        changeUserRoleService = new ChangeUserRoleService(userRepository, hospitalAdminRepository);
     }
 
     private void assertErrorCode(ThrowingCallable call, UserErrorCode errorCode) {
@@ -158,6 +161,20 @@ class AdminUserServiceTest {
 
         // then
         verify(userRepository).updateRole(eq(userId), eq(Role.ROLE_HOSPITAL_ADMIN), any(LocalDateTime.class));
+        verify(hospitalAdminRepository, never()).deleteAllByUserId(anyLong());
+    }
+
+    @Test
+    @DisplayName("病院管理者以外の権限に変更すると、病院の紐付けをすべて外す")
+    void change_role_away_from_hospital_admin_removes_links() {
+        // given
+        when(userRepository.updateRole(eq(userId), eq(Role.ROLE_USER), any())).thenReturn(true);
+
+        // when
+        changeUserRoleService.execute(adminId, userId, Role.ROLE_USER);
+
+        // then
+        verify(hospitalAdminRepository).deleteAllByUserId(userId);
     }
 
     @Test

@@ -10,6 +10,8 @@ import type {
   HospitalScheduleCreateRequest,
   HospitalSummary,
   HospitalUpdateRequest,
+  HospitalAdminUser,
+  ManagedHospital,
 } from '../types'
 
 export const hospitalApi = {
@@ -67,4 +69,17 @@ export const hospitalApi = {
     apiClient
       .delete<ApiResponse<null>>(`/api/v1/admin/hospitals/${hospitalId}/business-hours/${businessHoursId}`)
       .then((r) => r.data),
+
+  // 管理画面で操作できる病院（システム管理者は全病院、病院管理者は紐付いた病院）
+  getManagedHospitals: () =>
+    apiClient.get<ApiResponse<ManagedHospital[]>>('/api/v1/admin/hospitals/mine').then((r) => r.data),
+
+  getAdmins: (hospitalId: number) =>
+    apiClient.get<ApiResponse<HospitalAdminUser[]>>(`/api/v1/admin/hospitals/${hospitalId}/admins`).then((r) => r.data),
+
+  assignAdmin: (hospitalId: number, userId: number) =>
+    apiClient.post<ApiResponse<null>>(`/api/v1/admin/hospitals/${hospitalId}/admins`, { userId }).then((r) => r.data),
+
+  unassignAdmin: (hospitalId: number, userId: number) =>
+    apiClient.delete<ApiResponse<null>>(`/api/v1/admin/hospitals/${hospitalId}/admins/${userId}`).then((r) => r.data),
 }

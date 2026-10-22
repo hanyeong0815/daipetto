@@ -8,6 +8,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -48,9 +49,10 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("VALIDATION-001", message));
     }
 
-    // 型変換できないクエリパラメータ（例: role=FOO）や読み取れないJSON（不正なenum値など）は
+    // 型変換できないクエリパラメータ（例: role=FOO）、必須クエリパラメータの欠落、読み取れないJSON（不正なenum値など）は
     // 利用者の入力誤りのため、500ではなく400（VALIDATION-001）で返す
-    @ExceptionHandler({MethodArgumentTypeMismatchException.class, HttpMessageNotReadableException.class})
+    @ExceptionHandler({MethodArgumentTypeMismatchException.class, HttpMessageNotReadableException.class,
+            MissingServletRequestParameterException.class})
     public ResponseEntity<ApiResponse<Void>> handleUnreadableInput(Exception exception) {
         log.warn("Unreadable request input. message={}", exception.getMessage());
 

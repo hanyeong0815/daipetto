@@ -34,13 +34,19 @@ class HospitalBusinessHoursServiceTest {
     private UpdateHospitalBusinessHoursService updateHospitalBusinessHoursService;
     private DeleteHospitalBusinessHoursService deleteHospitalBusinessHoursService;
 
+    private static final Long ADMIN_ID = 1L;
+
+    private HospitalAccessChecker hospitalAccessChecker;
+
+
     @BeforeEach
     void setUp() {
+        hospitalAccessChecker = mock(HospitalAccessChecker.class);
         hospitalRepository = mock(HospitalRepository.class);
         hospitalBusinessHoursRepository = mock(HospitalBusinessHoursRepository.class);
-        hospitalBusinessHoursService = new HospitalBusinessHoursService(hospitalRepository, hospitalBusinessHoursRepository);
-        updateHospitalBusinessHoursService = new UpdateHospitalBusinessHoursService(hospitalBusinessHoursRepository);
-        deleteHospitalBusinessHoursService = new DeleteHospitalBusinessHoursService(hospitalBusinessHoursRepository);
+        hospitalBusinessHoursService = new HospitalBusinessHoursService(hospitalAccessChecker, hospitalRepository, hospitalBusinessHoursRepository);
+        updateHospitalBusinessHoursService = new UpdateHospitalBusinessHoursService(hospitalAccessChecker, hospitalBusinessHoursRepository);
+        deleteHospitalBusinessHoursService = new DeleteHospitalBusinessHoursService(hospitalAccessChecker, hospitalBusinessHoursRepository);
     }
 
     // ------------------------------------------------------------------- list
@@ -112,7 +118,7 @@ class HospitalBusinessHoursServiceTest {
                 });
 
         // when
-        CreateHospitalBusinessHoursResponse response = hospitalBusinessHoursService.execute(hospitalId, request);
+        CreateHospitalBusinessHoursResponse response = hospitalBusinessHoursService.execute(ADMIN_ID, hospitalId, request);
 
         // then
         assertThat(response.businessHoursId()).isEqualTo(1L);
@@ -131,7 +137,7 @@ class HospitalBusinessHoursServiceTest {
         when(hospitalRepository.existsById(hospitalId)).thenReturn(false);
 
         // when & then
-        assertThatThrownBy(() -> hospitalBusinessHoursService.execute(hospitalId, request))
+        assertThatThrownBy(() -> hospitalBusinessHoursService.execute(ADMIN_ID, hospitalId, request))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> {
                     CustomException ce = (CustomException) e;
@@ -154,7 +160,7 @@ class HospitalBusinessHoursServiceTest {
         when(hospitalBusinessHoursRepository.existsByHospitalIdAndDayOfWeek(hospitalId, DayOfWeek.MONDAY)).thenReturn(true);
 
         // when & then
-        assertThatThrownBy(() -> hospitalBusinessHoursService.execute(hospitalId, request))
+        assertThatThrownBy(() -> hospitalBusinessHoursService.execute(ADMIN_ID, hospitalId, request))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> {
                     CustomException ce = (CustomException) e;
@@ -183,7 +189,7 @@ class HospitalBusinessHoursServiceTest {
         when(hospitalBusinessHoursRepository.updateHours(any(HospitalBusinessHours.class))).thenReturn(true);
 
         // when
-        updateHospitalBusinessHoursService.execute(hospitalId, businessHoursId, request);
+        updateHospitalBusinessHoursService.execute(ADMIN_ID, hospitalId, businessHoursId, request);
 
         // then
         ArgumentCaptor<HospitalBusinessHours> captor = ArgumentCaptor.forClass(HospitalBusinessHours.class);
@@ -211,7 +217,7 @@ class HospitalBusinessHoursServiceTest {
         when(hospitalBusinessHoursRepository.updateHours(any(HospitalBusinessHours.class))).thenReturn(false);
 
         // when & then
-        assertThatThrownBy(() -> updateHospitalBusinessHoursService.execute(hospitalId, businessHoursId,
+        assertThatThrownBy(() -> updateHospitalBusinessHoursService.execute(ADMIN_ID, hospitalId, businessHoursId,
                 new UpdateHospitalBusinessHoursRequest(LocalTime.of(10, 0), LocalTime.of(19, 0), null, null, 20)))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
@@ -231,7 +237,7 @@ class HospitalBusinessHoursServiceTest {
         when(hospitalBusinessHoursRepository.findById(businessHoursId)).thenReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> updateHospitalBusinessHoursService.execute(hospitalId, businessHoursId, request))
+        assertThatThrownBy(() -> updateHospitalBusinessHoursService.execute(ADMIN_ID, hospitalId, businessHoursId, request))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> {
                     CustomException ce = (CustomException) e;
@@ -258,7 +264,7 @@ class HospitalBusinessHoursServiceTest {
         when(hospitalBusinessHoursRepository.findById(businessHoursId)).thenReturn(Optional.of(businessHours));
 
         // when & then
-        assertThatThrownBy(() -> updateHospitalBusinessHoursService.execute(hospitalId, businessHoursId, request))
+        assertThatThrownBy(() -> updateHospitalBusinessHoursService.execute(ADMIN_ID, hospitalId, businessHoursId, request))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> {
                     CustomException ce = (CustomException) e;
@@ -283,7 +289,7 @@ class HospitalBusinessHoursServiceTest {
         when(hospitalBusinessHoursRepository.findById(businessHoursId)).thenReturn(Optional.of(businessHours));
 
         // when
-        deleteHospitalBusinessHoursService.execute(hospitalId, businessHoursId);
+        deleteHospitalBusinessHoursService.execute(ADMIN_ID, hospitalId, businessHoursId);
 
         // then
         verify(hospitalBusinessHoursRepository).deleteById(businessHoursId);
@@ -298,7 +304,7 @@ class HospitalBusinessHoursServiceTest {
         when(hospitalBusinessHoursRepository.findById(businessHoursId)).thenReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> deleteHospitalBusinessHoursService.execute(hospitalId, businessHoursId))
+        assertThatThrownBy(() -> deleteHospitalBusinessHoursService.execute(ADMIN_ID, hospitalId, businessHoursId))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> {
                     CustomException ce = (CustomException) e;
@@ -322,7 +328,7 @@ class HospitalBusinessHoursServiceTest {
         when(hospitalBusinessHoursRepository.findById(businessHoursId)).thenReturn(Optional.of(businessHours));
 
         // when & then
-        assertThatThrownBy(() -> deleteHospitalBusinessHoursService.execute(hospitalId, businessHoursId))
+        assertThatThrownBy(() -> deleteHospitalBusinessHoursService.execute(ADMIN_ID, hospitalId, businessHoursId))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> {
                     CustomException ce = (CustomException) e;

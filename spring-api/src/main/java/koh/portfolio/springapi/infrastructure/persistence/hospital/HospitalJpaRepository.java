@@ -11,6 +11,10 @@ import java.util.List;
 import java.util.Optional;
 
 public interface HospitalJpaRepository extends JpaRepository<HospitalEntity, Long> {
+    List<HospitalEntity> findAllByDeletedAtIsNullOrderByIdAsc();
+
+    List<HospitalEntity> findAllByIdInAndDeletedAtIsNullOrderByIdAsc(List<Long> ids);
+
     Optional<HospitalEntity> findByIdAndDeletedAtIsNull(Long id);
 
     @Query("""

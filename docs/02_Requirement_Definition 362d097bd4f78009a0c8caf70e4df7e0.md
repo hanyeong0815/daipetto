@@ -10,7 +10,7 @@
 | Document | Requirement Definition |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-08-23 |
+| Updated | 2026-10-22 |
 
 # **1. 要件定義概要**
 
@@ -283,7 +283,7 @@
 
 ### **内容**
 
-SYSTEM_ADMINは病院の登録・停止を行える。HOSPITAL_ADMIN・SYSTEM_ADMINは病院情報更新・予約枠の登録／BLOCKED切替・曜日別営業時間のCRUDを行える。
+SYSTEM_ADMINは病院の登録・停止と、病院管理者（HOSPITAL_ADMIN）の病院への紐付け・解除を行える。HOSPITAL_ADMIN・SYSTEM_ADMINは病院情報更新・予約枠の登録／BLOCKED切替・曜日別営業時間のCRUDを行える。HOSPITAL_ADMINは紐付いた病院だけを管理できる（`07_API_Design` §2-8）。
 
 ### **異常系**
 
@@ -291,6 +291,8 @@ SYSTEM_ADMINは病院の登録・停止を行える。HOSPITAL_ADMIN・SYSTEM_AD
 | --- | --- |
 | 存在しない病院 | HOSPITAL-001 |
 | 曜日重複登録 | HOSPITAL-004 |
+| 紐付いていない病院の管理 | HOSPITAL-005 |
+| 病院管理者権限でないユーザーの紐付け / 紐付けの重複 / 存在しない紐付けの解除 | HOSPITAL-006 / 007 / 008 |
 
 ---
 
@@ -304,7 +306,7 @@ SYSTEM_ADMINは病院の登録・停止を行える。HOSPITAL_ADMIN・SYSTEM_AD
 
 ### **内容**
 
-ユーザーは予約枠を選択して予約を申請・閲覧・キャンセルできる。病院管理者は予約を承認・却下・診療完了へ遷移できる（状態遷移は`08_State_Design` §6準拠）。
+ユーザーは予約枠を選択して予約を申請・閲覧・キャンセルできる。病院管理者は紐付いた病院の予約を一覧（状態・日付で絞り込み）し、承認・却下・診療完了へ遷移できる（状態遷移は`08_State_Design` §6準拠）。
 
 ### **異常系**
 

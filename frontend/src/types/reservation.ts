@@ -1,3 +1,5 @@
+import type { PetSpecies } from './pet'
+
 export type ReservationStatus = 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED'
 
 export interface ReservationSummary {
@@ -19,4 +21,19 @@ export interface ReservationCreateRequest {
   hospitalId: number
   scheduleId: number
   memo?: string
+}
+
+// 病院管理者向け予約一覧（GET /api/v1/admin/reservations、SC-013）の1件
+export interface AdminReservation {
+  reservationId: number
+  status: ReservationStatus
+  availableDate: string
+  startTime: string
+  endTime: string
+  userId: number
+  userNickname: string
+  petName: string
+  petType: PetSpecies
+  memo?: string
+  createdAt: string
 }

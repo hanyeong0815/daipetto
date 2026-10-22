@@ -18,10 +18,13 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -68,11 +71,11 @@ class HospitalScheduleAdminControllerTest {
                 LocalDate.of(2026, 5, 20), LocalTime.of(10, 0), LocalTime.of(10, 30)
         );
 
-        when(createHospitalScheduleUseCase.execute(eq(1L), any(CreateHospitalScheduleRequest.class)))
+        when(createHospitalScheduleUseCase.execute(eq(99L), eq(1L), any(CreateHospitalScheduleRequest.class)))
                 .thenReturn(new CreateHospitalScheduleResponse(1L));
 
         // when & then
-        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules")
+        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules").principal(admin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -89,7 +92,7 @@ class HospitalScheduleAdminControllerTest {
         );
 
         // when & then
-        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules")
+        mockMvc.perform(post("/api/v1/admin/hospitals/1/schedules").principal(admin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
@@ -103,21 +106,25 @@ class HospitalScheduleAdminControllerTest {
     @DisplayName("PATCH /api/v1/admin/hospitals/{hospitalId}/schedules/{scheduleId}/block - BLOCKED設定成功")
     void block_hospital_schedule_success() throws Exception {
         // when & then
-        mockMvc.perform(patch("/api/v1/admin/hospitals/1/schedules/10/block"))
+        mockMvc.perform(patch("/api/v1/admin/hospitals/1/schedules/10/block").principal(admin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        verify(blockHospitalScheduleUseCase).execute(1L, 10L);
+        verify(blockHospitalScheduleUseCase).execute(99L, 1L, 10L);
     }
 
     @Test
     @DisplayName("PATCH /api/v1/admin/hospitals/{hospitalId}/schedules/{scheduleId}/unblock - AVAILABLE設定成功")
     void unblock_hospital_schedule_success() throws Exception {
         // when & then
-        mockMvc.perform(patch("/api/v1/admin/hospitals/1/schedules/10/unblock"))
+        mockMvc.perform(patch("/api/v1/admin/hospitals/1/schedules/10/unblock").principal(admin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        verify(unblockHospitalScheduleUseCase).execute(1L, 10L);
+        verify(unblockHospitalScheduleUseCase).execute(99L, 1L, 10L);
+    }
+
+    private UsernamePasswordAuthenticationToken admin() {
+        return new UsernamePasswordAuthenticationToken(99L, null, List.of());
     }
 }

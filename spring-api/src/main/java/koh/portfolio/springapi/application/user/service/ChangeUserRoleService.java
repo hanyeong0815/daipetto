@@ -2,6 +2,7 @@ package koh.portfolio.springapi.application.user.service;
 
 import koh.portfolio.springapi.application.user.usecase.ChangeUserRoleUseCase;
 import koh.portfolio.springapi.common.exception.Preconditions;
+import koh.portfolio.springapi.domain.hospital.port.HospitalAdminRepository;
 import koh.portfolio.springapi.domain.user.exception.UserErrorCode;
 import koh.portfolio.springapi.domain.user.model.Role;
 import koh.portfolio.springapi.domain.user.port.UserRepository;
@@ -15,6 +16,7 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class ChangeUserRoleService implements ChangeUserRoleUseCase {
     private final UserRepository userRepository;
+    private final HospitalAdminRepository hospitalAdminRepository;
 
     @Override
     @Transactional
@@ -27,5 +29,10 @@ public class ChangeUserRoleService implements ChangeUserRoleUseCase {
                 userRepository.updateRole(userId, role, LocalDateTime.now()),
                 UserErrorCode.NO_SUCH_USER
         );
+
+        // 病院管理者でなくなったユーザーの病院紐付けを外す（再び病院管理者にした場合は改めて紐付ける）
+        if (role != Role.ROLE_HOSPITAL_ADMIN) {
+            hospitalAdminRepository.deleteAllByUserId(userId);
+        }
     }
 }

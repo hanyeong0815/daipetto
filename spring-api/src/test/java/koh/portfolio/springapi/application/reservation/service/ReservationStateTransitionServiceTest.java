@@ -1,7 +1,9 @@
 package koh.portfolio.springapi.application.reservation.service;
 
+import koh.portfolio.springapi.application.hospital.service.HospitalAccessChecker;
 import koh.portfolio.springapi.application.notification.usecase.NotifyReservationEventUseCase;
 import koh.portfolio.springapi.common.exception.CustomException;
+import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
 import koh.portfolio.springapi.domain.notification.model.NotificationType;
 import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
 import koh.portfolio.springapi.domain.reservation.model.Reservation;
@@ -12,6 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,14 +34,20 @@ class ReservationStateTransitionServiceTest {
     private final Long userId = 1L;
     private final Long reservationId = 1L;
 
+    private static final Long ADMIN_ID = 1L;
+
+    private HospitalAccessChecker hospitalAccessChecker;
+
+
     @BeforeEach
     void setUp() {
+        hospitalAccessChecker = mock(HospitalAccessChecker.class);
         reservationRepository = mock(ReservationRepository.class);
         notifyReservationEventUseCase = mock(NotifyReservationEventUseCase.class);
-        approveReservationService = new ApproveReservationService(reservationRepository, notifyReservationEventUseCase);
+        approveReservationService = new ApproveReservationService(hospitalAccessChecker, reservationRepository, notifyReservationEventUseCase);
         cancelReservationService = new CancelReservationService(reservationRepository);
-        completeReservationService = new CompleteReservationService(reservationRepository, notifyReservationEventUseCase);
-        rejectReservationService = new RejectReservationService(reservationRepository, notifyReservationEventUseCase);
+        completeReservationService = new CompleteReservationService(hospitalAccessChecker, reservationRepository, notifyReservationEventUseCase);
+        rejectReservationService = new RejectReservationService(hospitalAccessChecker, reservationRepository, notifyReservationEventUseCase);
     }
 
     private void verifyNoNotification() {
@@ -77,6 +86,30 @@ class ReservationStateTransitionServiceTest {
                         .isEqualTo(ReservationErrorCode.INVALID_STATE_TRANSITION.code()));
     }
 
+    // ------------------------------------------------------------ affiliation
+
+    @Test
+    @DisplayName("管理対象外の病院の予約は承認・却下・完了できず（HOSPITAL-005）、状態も通知も変えない")
+    void transitions_fail_when_not_hospital_manager() {
+        // given: 予約の病院（hospitalId=100）は操作者の管理対象外
+        stubFind(ReservationStatus.REQUESTED);
+        doThrow(HospitalErrorCode.NOT_HOSPITAL_MANAGER.defaultException())
+                .when(hospitalAccessChecker).checkManageable(ADMIN_ID, 100L);
+
+        // when & then
+        for (Runnable call : List.<Runnable>of(
+                () -> approveReservationService.execute(ADMIN_ID, reservationId),
+                () -> rejectReservationService.execute(ADMIN_ID, reservationId),
+                () -> completeReservationService.execute(ADMIN_ID, reservationId))) {
+            assertThatThrownBy(call::run)
+                    .isInstanceOf(CustomException.class)
+                    .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                            .isEqualTo(HospitalErrorCode.NOT_HOSPITAL_MANAGER.code()));
+        }
+        verifyNoTransitionPersisted();
+        verifyNoNotification();
+    }
+
     // ----------------------------------------------------------------- approve
 
     @Test
@@ -87,7 +120,7 @@ class ReservationStateTransitionServiceTest {
         stubUpdateStatus(true);
 
         // when
-        approveReservationService.execute(reservationId);
+        approveReservationService.execute(ADMIN_ID, reservationId);
 
         // then
         verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.APPROVED);
@@ -103,7 +136,7 @@ class ReservationStateTransitionServiceTest {
         stubFind(ReservationStatus.COMPLETED);
 
         // when & then
-        assertInvalidStateTransition(() -> approveReservationService.execute(reservationId));
+        assertInvalidStateTransition(() -> approveReservationService.execute(ADMIN_ID, reservationId));
 
         verifyNoTransitionPersisted();
     }
@@ -115,7 +148,7 @@ class ReservationStateTransitionServiceTest {
         stubFind(ReservationStatus.REJECTED);
 
         // when & then
-        assertInvalidStateTransition(() -> approveReservationService.execute(reservationId));
+        assertInvalidStateTransition(() -> approveReservationService.execute(ADMIN_ID, reservationId));
 
         verifyNoTransitionPersisted();
     }
@@ -127,7 +160,7 @@ class ReservationStateTransitionServiceTest {
         stubFind(ReservationStatus.CANCELLED);
 
         // when & then
-        assertInvalidStateTransition(() -> approveReservationService.execute(reservationId));
+        assertInvalidStateTransition(() -> approveReservationService.execute(ADMIN_ID, reservationId));
 
         verifyNoTransitionPersisted();
     }
@@ -140,7 +173,7 @@ class ReservationStateTransitionServiceTest {
         stubUpdateStatus(false);
 
         // when & then
-        assertInvalidStateTransition(() -> approveReservationService.execute(reservationId));
+        assertInvalidStateTransition(() -> approveReservationService.execute(ADMIN_ID, reservationId));
 
         verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.APPROVED);
 
@@ -155,7 +188,7 @@ class ReservationStateTransitionServiceTest {
         when(reservationRepository.findById(reservationId)).thenReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> approveReservationService.execute(reservationId))
+        assertThatThrownBy(() -> approveReservationService.execute(ADMIN_ID, reservationId))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
                         .isEqualTo(ReservationErrorCode.RESERVATION_NOT_FOUND.code()));
@@ -243,7 +276,7 @@ class ReservationStateTransitionServiceTest {
         stubUpdateStatus(true);
 
         // when
-        completeReservationService.execute(reservationId);
+        completeReservationService.execute(ADMIN_ID, reservationId);
 
         // then
         verifyTransition(ReservationStatus.APPROVED, ReservationStatus.COMPLETED);
@@ -259,7 +292,7 @@ class ReservationStateTransitionServiceTest {
         stubFind(ReservationStatus.REQUESTED);
 
         // when & then
-        assertInvalidStateTransition(() -> completeReservationService.execute(reservationId));
+        assertInvalidStateTransition(() -> completeReservationService.execute(ADMIN_ID, reservationId));
 
         verifyNoTransitionPersisted();
     }
@@ -272,7 +305,7 @@ class ReservationStateTransitionServiceTest {
         stubUpdateStatus(false);
 
         // when & then
-        assertInvalidStateTransition(() -> completeReservationService.execute(reservationId));
+        assertInvalidStateTransition(() -> completeReservationService.execute(ADMIN_ID, reservationId));
 
         verifyTransition(ReservationStatus.APPROVED, ReservationStatus.COMPLETED);
     }
@@ -287,7 +320,7 @@ class ReservationStateTransitionServiceTest {
         stubUpdateStatus(true);
 
         // when
-        rejectReservationService.execute(reservationId);
+        rejectReservationService.execute(ADMIN_ID, reservationId);
 
         // then
         verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.REJECTED);
@@ -303,7 +336,7 @@ class ReservationStateTransitionServiceTest {
         stubFind(ReservationStatus.APPROVED);
 
         // when & then
-        assertInvalidStateTransition(() -> rejectReservationService.execute(reservationId));
+        assertInvalidStateTransition(() -> rejectReservationService.execute(ADMIN_ID, reservationId));
 
         verifyNoTransitionPersisted();
     }
@@ -315,7 +348,7 @@ class ReservationStateTransitionServiceTest {
         stubFind(ReservationStatus.COMPLETED);
 
         // when & then
-        assertInvalidStateTransition(() -> rejectReservationService.execute(reservationId));
+        assertInvalidStateTransition(() -> rejectReservationService.execute(ADMIN_ID, reservationId));
 
         verifyNoTransitionPersisted();
     }
@@ -327,7 +360,7 @@ class ReservationStateTransitionServiceTest {
         stubFind(ReservationStatus.CANCELLED);
 
         // when & then
-        assertInvalidStateTransition(() -> rejectReservationService.execute(reservationId));
+        assertInvalidStateTransition(() -> rejectReservationService.execute(ADMIN_ID, reservationId));
 
         verifyNoTransitionPersisted();
     }
@@ -339,7 +372,7 @@ class ReservationStateTransitionServiceTest {
         stubFind(ReservationStatus.REJECTED);
 
         // when & then
-        assertInvalidStateTransition(() -> rejectReservationService.execute(reservationId));
+        assertInvalidStateTransition(() -> rejectReservationService.execute(ADMIN_ID, reservationId));
 
         verifyNoTransitionPersisted();
     }
@@ -352,7 +385,7 @@ class ReservationStateTransitionServiceTest {
         stubUpdateStatus(false);
 
         // when & then
-        assertInvalidStateTransition(() -> rejectReservationService.execute(reservationId));
+        assertInvalidStateTransition(() -> rejectReservationService.execute(ADMIN_ID, reservationId));
 
         verifyTransition(ReservationStatus.REQUESTED, ReservationStatus.REJECTED);
 
@@ -366,7 +399,7 @@ class ReservationStateTransitionServiceTest {
         when(reservationRepository.findById(reservationId)).thenReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> rejectReservationService.execute(reservationId))
+        assertThatThrownBy(() -> rejectReservationService.execute(ADMIN_ID, reservationId))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
                         .isEqualTo(ReservationErrorCode.RESERVATION_NOT_FOUND.code()));

@@ -1,6 +1,6 @@
 # Daipetto — 作業TODOリスト
 
-最終更新: 2026-10-05
+最終更新: 2026-10-22
 
 ---
 
@@ -99,7 +99,7 @@
 - [x] `POST /api/v1/admin/hospitals/{hospitalId}/schedules` — 予約枠の個別手動登録（ユーザー実装。`@Valid`・`existsById`チェック追加済み）
 - [x] 予約枠のAVAILABLE/BLOCKED切り替え — `PATCH .../schedules/{scheduleId}/block`・`.../unblock`（Claude Code実装、2026-08-02。`BlockHospitalScheduleService`/`UnblockHospitalScheduleService`、`HospitalErrorCode.HOSPITAL_SCHEDULE_NOT_FOUND`追加、`docs/07_API_Design` 8-5・8-6追記、テスト10件green）
   - 状態遷移は`Hospital.suspend()`と同じ「不変オブジェクト・新インスタンス返却」パターン
-  - schedule.hospitalIdとpath変数のhospitalIdが一致しない場合もHOSPITAL-002（他病院の予約枠を弄れないようにするガード。Pet の owner check に相当するが hospital_admins が無いので厳密な権限チェックではない点に注意）
+  - schedule.hospitalIdとpath変数のhospitalIdが一致しない場合もHOSPITAL-002（他病院の予約枠を弄れないようにするガード。Pet の owner check に相当。2026-10-22 から hospital_admins による所属チェックも別途行う）
   - **予約による自動BLOCKEDは行わない**（`06_ERD` §12業務制約、§18参照）
 - [x] Hospital/HospitalSchedule 全体テスト整備（Claude Code、2026-08-02）。テスト作成中に発見して同時に修正したバグ:
   - `HospitalAdminControllerTest`の`@MockBean`漏れ（`UpdateHospitalUseCase`/`SuspendHospitalUseCase`未Mock → 3件失敗）を修正
@@ -139,6 +139,16 @@
 - [x] 認証フィルターがリクエストごとにユーザーの現在の状態・権限を確認（停止・権限変更が次のリクエストから反映、`docs/09` §3-5）
 - [x] 存在しないenum値（クエリ・JSON）を500ではなく400（VALIDATION-001）で返す（`docs/12` §3-16）
 - [x] Codexレビュー（`.ai-collab/tasks/2026-10-21-user-management/`）: REVIEW-001でR-01（停止と重なったログインがトークンを発行）・R-02（一覧が空のページに留まる）・R-03 → HANDOFF-002で修正 → REVIEW-002で **ACCEPTED**（2026-10-22）
+
+### 病院所属（hospital_admins）・管理者向け予約一覧（2026-10-22 実装、Claude Code、ブランチ `feat/spring/hospital-admins`）
+- [x] `hospital_admins`テーブル（`V15__create_hospital_admins.sql`、ユーザー×病院の一意制約）
+- [x] 所属チェック（`HospitalAccessChecker`）— 病院更新・予約枠・営業時間・予約の承認/却下/診療完了で、病院管理者は紐付いた病院だけ操作可能（それ以外HOSPITAL-005、`docs/07` §2-8）
+- [x] `GET /api/v1/admin/hospitals/mine` — 管理対象の病院（システム管理者は停止中を含む全病院）
+- [x] `GET/POST/DELETE /api/v1/admin/hospitals/{id}/admins` — 病院管理者の一覧・紐付け・解除（システム管理者のみ、HOSPITAL-006〜008）。紐付けはユーザー行の排他を取ってから権限を確認（`docs/12` §3-17）
+- [x] 権限を病院管理者以外へ変更すると紐付けをすべて削除
+- [x] `GET /api/v1/admin/reservations?hospitalId=&status=&date=` — 病院管理者向け予約一覧（予約者・ペット名付き）。必須クエリパラメータ欠落を500ではなく400に
+- [x] Codexレビュー（`.ai-collab/tasks/2026-10-22-hospital-admins/`）: REVIEW-001でR-01（停止・保存の応答待ちに別病院を選ぶと前の病院のデータに入れ替わる）・R-02（一覧の取得失敗を「管理対象なし」と表示）・R-03 → HANDOFF-002で修正 → REVIEW-002で **ACCEPTED**（2026-10-22）
+- [x] フロントエンド: SC-013 `AdminReservationPage`をモックから実API連動、SC-014 `AdminHospitalPage`を管理対象病院の選択＋病院管理者の紐付け欄に変更
 
 ### 予約枠自動生成バッチ（設計決定、未実装 — 2026-08-02）
 > ユーザーとの設計議論の結論。`hospital_business_hours`管理APIは実装済みだが、これを元に`hospital_schedules`を自動生成するScheduler本体は未着手
@@ -228,7 +238,7 @@
 - [x] 病院検索 (`HospitalSearchPage`) — Hospital API 連動。distance/rating/reviews/specialtyはバックエンドに存在しないため削除
 - [x] 病院詳細 (`HospitalDetailPage`) — Hospital + HospitalBusinessHours API 連動。doctors/reviewsはバックエンドに存在しないため削除、診療時間は曜日別に表示
 - [x] 管理者画面 (`AdminHospitalPage`) — Hospital（Create/Update/Suspend）+ HospitalSchedule（Create/Block/Unblock）+ HospitalBusinessHours（Create/Update/Delete）全連動
-  - `hospital_admins`未実装のため「自分の病院」を判定できず、一覧から選択する方式で暫定対応
+  - ~~`hospital_admins`未実装のため「自分の病院」を判定できず、一覧から選択する方式で暫定対応~~ → 2026-10-22: 管理対象の病院（`/admin/hospitals/mine`、停止中を含む）だけを選択肢にし、1件なら自動選択。システム管理者向けに「病院管理者」の紐付け・解除欄を追加
 - [x] `hospitalStore.ts` — 病院一覧・詳細・予約枠・営業時間（読み取り用）
 - [x] `api/hospital.ts` — 全Hospital関連API（公開4 + 管理者6）のラッパー
 - [x] プラットフォーム別APIベースURL — `Capacitor.getPlatform()`で実行時に自動判定（Web/Android/iOS）、`.env`の手動書き換えが不要に
@@ -242,7 +252,7 @@
 - [x] ダッシュボード — 次の予約（今日以降のREQUESTED/APPROVEDで最も早いもの）と、先頭ペットの健康記録（直近の体重・前回比・最近の症状）を実データ化
 - [x] ログアウト — ヘッダー右上（存在しない`/profile`へのリンクだった）をログアウトボタンに変更。`POST /auth/logout`の後、失敗してもローカルのトークンを破棄
 - [x] ペット一覧の表示修正 — 一覧API（PetSummary）は品種・性別を返さないため、常に「— · メス」と表示されていた。種別と体重の表示に変更
-- [ ] 管理者画面 `AdminReservationPage` — **要判断**: 承認/却下/完了APIはあるが、管理者が予約を一覧するAPIが無い（`docs/05` SC-013は一覧表示を定義、`docs/07`に該当APIなし）。Spring側に管理者用一覧APIを追加するか、ユーザー判断待ち
+- [x] 管理者画面 `AdminReservationPage` — 2026-10-22: 管理者向け予約一覧API（`docs/07` §9-8）を追加し、モックデータから実API連動に変更。病院選択・状態別件数・日付/状態の絞り込み・承認/却下/診療完了（確認ダイアログ）
 - [x] 管理者画面 `AdminUserPage`（2026-10-21、SC-015） — 検索（キーワード・権限・状態、20件ずつのページ）・停止/停止解除・権限変更を実API連動。自分自身の行は操作不可。Dashboardに役割別の「管理メニュー」を追加（管理画面への入口が無かったため）。`UserProfile`の型を実際の応答（`userId`・`status`）に修正
 
 ### Vaccination API 連動（2026-10-21 実装、Claude Code、ブランチ `feat/spring/vaccination`）

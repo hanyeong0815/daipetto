@@ -19,6 +19,7 @@ import static koh.portfolio.springapi.common.exception.Preconditions.validate;
 @Service
 @RequiredArgsConstructor
 public class HospitalBusinessHoursService implements GetHospitalBusinessHoursListUseCase, CreateHospitalBusinessHoursUseCase {
+    private final HospitalAccessChecker hospitalAccessChecker;
     private final HospitalRepository hospitalRepository;
     private final HospitalBusinessHoursRepository hospitalBusinessHoursRepository;
 
@@ -44,7 +45,9 @@ public class HospitalBusinessHoursService implements GetHospitalBusinessHoursLis
     }
 
     @Override
-    public CreateHospitalBusinessHoursResponse execute(Long hospitalId, CreateHospitalBusinessHoursRequest request) {
+    public CreateHospitalBusinessHoursResponse execute(Long userId, Long hospitalId, CreateHospitalBusinessHoursRequest request) {
+        hospitalAccessChecker.checkManageable(userId, hospitalId);
+
         validate(hospitalRepository.existsById(hospitalId), HospitalErrorCode.HOSPITAL_NOT_FOUND);
         validate(
                 !hospitalBusinessHoursRepository.existsByHospitalIdAndDayOfWeek(hospitalId, request.dayOfWeek()),

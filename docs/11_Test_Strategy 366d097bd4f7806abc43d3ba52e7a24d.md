@@ -10,7 +10,7 @@
 | Document | Test Strategy |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-10-05 |
+| Updated | 2026-10-22 |
 
 ---
 
@@ -141,8 +141,8 @@ flowchart TB
 | --- | --- | --- | --- |
 | ROLE-T001 | ROLE_USER | ペット登録 | 成功 |
 | ROLE-T002 | ROLE_USER | 予約承認 | 403 |
-| ROLE-T003 | ROLE_HOSPITAL_ADMIN | 予約承認 | 成功 |
-| ROLE-T004 | ROLE_HOSPITAL_ADMIN | 病院管理 | 403 |
+| ROLE-T003 | ROLE_HOSPITAL_ADMIN | 予約承認（紐付いた病院の予約） | 成功（紐付いていない病院はHOSPITAL-005、6-2「病院所属」） |
+| ROLE-T004 | ROLE_HOSPITAL_ADMIN | 病院登録・停止・病院管理者の紐付け | 403 |
 | ROLE-T005 | ROLE_SYSTEM_ADMIN | 病院管理 | 成功 |
 | ROLE-T006 | 未認証 | 認証必須API | 401 |
 | ROLE-T007 | ROLE_USER・ROLE_HOSPITAL_ADMIN | ユーザー管理（`/api/v1/admin/users`） | 403 |
@@ -159,6 +159,22 @@ flowchart TB
 | ADMIN-T006 | 存在しない権限名・状態名 | VALIDATION-001（500にしない） |
 | ADMIN-T007 | 停止と同時に進行中のログイン・Token再発行 | 停止の確定後に有効なRefresh Tokenが残らない（ログインはAUTH-002、再発行は後続Tokenを失効） |
 | ADMIN-T008 | 最後のページの最後の1件が停止・権限変更で条件から外れる | 画面は最後の有効なページを取り直す（空のページに留まらない） |
+
+### **病院所属（hospital_admins）**
+
+| **Test ID** | **観点** | **期待結果** |
+| --- | --- | --- |
+| HADM-T001 | 紐付いていない病院の更新・予約枠・営業時間・予約の承認／却下／診療完了・予約一覧（病院管理者） | 403 HOSPITAL-005、データは変わらない |
+| HADM-T002 | 紐付いた病院の同じ操作（病院管理者）／任意の病院（システム管理者） | 成功 |
+| HADM-T003 | 管理対象の病院一覧（`/admin/hospitals/mine`） | システム管理者は停止中を含む全病院、病院管理者は紐付いた病院だけ |
+| HADM-T004 | 紐付け | 201。重複HOSPITAL-007、一般ユーザーHOSPITAL-006、存在しない病院HOSPITAL-001、存在しない・削除済みユーザーUSER-003 |
+| HADM-T005 | 同じ紐付けの同時登録 | 1件だけ成立し、残りはHOSPITAL-007 |
+| HADM-T006 | 紐付け解除 | 次のリクエストから操作不可。紐付けが無ければHOSPITAL-008 |
+| HADM-T007 | 権限を病院管理者以外へ変更 | 紐付けがすべて削除され、再び病院管理者にしても戻らない |
+| HADM-T008 | 権限変更と同時に進行中の紐付け | 権限変更の確定後に紐付けが残らない（紐付けはHOSPITAL-006） |
+| HADM-T009 | 予約一覧（病院管理者）の絞り込み | 状態・日付で絞り込み、条件なしは全件（PostgreSQLのnull条件）、論理削除済みの予約は除外、日付・開始時刻順 |
+
+> HADM-T001〜T007は`HospitalAdminServiceTest`・各Service／Controllerテスト・`HospitalAdminPersistenceAdapterTest`（H2）、HADM-T009は`ReservationAdminQueryTest`（H2）と`GetAdminReservationListServiceTest`で検証する。実PostgreSQL・実HTTPでの確認（HADM-T005・T008を含む）は受け入れスクリプト（`.ai-collab/tasks/2026-10-22-hospital-admins/scripts/`）で行う。
 
 > ADMIN-T001は`UserPersistenceAdapterTest`（H2）と`AdminUserServiceTest`、ADMIN-T002〜T006は`AdminUserServiceTest`・`AdminUserControllerTest`・`JwtAuthenticationFilterTest`で検証し、実PostgreSQL・実HTTPでの確認は受け入れスクリプト（`.ai-collab/tasks/2026-10-21-user-management/scripts/`）で行う。
 

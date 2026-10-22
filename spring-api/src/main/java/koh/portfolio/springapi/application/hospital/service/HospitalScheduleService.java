@@ -19,6 +19,7 @@ import static koh.portfolio.springapi.common.exception.Preconditions.validate;
 @Service
 @RequiredArgsConstructor
 public class HospitalScheduleService implements GetHospitalScheduleListUseCase, CreateHospitalScheduleUseCase {
+    private final HospitalAccessChecker hospitalAccessChecker;
     private final HospitalRepository hospitalRepository;
     private final HospitalScheduleRepository hospitalScheduleRepository;
 
@@ -42,7 +43,9 @@ public class HospitalScheduleService implements GetHospitalScheduleListUseCase, 
     }
 
     @Override
-    public CreateHospitalScheduleResponse execute(Long hospitalId, CreateHospitalScheduleRequest request) {
+    public CreateHospitalScheduleResponse execute(Long userId, Long hospitalId, CreateHospitalScheduleRequest request) {
+        hospitalAccessChecker.checkManageable(userId, hospitalId);
+
         validate(
                 hospitalRepository.existsById(hospitalId),
                 HospitalErrorCode.HOSPITAL_NOT_FOUND

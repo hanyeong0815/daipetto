@@ -4,5 +4,5 @@ import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.Crea
 import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.CreateHospitalScheduleResponse;
 
 public interface CreateHospitalScheduleUseCase {
-    CreateHospitalScheduleResponse execute(Long hospitalId, CreateHospitalScheduleRequest request);
+    CreateHospitalScheduleResponse execute(Long userId, Long hospitalId, CreateHospitalScheduleRequest request);
 }

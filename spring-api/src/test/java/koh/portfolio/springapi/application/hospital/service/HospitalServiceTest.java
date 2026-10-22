@@ -24,9 +24,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class HospitalServiceTest {
@@ -37,12 +39,18 @@ class HospitalServiceTest {
     private UpdateHospitalService updateHospitalService;
     private SuspendHospitalService suspendHospitalService;
 
+    private static final Long ADMIN_ID = 1L;
+
+    private HospitalAccessChecker hospitalAccessChecker;
+
+
     @BeforeEach
     void setUp() {
+        hospitalAccessChecker = mock(HospitalAccessChecker.class);
         hospitalRepository = mock(HospitalRepository.class);
         hospitalService = new HospitalService(hospitalRepository);
         getHospitalDetailService = new GetHospitalDetailService(hospitalRepository);
-        updateHospitalService = new UpdateHospitalService(hospitalRepository);
+        updateHospitalService = new UpdateHospitalService(hospitalAccessChecker, hospitalRepository);
         suspendHospitalService = new SuspendHospitalService(hospitalRepository);
     }
 
@@ -133,6 +141,22 @@ class HospitalServiceTest {
     // ------------------------------------------------------------------ update
 
     @Test
+    @DisplayName("管理対象外の病院の情報更新はHOSPITAL-005となり、読み取り・更新を行わない")
+    void update_hospital_fail_when_not_hospital_manager() {
+        // given
+        doThrow(HospitalErrorCode.NOT_HOSPITAL_MANAGER.defaultException())
+                .when(hospitalAccessChecker).checkManageable(ADMIN_ID, 2L);
+
+        // when & then
+        assertThatThrownBy(() -> updateHospitalService.execute(ADMIN_ID, 2L,
+                new UpdateHospitalRequest("n", "a", null)))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                        .isEqualTo(HospitalErrorCode.NOT_HOSPITAL_MANAGER.code()));
+        verifyNoInteractions(hospitalRepository);
+    }
+
+    @Test
     @DisplayName("病院情報更新成功時、情報列だけを更新しstatusは書き込まない")
     void update_hospital_success() {
         // given
@@ -146,7 +170,7 @@ class HospitalServiceTest {
         when(hospitalRepository.updateInfo(any(Hospital.class))).thenReturn(true);
 
         // when
-        updateHospitalService.execute(hospitalId, request);
+        updateHospitalService.execute(ADMIN_ID, hospitalId, request);
 
         // then
         ArgumentCaptor<Hospital> captor = ArgumentCaptor.forClass(Hospital.class);
@@ -173,7 +197,7 @@ class HospitalServiceTest {
         when(hospitalRepository.updateInfo(any(Hospital.class))).thenReturn(false);
 
         // when & then
-        assertThatThrownBy(() -> updateHospitalService.execute(hospitalId,
+        assertThatThrownBy(() -> updateHospitalService.execute(ADMIN_ID, hospitalId,
                 new UpdateHospitalRequest("Tokyo Animal Hospital 2nd", "Tokyo, Shinjuku", null)))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
@@ -189,7 +213,7 @@ class HospitalServiceTest {
         when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> updateHospitalService.execute(hospitalId, request))
+        assertThatThrownBy(() -> updateHospitalService.execute(ADMIN_ID, hospitalId, request))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> {
                     CustomException ce = (CustomException) e;

@@ -10,7 +10,7 @@
 | Document | Security Design |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-09-13 |
+| Updated | 2026-10-22 |
 
 ---
 
@@ -201,8 +201,28 @@ Role Based Authorizationを採用する。
 | --- | --- | --- | --- |
 | ペット登録 | ○ | × | ○ |
 | 予約申請 | ○ | × | ○ |
-| 予約承認 | × | ○ | ○ |
-| 病院管理 | × | × | ○ |
+| 予約承認・予約一覧（病院管理者） | × | △ | ○ |
+| 予約枠・営業時間の管理、病院更新 | × | △ | ○ |
+| 病院登録・停止、病院管理者の紐付け | × | × | ○ |
+| ユーザー管理 | × | × | ○ |
+
+△: 紐付いた病院のみ（§4-5）。詳細は`07_API_Design` §14。
+
+---
+
+# **4-5. 病院所属チェック（リソース単位の認可）**
+
+Roleの確認（`@PreAuthorize`）に加え、病院を操作するApplication Service（予約枠・営業時間・病院更新・予約の承認／却下／診療完了・病院管理者向け予約一覧）は、最初に`HospitalAccessChecker.checkManageable(userId, hospitalId)`を呼ぶ。
+
+| **Role** | **判定** |
+| --- | --- |
+| ROLE_SYSTEM_ADMIN | すべての病院を許可 |
+| ROLE_HOSPITAL_ADMIN | `hospital_admins`（`06_ERD` §11）に紐付けがある病院だけ許可 |
+| その他 | 拒否 |
+
+拒否は403 **HOSPITAL-005**。判定に使う権限はTokenではなくDBの現在の値で、紐付けもリクエストごとに確認するため、解除・権限変更は次のリクエストから反映される（§3-5）。予約の操作では予約の病院で判定する。ペットの`owner check`と同じく、パスの`hospitalId`と対象リソースの病院の一致も別途確認する（HOSPITAL-002・003）。
+
+紐付けの登録（`07_API_Design` §11-10）は、権限変更と同じユーザー行の排他を取ってから権限を確認する。権限を`ROLE_HOSPITAL_ADMIN`以外へ変更すると、紐付けはすべて削除される。
 
 ---
 
