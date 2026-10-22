@@ -1,0 +1,52 @@
+{
+  "id": "UT-05-003",
+  "feature": "UT-05",
+  "api": "POST /api/v1/admin/hospitals",
+  "kind": "異常",
+  "viewpoint": "権限（病院管理者による登録）",
+  "condition": "ROLE_HOSPITAL_ADMIN",
+  "expected": "403 AUTH-005",
+  "executedAt": "2026-10-23T05:26:10+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "vet",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/hospitals",
+        "body": {
+          "name": "X",
+          "address": "Y"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "AUTH-005",
+          "message": "アクセス権限がありません。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 403,
+      "actual": 403,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "AUTH-005",
+      "actual": "AUTH-005",
+      "ok": true
+    }
+  ]
+}

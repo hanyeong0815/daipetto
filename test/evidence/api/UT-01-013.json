@@ -1,0 +1,88 @@
+{
+  "id": "UT-01-013",
+  "feature": "UT-01",
+  "api": "POST /api/v1/auth/logout",
+  "kind": "正常",
+  "viewpoint": "ログアウト",
+  "condition": "ログイン中のユーザー（Authorization: Bearer <Access Token>、Request本文なし）",
+  "expected": "200、data.isLogout=true。そのユーザーの有効なRefresh Tokenがすべて失効し、以後の再発行はAUTH-003（docs/07 §3-3）",
+  "executedAt": "2026-10-23T05:26:02+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "準備したユーザー",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/auth/logout"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": {
+            "isLogout": true
+          },
+          "code": null,
+          "message": "ログアウトしました。"
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "有効なRefresh Token",
+      "query": "SELECT count(*) FROM refresh_tokens WHERE user_id=11 AND revoked=false;",
+      "result": "0"
+    },
+    {
+      "type": "http",
+      "actor": "anon",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/auth/refresh",
+        "body": {
+          "refreshToken": "eyJhbGciOiJI…(masked)"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "AUTH-003",
+          "message": "無効なRefresh Tokenです。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "data.isLogout",
+      "expected": true,
+      "actual": true,
+      "ok": true
+    },
+    {
+      "name": "Refresh Tokenの失効",
+      "expected": "0",
+      "actual": "0",
+      "ok": true
+    },
+    {
+      "name": "ログアウト後の再発行",
+      "expected": "AUTH-003",
+      "actual": "AUTH-003",
+      "ok": true
+    }
+  ]
+}

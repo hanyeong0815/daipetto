@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HealthRecordController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.presentation.healthrecord</a> &gt; <span class="el_source">HealthRecordController.java</span></div><h1>HealthRecordController.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.presentation.healthrecord;
+
+import jakarta.validation.Valid;
+import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.CreateHealthRecordRequest;
+import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.CreateHealthRecordResponse;
+import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.HealthRecordResponse;
+import koh.portfolio.springapi.application.healthrecord.dto.HealthRecordDto.UpdateHealthRecordRequest;
+import koh.portfolio.springapi.application.healthrecord.usecase.CreateHealthRecordUseCase;
+import koh.portfolio.springapi.application.healthrecord.usecase.DeleteHealthRecordUseCase;
+import koh.portfolio.springapi.application.healthrecord.usecase.GetHealthRecordListUseCase;
+import koh.portfolio.springapi.application.healthrecord.usecase.UpdateHealthRecordUseCase;
+import koh.portfolio.springapi.common.response.ApiResponse;
+import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping(&quot;/api/v1&quot;)
+@RequiredArgsConstructor
+public class HealthRecordController {
+    private final CreateHealthRecordUseCase createHealthRecordUseCase;
+    private final GetHealthRecordListUseCase getHealthRecordListUseCase;
+    private final UpdateHealthRecordUseCase updateHealthRecordUseCase;
+    private final DeleteHealthRecordUseCase deleteHealthRecordUseCase;
+
+    @PostMapping(&quot;/pets/{petId}/health-records&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;CreateHealthRecordResponse&gt;&gt; createHealthRecord(
+            Authentication authentication,
+            @PathVariable Long petId,
+            @Valid @RequestBody CreateHealthRecordRequest request
+    ) {
+<span class="fc" id="L37">        Long userId = extractUserId(authentication);</span>
+<span class="fc" id="L38">        return ResponseEntity</span>
+<span class="fc" id="L39">                .status(HttpStatus.CREATED)</span>
+<span class="fc" id="L40">                .body(ApiResponse.success(createHealthRecordUseCase.execute(userId, petId, request)));</span>
+    }
+
+    @GetMapping(&quot;/pets/{petId}/health-records&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;List&lt;HealthRecordResponse&gt;&gt;&gt; getHealthRecordList(
+            Authentication authentication,
+            @PathVariable Long petId
+    ) {
+<span class="fc" id="L48">        Long userId = extractUserId(authentication);</span>
+<span class="fc" id="L49">        return ResponseEntity.ok(ApiResponse.success(getHealthRecordListUseCase.execute(userId, petId)));</span>
+    }
+
+    @PatchMapping(&quot;/health-records/{healthRecordId}&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;Void&gt;&gt; updateHealthRecord(
+            Authentication authentication,
+            @PathVariable Long healthRecordId,
+            @Valid @RequestBody UpdateHealthRecordRequest request
+    ) {
+<span class="fc" id="L58">        Long userId = extractUserId(authentication);</span>
+<span class="fc" id="L59">        updateHealthRecordUseCase.execute(userId, healthRecordId, request);</span>
+<span class="fc" id="L60">        return ResponseEntity.ok(ApiResponse.success(null));</span>
+    }
+
+    @DeleteMapping(&quot;/health-records/{healthRecordId}&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;Void&gt;&gt; deleteHealthRecord(
+            Authentication authentication,
+            @PathVariable Long healthRecordId
+    ) {
+<span class="fc" id="L68">        Long userId = extractUserId(authentication);</span>
+<span class="fc" id="L69">        deleteHealthRecordUseCase.execute(userId, healthRecordId);</span>
+<span class="fc" id="L70">        return ResponseEntity.ok(ApiResponse.success(null));</span>
+    }
+
+    private Long extractUserId(Authentication authentication) {
+<span class="pc bpc" id="L74" title="2 of 4 branches missed.">        if (authentication == null || !(authentication.getPrincipal() instanceof Long userId)) {</span>
+<span class="nc" id="L75">            throw AuthErrorCode.AUTH_FAILED.defaultException();</span>
+        }
+<span class="fc" id="L77">        return userId;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

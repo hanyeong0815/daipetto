@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="koh.portfolio.springapi.application.reservation.service.GetReservationServiceTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-10-22T20:17:57.468Z" hostname="HOME-PC" time="0.024">
+  <properties/>
+  <testcase name="論理削除済みペットの予約も一覧に表示される（他の予約も巻き込まれない）" classname="koh.portfolio.springapi.application.reservation.service.GetReservationServiceTest" time="0.004"/>
+  <testcase name="予約一覧取得成功時、ユーザーの予約一覧を返却する" classname="koh.portfolio.springapi.application.reservation.service.GetReservationServiceTest" time="0.001"/>
+  <testcase name="予約詳細で論理削除済みを含めてもペットが取得できない場合、RESERVATION-004例外が発生する" classname="koh.portfolio.springapi.application.reservation.service.GetReservationServiceTest" time="0.002"/>
+  <testcase name="予約一覧で論理削除済みを含めてもペットが取得できない場合、RESERVATION-004例外が発生する" classname="koh.portfolio.springapi.application.reservation.service.GetReservationServiceTest" time="0.002"/>
+  <testcase name="予約詳細で病院が取得できない場合、RESERVATION-002例外が発生する" classname="koh.portfolio.springapi.application.reservation.service.GetReservationServiceTest" time="0.001"/>
+  <testcase name="RSV-T006: 予約詳細取得成功時、詳細を返却する" classname="koh.portfolio.springapi.application.reservation.service.GetReservationServiceTest" time="0.004"/>
+  <testcase name="予約一覧で病院が取得できない場合、RESERVATION-002例外が発生する" classname="koh.portfolio.springapi.application.reservation.service.GetReservationServiceTest" time="0.002"/>
+  <testcase name="存在しない予約の詳細取得時、RESERVATION-006例外が発生する" classname="koh.portfolio.springapi.application.reservation.service.GetReservationServiceTest" time="0.001"/>
+  <testcase name="他人の予約詳細取得時、RESERVATION-007例外が発生する" classname="koh.portfolio.springapi.application.reservation.service.GetReservationServiceTest" time="0.001"/>
+  <testcase name="予約詳細で予約枠が取得できない場合、RESERVATION-002例外が発生する" classname="koh.portfolio.springapi.application.reservation.service.GetReservationServiceTest" time="0.001"/>
+  <testcase name="予約一覧で予約枠が取得できない場合、RESERVATION-002例外が発生する" classname="koh.portfolio.springapi.application.reservation.service.GetReservationServiceTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

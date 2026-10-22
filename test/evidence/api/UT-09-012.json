@@ -1,0 +1,94 @@
+{
+  "id": "UT-09-012",
+  "feature": "UT-09",
+  "api": "PATCH /api/v1/reservations/{reservationId}/cancel",
+  "kind": "異常",
+  "viewpoint": "不正な状態遷移・他人の予約",
+  "condition": "キャンセル済みの予約／他のユーザーの予約",
+  "expected": "409 RESERVATION-008／403 RESERVATION-007",
+  "executedAt": "2026-10-23T05:26:18+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/reservations/9/cancel"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": null,
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/reservations/9/cancel"
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "RESERVATION-008",
+          "message": "現在の状態からは変更できません。"
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/reservations/10/cancel"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "RESERVATION-007",
+          "message": "予約者本人ではありません。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 409,
+      "actual": 409,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "RESERVATION-008",
+      "actual": "RESERVATION-008",
+      "ok": true
+    },
+    {
+      "name": "HTTPステータス",
+      "expected": 403,
+      "actual": 403,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "RESERVATION-007",
+      "actual": "RESERVATION-007",
+      "ok": true
+    }
+  ]
+}

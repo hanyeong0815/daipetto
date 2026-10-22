@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VaccinationDto.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.application.vaccination.dto</a> &gt; <span class="el_source">VaccinationDto.java</span></div><h1>VaccinationDto.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.application.vaccination.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PastOrPresent;
+import jakarta.validation.constraints.Size;
+import koh.portfolio.springapi.domain.vaccination.model.VaccinationStatus;
+import lombok.Builder;
+
+import java.time.LocalDate;
+
+<span class="nc" id="L12">public record VaccinationDto() {</span>
+<span class="fc" id="L13">    public record CreateVaccinationRequest(</span>
+            @NotBlank
+            @Size(max = 100)
+            String vaccineName,
+            @NotNull
+            LocalDate scheduledDate
+    ) {}
+
+    @Builder
+<span class="fc" id="L22">    public record CreateVaccinationResponse(</span>
+            Long vaccinationId
+    ) {}
+
+<span class="fc" id="L26">    public record CompleteVaccinationRequest(</span>
+            // �쐛�븼�셽�겘壤볠뿥
+            @PastOrPresent
+            LocalDate completedDate
+    ) {}
+
+<span class="fc" id="L32">    public record RescheduleVaccinationRequest(</span>
+            @NotNull
+            LocalDate scheduledDate
+    ) {}
+
+    @Builder
+<span class="fc" id="L38">    public record VaccinationResponse(</span>
+            Long vaccinationId,
+            String vaccineName,
+            LocalDate scheduledDate,
+            LocalDate completedDate,
+            VaccinationStatus status
+    ) {}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

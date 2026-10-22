@@ -1,0 +1,60 @@
+{
+  "id": "UT-08-005",
+  "feature": "UT-08",
+  "api": "PATCH .../schedules/{scheduleId}/block",
+  "kind": "異常",
+  "viewpoint": "別の病院の予約枠",
+  "condition": "パスの病院に属さない予約枠ID（システム管理者）",
+  "expected": "404 HOSPITAL-002、変更されない",
+  "executedAt": "2026-10-23T05:26:16+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/hospitals/1/schedules/6/block"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "HOSPITAL-002",
+          "message": "存在しない予約枠です。"
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "status",
+      "query": "SELECT status FROM hospital_schedules WHERE id=6;",
+      "result": "AVAILABLE"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 404,
+      "actual": 404,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "HOSPITAL-002",
+      "actual": "HOSPITAL-002",
+      "ok": true
+    },
+    {
+      "name": "変更されない",
+      "expected": "AVAILABLE",
+      "actual": "AVAILABLE",
+      "ok": true
+    }
+  ]
+}

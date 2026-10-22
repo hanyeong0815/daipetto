@@ -1,0 +1,11 @@
+{
+  "id": "UT-14-024",
+  "screen": "SC-002 会員登録",
+  "operation": "/register でメール screen-new-1792684449@daipetto.test・ニックネーム 山田・テスト用固定パスワードを入力し、必須同意2項目にチェックして「会員登録を完了する」を押す",
+  "observed": {
+    "request": "POST /api/v1/users → 201",
+    "pathAfter": "/login（ログイン画面へ遷移）",
+    "db": "users: id=5, nickname=山田, role=ROLE_USER, status=ACTIVE（UT-14-024_SC-002_register-result-db.txt）"
+  },
+  "verdict": "OK"
+}

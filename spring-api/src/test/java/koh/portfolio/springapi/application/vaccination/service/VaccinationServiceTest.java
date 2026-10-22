@@ -451,4 +451,74 @@ class VaccinationServiceTest {
         assertThat(sendVaccinationRemindersService.execute(LocalDate.of(2026, 10, 5))).isZero();
         verify(notificationRepository, never()).save(any(Notification.class));
     }
+
+    // ------------------------------------- 追加: 遷移競合・ペット消失（REVIEW-001 G-04 / G-10）
+
+    @Test
+    @DisplayName("読み取り後に別の遷移が確定し更新0件の場合、再登録はVACCINATION-003例外が発生する")
+    void reschedule_vaccination_fail_when_transition_lost() {
+        // given
+        givenOwnedVaccination(VaccinationStatus.CANCELLED);
+        when(vaccinationRepository.reschedule(eq(vaccinationId), any(), any())).thenReturn(false);
+
+        // when & then
+        assertErrorCode(() -> rescheduleVaccinationService.execute(userId, vaccinationId, LocalDate.of(2026, 11, 1)),
+                VaccinationErrorCode.INVALID_STATE_TRANSITION);
+
+        verify(vaccinationRepository).reschedule(eq(vaccinationId), eq(LocalDate.of(2026, 11, 1)), any(LocalDateTime.class));
+        verify(vaccinationRepository, never()).save(any(Vaccination.class));
+    }
+
+    private void givenVaccinationWithMissingPet(VaccinationStatus status) {
+        when(vaccinationRepository.findById(vaccinationId)).thenReturn(Optional.of(vaccination(status)));
+        when(petRepository.findById(petId)).thenReturn(Optional.empty());
+    }
+
+    @Test
+    @DisplayName("接種予定は存在するがペットが取得できない場合、完了はVACCINATION-002例外が発生する")
+    void complete_vaccination_fail_when_pet_not_found() {
+        // given
+        givenVaccinationWithMissingPet(VaccinationStatus.SCHEDULED);
+
+        // when & then
+        assertErrorCode(() -> completeVaccinationService.execute(userId, vaccinationId, null),
+                VaccinationErrorCode.NOT_PET_OWNER);
+        verify(vaccinationRepository, never()).markCompleted(anyLong(), any(), any());
+    }
+
+    @Test
+    @DisplayName("接種予定は存在するがペットが取得できない場合、中止はVACCINATION-002例外が発生する")
+    void cancel_vaccination_fail_when_pet_not_found() {
+        // given
+        givenVaccinationWithMissingPet(VaccinationStatus.SCHEDULED);
+
+        // when & then
+        assertErrorCode(() -> cancelVaccinationService.execute(userId, vaccinationId),
+                VaccinationErrorCode.NOT_PET_OWNER);
+        verify(vaccinationRepository, never()).cancel(anyLong(), any());
+    }
+
+    @Test
+    @DisplayName("接種予定は存在するがペットが取得できない場合、再登録はVACCINATION-002例外が発生する")
+    void reschedule_vaccination_fail_when_pet_not_found() {
+        // given
+        givenVaccinationWithMissingPet(VaccinationStatus.CANCELLED);
+
+        // when & then
+        assertErrorCode(() -> rescheduleVaccinationService.execute(userId, vaccinationId, LocalDate.of(2026, 11, 1)),
+                VaccinationErrorCode.NOT_PET_OWNER);
+        verify(vaccinationRepository, never()).reschedule(anyLong(), any(), any());
+    }
+
+    @Test
+    @DisplayName("接種予定は存在するがペットが取得できない場合、削除はVACCINATION-002例外が発生する")
+    void delete_vaccination_fail_when_pet_not_found() {
+        // given
+        givenVaccinationWithMissingPet(VaccinationStatus.SCHEDULED);
+
+        // when & then
+        assertErrorCode(() -> deleteVaccinationService.execute(userId, vaccinationId),
+                VaccinationErrorCode.NOT_PET_OWNER);
+        verify(vaccinationRepository, never()).softDelete(anyLong(), any());
+    }
 }

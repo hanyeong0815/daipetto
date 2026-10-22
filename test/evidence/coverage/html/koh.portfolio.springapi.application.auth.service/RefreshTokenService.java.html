@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RefreshTokenService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.application.auth.service</a> &gt; <span class="el_source">RefreshTokenService.java</span></div><h1>RefreshTokenService.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.application.auth.service;
+
+import koh.portfolio.springapi.application.auth.dto.RefreshTokenDto.RefreshTokenRequest;
+import koh.portfolio.springapi.application.auth.dto.RefreshTokenDto.RefreshTokenResponse;
+import koh.portfolio.springapi.application.auth.usecase.RefreshTokenUseCase;
+import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
+import koh.portfolio.springapi.domain.auth.model.RefreshToken;
+import koh.portfolio.springapi.domain.auth.port.RefreshTokenRepository;
+import koh.portfolio.springapi.domain.user.model.User;
+import koh.portfolio.springapi.domain.user.port.UserRepository;
+import koh.portfolio.springapi.infrastructure.security.jwt.JwtProvider;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+
+import static koh.portfolio.springapi.common.exception.Preconditions.validate;
+
+@Service
+@RequiredArgsConstructor
+public class RefreshTokenService implements RefreshTokenUseCase {
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final UserRepository userRepository;
+    private final JwtProvider jwtProvider;
+
+    @Override
+    @Transactional
+    public RefreshTokenResponse execute(RefreshTokenRequest request) {
+<span class="fc" id="L30">        String requestRefreshToken = request.refreshToken();</span>
+
+        // refreshToken 濾쒐뇨
+<span class="fc" id="L33">        RefreshToken currentRefreshToken = refreshTokenRepository.findByToken(requestRefreshToken)</span>
+<span class="fc" id="L34">                .orElseThrow(AuthErrorCode.INVALID_REFRESH_TOKEN::defaultException);</span>
+
+        // refreshToken�겗�쐣�듅�㎫▶沃�
+<span class="fc" id="L37">        validate(</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">                !currentRefreshToken.isRevoked(),</span>
+                AuthErrorCode.INVALID_REFRESH_TOKEN
+        );
+
+<span class="fc" id="L42">        LocalDateTime now = LocalDateTime.now();</span>
+
+        // refreshToken�겗繹��쐿閻븃첀
+<span class="fc" id="L45">        validate(</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                !currentRefreshToken.isExpired(now),</span>
+                AuthErrorCode.EXPIRED_REFRESH_TOKEN
+        );
+
+<span class="fc" id="L50">        Long userId = jwtProvider.getUserId(requestRefreshToken);</span>
+
+        // �깺�꺖�궣�꺖�깄�젿�룚孃�
+<span class="fc" id="L53">        User user = userRepository.findById(userId)</span>
+<span class="fc" id="L54">                .orElseThrow(AuthErrorCode.AUTH_FAILED::defaultException);</span>
+
+        // �걶閭㏂깺�꺖�궣�꺖閻븃첀
+<span class="fc" id="L57">        validate(</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                !user.isSuspended(),</span>
+                AuthErrorCode.SUSPENDED_ACCOUNT
+        );
+
+        // login / logout �겗訝��떖revoke�겏�쎍�닓�뙑�걲�굥竊늃EVIEW-002 R-01竊됥��
+        // �뀍�겓�룚�굢�겒�걚�겏�곥걪�걪�겎�쇇烏뚣걲�굥孃뚨텥Token�걣�릪�셽若잒죱�겗logout/login�걢�굢誤뗣걟�걳�뵟�걤餘뗣굥
+<span class="fc" id="L64">        userRepository.lockForSessionUpdate(userId);</span>
+
+        // �뿢耶섅겗refreshToken�꽒�듅�뙑��
+        // �씉餓뜸퍡�걤UPDATE�걣1餓뜰굮�쎍�뼭�겎�걤�걼�뫜�겞�눣�걮�걽�걨�걣孃뚨텥�굮�쇇烏뚣겎�걤�굥竊늭otation�겗�뜕訝�易덅꼇竊됥��
+        // �릪�셽�꺁�깢�꺃�긿�궥�깷�굜�꺆�궛�궋�궑�깉孃뚣겗�냽�닶�뵪�겘0餓뜰겏�겒�굤AUTH-003�겎凉얇걦
+<span class="fc" id="L69">        validate(</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                refreshTokenRepository.revokeByToken(requestRefreshToken) == 1,</span>
+                AuthErrorCode.INVALID_REFRESH_TOKEN
+        );
+
+        // �뼭�걼�겒accessToken�뵟�닇
+<span class="fc" id="L75">        String newAccessToken = jwtProvider.createAccessToken(</span>
+<span class="fc" id="L76">                user.getId(),</span>
+<span class="fc" id="L77">                user.getEmail(),</span>
+<span class="fc" id="L78">                user.getRole()</span>
+        );
+
+        // �뼭�걼�겒refreshToken�뵟�닇
+<span class="fc" id="L82">        String newRefreshTokenValue = jwtProvider.createRefreshToken(user.getId());</span>
+
+        // DB岳앭춼�뵪�깋�깳�궎�꺍鵝쒏닇
+<span class="fc" id="L85">        RefreshToken newRefreshToken = RefreshToken.issue(</span>
+<span class="fc" id="L86">                user.getId(),</span>
+                newRefreshTokenValue,
+<span class="fc" id="L88">                jwtProvider.getRefreshTokenExpiresAt()</span>
+        );
+
+        // DB岳앭춼
+<span class="fc" id="L92">        refreshTokenRepository.save(newRefreshToken);</span>
+
+<span class="fc" id="L94">        return RefreshTokenResponse.builder()</span>
+<span class="fc" id="L95">                .accessToken(newAccessToken)</span>
+<span class="fc" id="L96">                .refreshToken(newRefreshTokenValue)</span>
+<span class="fc" id="L97">                .build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,12 @@
+{
+  "id": "UT-14-032",
+  "screen": "SC-015 ユーザー管理",
+  "operation": "システム管理者で /admin/users の検索欄に「sato」を入力して Enter → window.confirm をスタブ化して 佐藤 の「アカウント停止」を押す",
+  "observed": {
+    "search": "「該当 1名」で 佐藤(screen-sato@daipetto.test, 一般ユーザー) のみ表示（絞り込み前は UT-14-024 で作成した 山田 を含め 5名）",
+    "confirmMessage": "佐藤（screen-sato@daipetto.test）を停止しますか？\nログイン中のセッションも次の操作から無効になります。",
+    "screenAfter": "カードに「停止中」バッジが付き、ボタンが「停止解除」に変わる（権限セレクトは一般ユーザーのまま）",
+    "db": "users: 佐藤 status=SUSPENDED（UT-14-032_SC-015_user-suspend-db.txt）"
+  },
+  "verdict": "OK"
+}

@@ -222,4 +222,42 @@ class CreateReservationServiceTest {
                 .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
                         .isEqualTo(ReservationErrorCode.PAST_DATETIME.code()));
     }
+
+    @Test
+    @DisplayName("予約枠が存在しない場合、RESERVATION-002例外が発生する")
+    void create_reservation_fail_when_schedule_not_found() {
+        // given
+        CreateReservationRequest request = new CreateReservationRequest(petId, hospitalId, scheduleId, null);
+
+        when(petRepository.findById(petId)).thenReturn(Optional.of(ownedPet()));
+        when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> createReservationService.execute(userId, request))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                        .isEqualTo(ReservationErrorCode.RESERVATION_SCHEDULE_NOT_FOUND.code()));
+
+        verify(hospitalRepository, never()).findById(any());
+        verify(reservationRepository, never()).save(any(Reservation.class));
+    }
+
+    @Test
+    @DisplayName("予約枠は一致するが病院が取得できない場合、RESERVATION-009例外が発生する")
+    void create_reservation_fail_when_hospital_not_found() {
+        // given
+        CreateReservationRequest request = new CreateReservationRequest(petId, hospitalId, scheduleId, null);
+
+        when(petRepository.findById(petId)).thenReturn(Optional.of(ownedPet()));
+        when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.of(availableFutureSchedule()));
+        when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> createReservationService.execute(userId, request))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                        .isEqualTo(ReservationErrorCode.HOSPITAL_NOT_AVAILABLE.code()));
+
+        verify(reservationRepository, never()).save(any(Reservation.class));
+    }
 }

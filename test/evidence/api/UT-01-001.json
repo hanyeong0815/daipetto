@@ -1,0 +1,67 @@
+{
+  "id": "UT-01-001",
+  "feature": "UT-01",
+  "api": "POST /api/v1/users",
+  "kind": "正常",
+  "viewpoint": "会員登録",
+  "condition": "未登録のメールアドレス・8文字以上のパスワード・ニックネーム",
+  "expected": "201、userIdを返す。権限ROLE_USER・状態ACTIVEで登録され、パスワードはハッシュで保存される",
+  "executedAt": "2026-10-23T05:25:56+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "anon",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/users",
+        "body": {
+          "email": "ut-new-1792700756502@daipetto.test",
+          "password": "********",
+          "nickname": "NewUser"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "success": true,
+          "data": {
+            "userId": 6
+          },
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "登録内容",
+      "query": "SELECT role||','||status||','||(password LIKE '$2%')::text FROM users WHERE email='ut-new-1792700756502@daipetto.test';",
+      "result": "ROLE_USER,ACTIVE,true"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 201,
+      "actual": 201,
+      "ok": true
+    },
+    {
+      "name": "userId",
+      "expected": "数値のID",
+      "actual": 6,
+      "ok": true
+    },
+    {
+      "name": "権限・状態・パスワードのハッシュ化",
+      "expected": "ROLE_USER,ACTIVE,true",
+      "actual": "ROLE_USER,ACTIVE,true",
+      "ok": true
+    }
+  ]
+}

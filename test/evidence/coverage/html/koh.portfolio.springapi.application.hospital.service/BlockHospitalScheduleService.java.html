@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BlockHospitalScheduleService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.application.hospital.service</a> &gt; <span class="el_source">BlockHospitalScheduleService.java</span></div><h1>BlockHospitalScheduleService.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.application.hospital.service;
+
+import koh.portfolio.springapi.application.hospital.usecase.BlockHospitalScheduleUseCase;
+import koh.portfolio.springapi.common.exception.Preconditions;
+import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
+import koh.portfolio.springapi.domain.hospital.model.HospitalSchedule;
+import koh.portfolio.springapi.domain.hospital.port.HospitalScheduleRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+public class BlockHospitalScheduleService implements BlockHospitalScheduleUseCase {
+    private final HospitalAccessChecker hospitalAccessChecker;
+    private final HospitalScheduleRepository hospitalScheduleRepository;
+
+    @Override
+    @Transactional
+    public void execute(Long userId, Long hospitalId, Long scheduleId) {
+<span class="fc" id="L21">        hospitalAccessChecker.checkManageable(userId, hospitalId);</span>
+
+<span class="fc" id="L23">        HospitalSchedule schedule = hospitalScheduleRepository.findById(scheduleId)</span>
+<span class="fc" id="L24">                .orElseThrow(HospitalErrorCode.HOSPITAL_SCHEDULE_NOT_FOUND::defaultException);</span>
+
+<span class="fc" id="L26">        Preconditions.validate(schedule.getHospitalId().equals(hospitalId), HospitalErrorCode.HOSPITAL_SCHEDULE_NOT_FOUND);</span>
+
+<span class="fc" id="L28">        hospitalScheduleRepository.save(schedule.block());</span>
+<span class="fc" id="L29">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

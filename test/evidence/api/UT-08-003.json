@@ -1,0 +1,81 @@
+{
+  "id": "UT-08-003",
+  "feature": "UT-08",
+  "api": "GET /api/v1/hospitals/{hospitalId}/schedules",
+  "kind": "正常",
+  "viewpoint": "予約枠一覧（一般ユーザー）",
+  "condition": "日付・時刻の異なる予約枠",
+  "expected": "200、日付・開始時刻の昇順で、AVAILABLE・BLOCKEDの両方を返す",
+  "executedAt": "2026-10-23T05:26:15+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/hospitals/21/schedules"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": [
+            {
+              "scheduleId": 4,
+              "availableDate": "2026-10-31",
+              "startTime": "15:00:00",
+              "endTime": "15:30:00",
+              "status": "AVAILABLE"
+            },
+            {
+              "scheduleId": 3,
+              "availableDate": "2026-11-01",
+              "startTime": "09:00:00",
+              "endTime": "09:30:00",
+              "status": "BLOCKED"
+            }
+          ],
+          "code": null,
+          "message": null
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "並び順と状態",
+      "expected": [
+        [
+          4,
+          "AVAILABLE"
+        ],
+        [
+          3,
+          "BLOCKED"
+        ]
+      ],
+      "actual": [
+        [
+          4,
+          "AVAILABLE"
+        ],
+        [
+          3,
+          "BLOCKED"
+        ]
+      ],
+      "ok": true
+    }
+  ]
+}

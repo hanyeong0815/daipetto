@@ -1,0 +1,51 @@
+{
+  "id": "UT-03-009",
+  "feature": "UT-03",
+  "api": "PATCH /api/v1/health-records/{healthRecordId}",
+  "kind": "異常",
+  "viewpoint": "存在しない記録の更新",
+  "condition": "存在しない健康記録ID",
+  "expected": "404 HEALTH-001",
+  "executedAt": "2026-10-23T05:26:07+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/health-records/99999999",
+        "body": {
+          "symptom": "x"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "HEALTH-001",
+          "message": "存在しない健康記録です。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 404,
+      "actual": 404,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "HEALTH-001",
+      "actual": "HEALTH-001",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "id": "UT-03-004",
+  "feature": "UT-03",
+  "api": "POST /api/v1/pets/{petId}/health-records",
+  "kind": "異常",
+  "viewpoint": "他人のペットへの登録",
+  "condition": "他のユーザーのペットID",
+  "expected": "403 HEALTH-002",
+  "executedAt": "2026-10-23T05:26:06+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/pets/14/health-records",
+        "body": {
+          "weight": 4
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "HEALTH-002",
+          "message": "存在しないペット、または他のユーザーのペットです。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 403,
+      "actual": 403,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "HEALTH-002",
+      "actual": "HEALTH-002",
+      "ok": true
+    }
+  ]
+}

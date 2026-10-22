@@ -1,0 +1,85 @@
+{
+  "id": "UT-02-003",
+  "feature": "UT-02",
+  "api": "POST /api/v1/pets",
+  "kind": "異常",
+  "viewpoint": "名前の必須・長さ",
+  "condition": "名前なし／51文字の名前",
+  "expected": "いずれも400 VALIDATION-001",
+  "executedAt": "2026-10-23T05:26:05+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/pets",
+        "body": {
+          "name": "",
+          "petType": "CAT"
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "VALIDATION-001",
+          "message": "must not be blank"
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/pets",
+        "body": {
+          "name": "あああああああああああああああああああああああああああああああああああああああああああああああああああ",
+          "petType": "CAT"
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "VALIDATION-001",
+          "message": "size must be between 0 and 50"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 400,
+      "actual": 400,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "VALIDATION-001",
+      "actual": "VALIDATION-001",
+      "ok": true
+    },
+    {
+      "name": "HTTPステータス",
+      "expected": 400,
+      "actual": 400,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "VALIDATION-001",
+      "actual": "VALIDATION-001",
+      "ok": true
+    }
+  ]
+}

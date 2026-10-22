@@ -1,0 +1,206 @@
+{
+  "id": "UT-10-001",
+  "feature": "UT-10",
+  "api": "GET /api/v1/admin/reservations",
+  "kind": "正常",
+  "viewpoint": "病院の予約一覧",
+  "condition": "紐付いた病院1の予約",
+  "expected": "200、予約者のニックネーム・ペット名・メモ・createdAt（+09:00）を含む",
+  "executedAt": "2026-10-23T05:26:19+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "vet",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/reservations?hospitalId=1"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": [
+            {
+              "reservationId": 1,
+              "status": "REQUESTED",
+              "availableDate": "2026-11-02",
+              "startTime": "09:00:00",
+              "endTime": "09:15:00",
+              "userId": 1,
+              "userNickname": "Tanaka",
+              "petName": "Momo",
+              "petType": "CAT",
+              "memo": "健康診断",
+              "createdAt": "2026-10-23T05:26:17+09:00"
+            },
+            {
+              "reservationId": 2,
+              "status": "REQUESTED",
+              "availableDate": "2026-11-02",
+              "startTime": "09:15:00",
+              "endTime": "09:30:00",
+              "userId": 1,
+              "userNickname": "Tanaka",
+              "petName": "Momo",
+              "petType": "CAT",
+              "memo": "咳が続いています",
+              "createdAt": "2026-10-23T05:26:17+09:00"
+            },
+            {
+              "reservationId": 3,
+              "status": "REQUESTED",
+              "availableDate": "2026-11-02",
+              "startTime": "10:30:00",
+              "endTime": "10:45:00",
+              "userId": 1,
+              "userNickname": "Tanaka",
+              "petName": "Momo",
+              "petType": "CAT",
+              "memo": "咳が続いています",
+              "createdAt": "2026-10-23T05:26:18+09:00"
+            },
+            {
+              "reservationId": 4,
+              "status": "REQUESTED",
+              "availableDate": "2026-11-02",
+              "startTime": "10:45:00",
+              "endTime": "11:00:00",
+              "userId": 2,
+              "userNickname": "Sato",
+              "petName": "Momo",
+              "petType": "CAT",
+              "memo": "咳が続いています",
+              "createdAt": "2026-10-23T05:26:18+09:00"
+            },
+            {
+              "reservationId": 5,
+              "status": "REQUESTED",
+              "availableDate": "2026-11-02",
+              "startTime": "11:00:00",
+              "endTime": "11:15:00",
+              "userId": 1,
+              "userNickname": "Tanaka",
+              "petName": "Momo",
+              "petType": "CAT",
+              "memo": "咳が続いています",
+              "createdAt": "2026-10-23T05:26:18+09:00"
+            },
+            {
+              "reservationId": 6,
+              "status": "REQUESTED",
+              "availableDate": "2026-11-02",
+              "startTime": "11:15:00",
+              "endTime": "11:30:00",
+              "userId": 2,
+              "userNickname": "Sato",
+              "petName": "Momo",
+              "petType": "CAT",
+              "memo": "咳が続いています",
+              "createdAt": "2026-10-23T05:26:18+09:00"
+            },
+            {
+              "reservationId": 7,
+              "status": "CANCELLED",
+              "availableDate": "2026-11-02",
+              "startTime": "11:30:00",
+              "endTime": "11:45:00",
+              "userId": 1,
+              "userNickname": "Tanaka",
+              "petName": "Momo",
+              "petType": "CAT",
+              "memo": "咳が続いています",
+              "createdAt": "2026-10-23T05:26:18+09:00"
+            },
+            {
+              "reservationId": 8,
+              "status": "REQUESTED",
+              "availableDate": "2026-11-02",
+              "startTime": "11:30:00",
+              "endTime": "11:45:00",
+              "userId": 2,
+              "userNickname": "Sato",
+              "petName": "Momo",
+              "petType": "CAT",
+              "memo": null,
+              "createdAt": "2026-10-23T05:26:18+09:00"
+            },
+            {
+              "reservationId": 9,
+              "status": "CANCELLED",
+              "availableDate": "2026-11-02",
+              "startTime": "11:45:00",
+              "endTime": "12:00:00",
+              "userId": 1,
+              "userNickname": "Tanaka",
+              "petName": "Momo",
+              "petType": "CAT",
+              "memo": "咳が続いています",
+              "createdAt": "2026-10-23T05:26:18+09:00"
+            },
+            {
+              "reservationId": 10,
+              "status": "REQUESTED",
+              "availableDate": "2026-11-02",
+              "startTime": "12:00:00",
+              "endTime": "12:15:00",
+              "userId": 2,
+              "userNickname": "Sato",
+              "petName": "Momo",
+              "petType": "CAT",
+              "memo": "咳が続いています",
+              "createdAt": "2026-10-23T05:26:18+09:00"
+            },
+            {
+              "reservationId": 11,
+              "status": "REQUESTED",
+              "availableDate": "2026-11-02",
+              "startTime": "12:15:00",
+              "endTime": "12:30:00",
+              "userId": 1,
+              "userNickname": "Tanaka",
+              "petName": "Momo",
+              "petType": "CAT",
+              "memo": "咳が続いています",
+              "createdAt": "2026-10-23T05:26:19+09:00"
+            }
+          ],
+          "code": null,
+          "message": null
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "表示項目",
+      "expected": [
+        "Tanaka",
+        "Momo",
+        "咳が続いています"
+      ],
+      "actual": [
+        "Tanaka",
+        "Momo",
+        "咳が続いています"
+      ],
+      "ok": true
+    },
+    {
+      "name": "createdAt",
+      "expected": "JSTのオフセット付き（+09:00）",
+      "actual": "2026-10-23T05:26:19+09:00",
+      "ok": true
+    }
+  ]
+}

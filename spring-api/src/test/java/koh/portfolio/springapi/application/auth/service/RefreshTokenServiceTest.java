@@ -328,4 +328,46 @@ class RefreshTokenServiceTest {
         verify(refreshTokenRepository, never()).revokeByToken(anyString());
         verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
     }
+
+    @Test
+    @DisplayName("有効なRefresh Tokenだがユーザーが存在しない場合、AUTH-001例外が発生し後続Tokenは発行されない")
+    void refresh_token_fail_when_user_not_found() {
+        // given
+        Long userId = 1L;
+        String requestRefreshToken = "valid-refresh-token";
+        LocalDateTime now = LocalDateTime.now();
+
+        RefreshToken currentRefreshToken = new RefreshToken(
+                1L,
+                userId,
+                requestRefreshToken,
+                now.plusDays(7),
+                false,
+                now.minusDays(1)
+        );
+
+        when(refreshTokenRepository.findByToken(requestRefreshToken))
+                .thenReturn(Optional.of(currentRefreshToken));
+        when(jwtProvider.getUserId(requestRefreshToken))
+                .thenReturn(userId);
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.empty());
+
+        RefreshTokenRequest request = new RefreshTokenRequest(requestRefreshToken);
+
+        // when & then
+        assertThatThrownBy(() -> refreshTokenService.execute(request))
+                .isInstanceOf(CustomException.class)
+                .satisfies(exception -> {
+                    CustomException customException = (CustomException) exception;
+                    assertThat(customException.getErrorCode().code())
+                            .isEqualTo(AuthErrorCode.AUTH_FAILED.code());
+                });
+
+        verify(userRepository).findById(userId);
+        verify(userRepository, never()).lockForSessionUpdate(anyLong());
+        verify(refreshTokenRepository, never()).revokeByToken(anyString());
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+        verify(jwtProvider, never()).createRefreshToken(anyLong());
+    }
 }

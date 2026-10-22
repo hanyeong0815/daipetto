@@ -4,14 +4,16 @@ import { useHospitalStore } from '../stores/hospitalStore'
 
 export default function HospitalSearchPage() {
   const [query, setQuery] = useState('')
+  // SC-008の検索条件は病院名（keyword）と地域（area）の2つ。1つの入力欄だと地域で探せなかった（単体テスト D-007）
+  const [area, setArea] = useState('')
   const { hospitals, isLoading, fetchHospitals } = useHospitalStore()
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchHospitals(query || undefined)
+      fetchHospitals(query || undefined, area || undefined)
     }, 300)
     return () => clearTimeout(timer)
-  }, [query, fetchHospitals])
+  }, [query, area, fetchHospitals])
 
   return (
     <div className="px-container-margin pt-lg pb-xl flex flex-col gap-lg">
@@ -23,11 +25,29 @@ export default function HospitalSearchPage() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="病院名または地域で検索"
+          placeholder="病院名で検索"
+          aria-label="病院名"
           className="w-full h-[52px] pl-10 pr-sm bg-surface-container-lowest border border-neutral-gray-100 rounded-xl font-body-md text-body-md text-on-surface placeholder:text-neutral-gray-600 focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all shadow-[0px_2px_8px_rgba(0,0,0,0.04)]"
         />
         {query && (
           <button onClick={() => setQuery('')} className="absolute right-sm top-1/2 -translate-y-1/2 text-neutral-gray-600 hover:text-on-surface">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        )}
+      </div>
+
+      <div className="relative -mt-sm">
+        <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-neutral-gray-600">location_on</span>
+        <input
+          type="text"
+          value={area}
+          onChange={(e) => setArea(e.target.value)}
+          placeholder="地域で絞り込み（例：渋谷区）"
+          aria-label="地域"
+          className="w-full h-[52px] pl-10 pr-sm bg-surface-container-lowest border border-neutral-gray-100 rounded-xl font-body-md text-body-md text-on-surface placeholder:text-neutral-gray-600 focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all shadow-[0px_2px_8px_rgba(0,0,0,0.04)]"
+        />
+        {area && (
+          <button onClick={() => setArea('')} aria-label="地域をクリア" className="absolute right-sm top-1/2 -translate-y-1/2 text-neutral-gray-600 hover:text-on-surface">
             <span className="material-symbols-outlined">close</span>
           </button>
         )}

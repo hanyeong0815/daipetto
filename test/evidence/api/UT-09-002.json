@@ -1,0 +1,53 @@
+{
+  "id": "UT-09-002",
+  "feature": "UT-09",
+  "api": "POST /api/v1/reservations",
+  "kind": "異常",
+  "viewpoint": "同じ予約枠への重複予約",
+  "condition": "申請中の予約がある枠に別ユーザーが申請",
+  "expected": "409 RESERVATION-001",
+  "executedAt": "2026-10-23T05:26:17+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "sato",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/reservations",
+        "body": {
+          "petId": 37,
+          "hospitalId": 1,
+          "scheduleId": 45
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "RESERVATION-001",
+          "message": "既に予約済みです。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 409,
+      "actual": 409,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "RESERVATION-001",
+      "actual": "RESERVATION-001",
+      "ok": true
+    }
+  ]
+}

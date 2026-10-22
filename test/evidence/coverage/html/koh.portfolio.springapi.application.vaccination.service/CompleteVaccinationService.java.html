@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompleteVaccinationService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.application.vaccination.service</a> &gt; <span class="el_source">CompleteVaccinationService.java</span></div><h1>CompleteVaccinationService.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.application.vaccination.service;
+
+import koh.portfolio.springapi.application.vaccination.usecase.CompleteVaccinationUseCase;
+import koh.portfolio.springapi.common.exception.Preconditions;
+import koh.portfolio.springapi.domain.pet.model.Pet;
+import koh.portfolio.springapi.domain.pet.port.PetRepository;
+import koh.portfolio.springapi.domain.vaccination.exception.VaccinationErrorCode;
+import koh.portfolio.springapi.domain.vaccination.model.Vaccination;
+import koh.portfolio.springapi.domain.vaccination.port.VaccinationRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+
+@Service
+@RequiredArgsConstructor
+public class CompleteVaccinationService implements CompleteVaccinationUseCase {
+    private final VaccinationRepository vaccinationRepository;
+    private final PetRepository petRepository;
+
+    @Override
+    @Transactional
+    public void execute(Long userId, Long vaccinationId, LocalDate completedDate) {
+<span class="fc" id="L25">        Vaccination vaccination = vaccinationRepository.findById(vaccinationId)</span>
+<span class="fc" id="L26">                .orElseThrow(VaccinationErrorCode.VACCINATION_NOT_FOUND::defaultException);</span>
+
+<span class="fc" id="L28">        Pet pet = petRepository.findById(vaccination.getPetId()).orElse(null);</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        Preconditions.validate(</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">                pet != null &amp;&amp; pet.getUserId().equals(userId),</span>
+                VaccinationErrorCode.NOT_PET_OWNER
+        );
+
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        Vaccination completed = vaccination.complete(completedDate != null ? completedDate : LocalDate.now());</span>
+
+        // 沃��겳�룚�굤孃뚣겓�닪�겗�겥燁삠걣閻뷴츣�걮�겍�걚�걼�졃�릦�겘0餓뜰겏�겒�굤�곥걹�겗�겥燁삠굮訝딀쎑�걤�걮�겒�걚
+<span class="fc" id="L37">        Preconditions.validate(</span>
+<span class="fc" id="L38">                vaccinationRepository.markCompleted(</span>
+<span class="fc" id="L39">                        completed.getId(), completed.getCompletedDate(), completed.getUpdatedAt()),</span>
+                VaccinationErrorCode.INVALID_STATE_TRANSITION
+        );
+<span class="fc" id="L42">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,61 @@
+{
+  "id": "UT-05-001",
+  "feature": "UT-05",
+  "api": "POST /api/v1/admin/hospitals",
+  "kind": "正常",
+  "viewpoint": "病院登録（システム管理者）",
+  "condition": "名前・住所・電話番号",
+  "expected": "201、hospitalIdを返し、状態ACTIVEで登録される",
+  "executedAt": "2026-10-23T05:26:10+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/hospitals",
+        "body": {
+          "name": "さくら動物病院",
+          "address": "東京都渋谷区",
+          "phoneNumber": "03-1234-5678"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "success": true,
+          "data": {
+            "hospitalId": 3
+          },
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "status",
+      "query": "SELECT status FROM hospitals WHERE id=3;",
+      "result": "ACTIVE"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 201,
+      "actual": 201,
+      "ok": true
+    },
+    {
+      "name": "状態",
+      "expected": "ACTIVE",
+      "actual": "ACTIVE",
+      "ok": true
+    }
+  ]
+}

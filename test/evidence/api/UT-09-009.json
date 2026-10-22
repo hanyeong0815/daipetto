@@ -1,0 +1,57 @@
+{
+  "id": "UT-09-009",
+  "feature": "UT-09",
+  "api": "GET /api/v1/reservations/{reservationId}",
+  "kind": "正常",
+  "viewpoint": "予約詳細",
+  "condition": "本人の予約",
+  "expected": "200、メモを含む",
+  "executedAt": "2026-10-23T05:26:18+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/reservations/5"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": {
+            "reservationId": 5,
+            "hospitalName": "さくら動物病院（病院1）",
+            "petName": "Momo",
+            "availableDate": "2026-11-02",
+            "startTime": "11:00:00",
+            "endTime": "11:15:00",
+            "status": "REQUESTED",
+            "memo": "咳が続いています"
+          },
+          "code": null,
+          "message": null
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "メモ",
+      "expected": "咳が続いています",
+      "actual": "咳が続いています",
+      "ok": true
+    }
+  ]
+}

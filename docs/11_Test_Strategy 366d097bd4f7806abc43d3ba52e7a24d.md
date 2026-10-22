@@ -10,7 +10,7 @@
 | Document | Test Strategy |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-10-22 |
+| Updated | 2026-10-23 |
 
 ---
 
@@ -482,6 +482,13 @@ flowchart TB
 | 結果 | PASS / FAIL |
 | Evidence | Screenshot / API Response |
 | 備考 | 補足 |
+
+**単体テストの実施記録（2026-10-23）:** 全機能の単体テストの仕様書・結果・エビデンスはリポジトリ直下の `test/` にまとめる（`test/README.md` が入口）。
+
+- 種類: 自動テスト（JUnit、JaCoCoでカバレッジ）、API単体テスト（使い捨てのPostgreSQLに実HTTPで実行し、項目ごとにリクエスト・レスポンス・DB確認をJSONで保存）、画面単体テスト（SC-001〜SC-016、画面写し）。
+- 仕様書: `test/spec/UT-01〜UT-14_*.md`（項目ID・観点・前提・期待結果・結果・エビデンスへのリンク）。結果サマリは `test/RESULTS.md`。
+- 不具合: `test/DEFECTS.md`（§13の項目に準拠。原因・対応・再テスト結果を記録）。
+- テスト設計は Codex がレビューし、未テストの分岐・エンドポイントの指摘を項目に追加した（`test/reviews/`）。
 
 ---
 

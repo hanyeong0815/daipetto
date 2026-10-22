@@ -1,0 +1,54 @@
+{
+  "id": "UT-04-008",
+  "feature": "UT-04",
+  "api": "PATCH /api/v1/vaccinations/{vaccinationId}/cancel",
+  "kind": "正常",
+  "viewpoint": "接種予定の中止",
+  "condition": "SCHEDULEDの予定",
+  "expected": "200、CANCELLED",
+  "executedAt": "2026-10-23T05:26:09+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/vaccinations/8/cancel"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": null,
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "status",
+      "query": "SELECT status FROM vaccinations WHERE id=8;",
+      "result": "CANCELLED"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "状態",
+      "expected": "CANCELLED",
+      "actual": "CANCELLED",
+      "ok": true
+    }
+  ]
+}

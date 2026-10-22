@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="koh.portfolio.springapi.application.reservation.service.GetAdminReservationListServiceTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-10-22T20:17:57.461Z" hostname="HOME-PC" time="0.006">
+  <properties/>
+  <testcase name="管理対象外の病院はHOSPITAL-005となり、一覧を取得しない" classname="koh.portfolio.springapi.application.reservation.service.GetAdminReservationListServiceTest" time="0.002"/>
+  <testcase name="管理対象の確認後に、病院・状態・日付で一覧を取得して応答に変換する" classname="koh.portfolio.springapi.application.reservation.service.GetAdminReservationListServiceTest" time="0.004"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

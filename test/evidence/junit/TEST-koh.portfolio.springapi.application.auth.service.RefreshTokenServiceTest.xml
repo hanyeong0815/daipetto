@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="koh.portfolio.springapi.application.auth.service.RefreshTokenServiceTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-10-22T20:17:56.467Z" hostname="HOME-PC" time="0.038">
+  <properties/>
+  <testcase name="有効なRefresh Tokenだがユーザーが存在しない場合、AUTH-001例外が発生し後続Tokenは発行されない" classname="koh.portfolio.springapi.application.auth.service.RefreshTokenServiceTest" time="0.006"/>
+  <testcase name="停止中ユーザーの場合、AUTH-002例外が発生する" classname="koh.portfolio.springapi.application.auth.service.RefreshTokenServiceTest" time="0.004"/>
+  <testcase name="有効なRefresh Tokenの場合、新しいAccess TokenとRefresh Tokenを返却する" classname="koh.portfolio.springapi.application.auth.service.RefreshTokenServiceTest" time="0.007"/>
+  <testcase name="期限切れRefresh Tokenの場合、AUTH-004例外が発生する" classname="koh.portfolio.springapi.application.auth.service.RefreshTokenServiceTest" time="0.004"/>
+  <testcase name="存在しないRefresh Tokenの場合、AUTH-003例外が発生する" classname="koh.portfolio.springapi.application.auth.service.RefreshTokenServiceTest" time="0.003"/>
+  <testcase name="失効済みRefresh Tokenの場合、AUTH-003例外が発生する" classname="koh.portfolio.springapi.application.auth.service.RefreshTokenServiceTest" time="0.003"/>
+  <testcase name="同時リフレッシュで既に消費されていた場合、失効0件となりAUTH-003例外が発生する" classname="koh.portfolio.springapi.application.auth.service.RefreshTokenServiceTest" time="0.006"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

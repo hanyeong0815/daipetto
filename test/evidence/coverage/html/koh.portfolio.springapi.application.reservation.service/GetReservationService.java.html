@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GetReservationService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.application.reservation.service</a> &gt; <span class="el_source">GetReservationService.java</span></div><h1>GetReservationService.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.application.reservation.service;
+
+import koh.portfolio.springapi.application.reservation.dto.ReservationDto.ReservationDetailResponse;
+import koh.portfolio.springapi.application.reservation.dto.ReservationDto.ReservationSummary;
+import koh.portfolio.springapi.application.reservation.usecase.GetReservationDetailUseCase;
+import koh.portfolio.springapi.application.reservation.usecase.GetReservationListUseCase;
+import koh.portfolio.springapi.common.exception.Preconditions;
+import koh.portfolio.springapi.domain.hospital.model.Hospital;
+import koh.portfolio.springapi.domain.hospital.model.HospitalSchedule;
+import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
+import koh.portfolio.springapi.domain.hospital.port.HospitalScheduleRepository;
+import koh.portfolio.springapi.domain.pet.model.Pet;
+import koh.portfolio.springapi.domain.pet.port.PetRepository;
+import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
+import koh.portfolio.springapi.domain.reservation.model.Reservation;
+import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class GetReservationService implements GetReservationListUseCase, GetReservationDetailUseCase {
+    private final ReservationRepository reservationRepository;
+    private final HospitalRepository hospitalRepository;
+    private final PetRepository petRepository;
+    private final HospitalScheduleRepository hospitalScheduleRepository;
+
+    @Override
+    public List&lt;ReservationSummary&gt; execute(Long userId) {
+<span class="fc" id="L32">        List&lt;Reservation&gt; reservations = reservationRepository.findAllByUserId(userId);</span>
+
+<span class="fc" id="L34">        return reservations.stream()</span>
+<span class="fc" id="L35">                .map(reservation -&gt; {</span>
+<span class="fc" id="L36">                    Hospital hospital = findHospital(reservation.getHospitalId());</span>
+<span class="fc" id="L37">                    Pet pet = findPet(reservation.getPetId());</span>
+<span class="fc" id="L38">                    HospitalSchedule schedule = findSchedule(reservation.getScheduleId());</span>
+
+<span class="fc" id="L40">                    return ReservationSummary.builder()</span>
+<span class="fc" id="L41">                            .reservationId(reservation.getId())</span>
+<span class="fc" id="L42">                            .hospitalName(hospital.getName())</span>
+<span class="fc" id="L43">                            .petName(pet.getName())</span>
+<span class="fc" id="L44">                            .availableDate(schedule.getAvailableDate())</span>
+<span class="fc" id="L45">                            .startTime(schedule.getStartTime())</span>
+<span class="fc" id="L46">                            .endTime(schedule.getEndTime())</span>
+<span class="fc" id="L47">                            .status(reservation.getStatus())</span>
+<span class="fc" id="L48">                            .build();</span>
+                })
+<span class="fc" id="L50">                .toList();</span>
+    }
+
+    @Override
+    public ReservationDetailResponse execute(Long userId, Long reservationId) {
+<span class="fc" id="L55">        Reservation reservation = reservationRepository.findById(reservationId)</span>
+<span class="fc" id="L56">                .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::defaultException);</span>
+
+<span class="fc" id="L58">        Preconditions.validate(reservation.getUserId().equals(userId), ReservationErrorCode.NOT_RESERVATION_OWNER);</span>
+
+<span class="fc" id="L60">        Hospital hospital = findHospital(reservation.getHospitalId());</span>
+<span class="fc" id="L61">        Pet pet = findPet(reservation.getPetId());</span>
+<span class="fc" id="L62">        HospitalSchedule schedule = findSchedule(reservation.getScheduleId());</span>
+
+<span class="fc" id="L64">        return ReservationDetailResponse.builder()</span>
+<span class="fc" id="L65">                .reservationId(reservation.getId())</span>
+<span class="fc" id="L66">                .hospitalName(hospital.getName())</span>
+<span class="fc" id="L67">                .petName(pet.getName())</span>
+<span class="fc" id="L68">                .availableDate(schedule.getAvailableDate())</span>
+<span class="fc" id="L69">                .startTime(schedule.getStartTime())</span>
+<span class="fc" id="L70">                .endTime(schedule.getEndTime())</span>
+<span class="fc" id="L71">                .status(reservation.getStatus())</span>
+<span class="fc" id="L72">                .memo(reservation.getMemo())</span>
+<span class="fc" id="L73">                .build();</span>
+    }
+
+    private Hospital findHospital(Long hospitalId) {
+<span class="fc" id="L77">        return hospitalRepository.findById(hospitalId).orElseThrow(ReservationErrorCode.RESERVATION_SCHEDULE_NOT_FOUND::defaultException);</span>
+    }
+
+    // 雅덄큵�겘掠ζ�담겎�걗�굤�곥깪�긿�깉�굮獄뽫릤�뎷�솮�걮�겍�굚屋꿨퐪雅덄큵竊덀걡�굠�겞�릪訝��깺�꺖�궣�꺖�겗餓뽧겗雅덄큵竊됥걣
+    // 烏①ㅊ�겎�걤�겒�걦�겒�겂�겍�겘�걚�걨�겒�걚�걼�굙�곩뎷�솮歷덀겳�굚�맜�굙�겍�룚孃쀣걲�굥
+    private Pet findPet(Long petId) {
+<span class="fc" id="L83">        return petRepository.findByIdIncludingDeleted(petId)</span>
+<span class="fc" id="L84">                .orElseThrow(ReservationErrorCode.NOT_PET_OWNER::defaultException);</span>
+    }
+
+    private HospitalSchedule findSchedule(Long scheduleId) {
+<span class="fc" id="L88">        return hospitalScheduleRepository.findById(scheduleId).orElseThrow(ReservationErrorCode.RESERVATION_SCHEDULE_NOT_FOUND::defaultException);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,66 @@
+{
+  "id": "UT-10-005",
+  "feature": "UT-10",
+  "api": "PATCH /api/v1/admin/reservations/{reservationId}/complete",
+  "kind": "正常",
+  "viewpoint": "診療完了と通知",
+  "condition": "承認済みの予約",
+  "expected": "200、COMPLETEDになり、予約者にTREATMENT_COMPLETEDの通知が作られる（承認時の通知と合わせて2件、docs/07 §12）",
+  "executedAt": "2026-10-23T05:26:20+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "vet",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/reservations/16/complete"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": null,
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "status",
+      "query": "SELECT status FROM reservations WHERE id=16;",
+      "result": "COMPLETED"
+    },
+    {
+      "type": "db",
+      "label": "通知",
+      "query": "SELECT string_agg(notification_type||'@'||user_id, ',' ORDER BY id) FROM notifications WHERE reservation_id=16;",
+      "result": "RESERVATION_APPROVED@1,TREATMENT_COMPLETED@1"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "状態",
+      "expected": "COMPLETED",
+      "actual": "COMPLETED",
+      "ok": true
+    },
+    {
+      "name": "通知（種別・宛先）",
+      "expected": "RESERVATION_APPROVED@1,TREATMENT_COMPLETED@1",
+      "actual": "RESERVATION_APPROVED@1,TREATMENT_COMPLETED@1",
+      "ok": true
+    }
+  ]
+}

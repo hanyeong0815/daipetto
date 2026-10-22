@@ -1,0 +1,109 @@
+{
+  "id": "UT-12-005",
+  "feature": "UT-12",
+  "api": "PATCH /api/v1/admin/users/{userId}/suspend, /role",
+  "kind": "異常",
+  "viewpoint": "自分自身・存在しないユーザー・不正な権限名",
+  "condition": "自分自身の停止／存在しないユーザー／role=ROLE_ROOT",
+  "expected": "400 USER-005／404 USER-003／400 VALIDATION-001",
+  "executedAt": "2026-10-23T05:26:27+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/users/5/suspend"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "USER-005",
+          "message": "自分自身のアカウントの状態・権限は変更できません。"
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/users/99999999/suspend"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "USER-003",
+          "message": "存在しないユーザーです。"
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/users/2/role",
+        "body": {
+          "role": "ROLE_ROOT"
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "VALIDATION-001",
+          "message": "入力内容を確認してください。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 400,
+      "actual": 400,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "USER-005",
+      "actual": "USER-005",
+      "ok": true
+    },
+    {
+      "name": "HTTPステータス",
+      "expected": 404,
+      "actual": 404,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "USER-003",
+      "actual": "USER-003",
+      "ok": true
+    },
+    {
+      "name": "HTTPステータス",
+      "expected": 400,
+      "actual": 400,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "VALIDATION-001",
+      "actual": "VALIDATION-001",
+      "ok": true
+    }
+  ]
+}

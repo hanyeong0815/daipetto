@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogoutService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.application.auth.service</a> &gt; <span class="el_source">LogoutService.java</span></div><h1>LogoutService.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.application.auth.service;
+
+import koh.portfolio.springapi.application.auth.dto.LogoutDto.LogoutResponse;
+import koh.portfolio.springapi.application.auth.usecase.LogoutUseCase;
+import koh.portfolio.springapi.domain.auth.port.RefreshTokenRepository;
+import koh.portfolio.springapi.domain.user.port.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+public class LogoutService implements LogoutUseCase {
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final UserRepository userRepository;
+
+    @Override
+    @Transactional
+    public LogoutResponse execute(Long userId) {
+        // �릪�셽若잒죱訝��겗refresh�걣�쇇烏뚣걲�굥孃뚨텥Token�굮�룚�굤�걪�겮�걬�겒�걚�굠�걝��
+        // 訝��떖revoke�겗�뎺�겓�깺�꺖�궣�꺖烏뚣굮�럲餓뽩룚孃쀣걲�굥竊늃EVIEW-002 R-01竊�
+<span class="fc" id="L22">        userRepository.lockForSessionUpdate(userId);</span>
+
+<span class="fc" id="L24">        refreshTokenRepository.revokeAllByUserId(userId);</span>
+
+<span class="fc" id="L26">        return LogoutResponse.builder()</span>
+<span class="fc" id="L27">                .isLogout(true)</span>
+<span class="fc" id="L28">                .build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

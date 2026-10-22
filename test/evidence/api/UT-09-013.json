@@ -1,0 +1,48 @@
+{
+  "id": "UT-09-013",
+  "feature": "UT-09",
+  "api": "PATCH /api/v1/reservations/{reservationId}/cancel",
+  "kind": "異常",
+  "viewpoint": "存在しない予約のキャンセル（Codex G-05）",
+  "condition": "存在しない予約ID",
+  "expected": "404 RESERVATION-006",
+  "executedAt": "2026-10-23T05:26:18+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/reservations/99999999/cancel"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "RESERVATION-006",
+          "message": "存在しない予約です。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 404,
+      "actual": 404,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "RESERVATION-006",
+      "actual": "RESERVATION-006",
+      "ok": true
+    }
+  ]
+}

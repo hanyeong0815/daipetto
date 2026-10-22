@@ -1,0 +1,91 @@
+{
+  "id": "UT-08-008",
+  "feature": "UT-08",
+  "api": "POST /api/v1/admin/hospitals/{hospitalId}/schedules/generate",
+  "kind": "正常",
+  "viewpoint": "同じ月の再実行",
+  "condition": "UT-08-007と同じ条件で2回実行",
+  "expected": "2回目は作成0件、診療日はすべて対象外（skippedDates）として数え、枠は増えない",
+  "executedAt": "2026-10-23T05:26:16+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/hospitals/23/schedules/generate",
+        "body": {
+          "month": "2026-12"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": {
+            "createdSlots": 16,
+            "generatedDates": 4,
+            "skippedDates": 0
+          },
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/hospitals/23/schedules/generate",
+        "body": {
+          "month": "2026-12"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": {
+            "createdSlots": 0,
+            "generatedDates": 0,
+            "skippedDates": 4
+          },
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "枠数",
+      "query": "SELECT count(*) FROM hospital_schedules WHERE hospital_id=23;",
+      "result": "16"
+    }
+  ],
+  "checks": [
+    {
+      "name": "2回目の件数",
+      "expected": [
+        0,
+        4
+      ],
+      "actual": [
+        0,
+        4
+      ],
+      "ok": true
+    },
+    {
+      "name": "枠の総数",
+      "expected": 16,
+      "actual": 16,
+      "ok": true
+    }
+  ]
+}

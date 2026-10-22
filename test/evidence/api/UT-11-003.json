@@ -1,0 +1,95 @@
+{
+  "id": "UT-11-003",
+  "feature": "UT-11",
+  "api": "PATCH /api/v1/notifications/{notificationId}/read",
+  "kind": "異常",
+  "viewpoint": "他人の通知・存在しない通知",
+  "condition": "他のユーザー宛の通知／存在しない通知ID",
+  "expected": "403 NOTIFICATION-002（既読にならない）／404 NOTIFICATION-001",
+  "executedAt": "2026-10-23T05:26:23+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "db",
+      "label": "他人の通知ID",
+      "query": "SELECT id FROM notifications WHERE reservation_id=22;",
+      "result": "10"
+    },
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/notifications/10/read"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "NOTIFICATION-002",
+          "message": "通知の受信者本人ではありません。"
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "is_read",
+      "query": "SELECT is_read::text FROM notifications WHERE id=10;",
+      "result": "false"
+    },
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/notifications/99999999/read"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "NOTIFICATION-001",
+          "message": "存在しない通知です。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 403,
+      "actual": 403,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "NOTIFICATION-002",
+      "actual": "NOTIFICATION-002",
+      "ok": true
+    },
+    {
+      "name": "既読にならない",
+      "expected": "false",
+      "actual": "false",
+      "ok": true
+    },
+    {
+      "name": "HTTPステータス",
+      "expected": 404,
+      "actual": 404,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "NOTIFICATION-001",
+      "actual": "NOTIFICATION-001",
+      "ok": true
+    }
+  ]
+}

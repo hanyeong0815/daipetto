@@ -10,7 +10,7 @@
 | Document | Development Environment |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-08-23 |
+| Updated | 2026-10-23 |
 
 ---
 
@@ -285,6 +285,9 @@ flowchart TB
 | jjwt (api / impl / jackson) 0.12.6 | JWT発行・検証 |
 | mapstruct 1.5.5.Final + lombok-mapstruct-binding | Domain ↔ Entity 変換 |
 | lombok | ボイラープレート削減 |
+| spring-boot-starter-test / spring-security-test | 単体テスト（JUnit 5・Mockito・MockMvc） |
+| h2（testRuntimeOnly） | Persistenceテスト用のDB（`@DataJpaTest`、PostgreSQLモード） |
+| jacoco 0.8.12（Gradleプラグイン） | カバレッジ（`./gradlew test` の後に `build/reports/jacoco/test/` へXML・HTMLを出力。単体テストのエビデンスは `test/evidence/coverage/`） |
 
 > **注記:** springdoc-openapi（Swagger UI）は未導入。導入時は Spring Boot 3.3.x 互換の `springdoc-openapi-starter-webmvc-ui 2.6.0` を利用する。
 
@@ -501,9 +504,17 @@ V4__create_hospitals.sql
 V5__create_hospital_business_hours.sql
 V6__create_hospital_schedules.sql
 V7__create_reservations.sql
+V8__add_reservations_active_schedule_unique_index.sql
+V9__create_health_records.sql
+V10__create_notifications.sql
+V11__create_vaccinations.sql
+V12__add_vaccination_reminded_date.sql
+V13__alter_pets_add_columns.sql
+V14__make_pet_gender_nullable.sql
+V15__create_hospital_admins.sql
 ```
 
-新規は V8 以降。採番前に全ブランチの番号衝突を確認する（未マージ `feat/spring/pet-fields` が V4 を使用中）。
+新規は V16 以降。採番前に全ブランチの番号衝突を確認する。
 
 ---
 

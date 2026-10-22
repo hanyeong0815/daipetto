@@ -1,0 +1,51 @@
+{
+  "id": "UT-01-011",
+  "feature": "UT-01",
+  "api": "POST /api/v1/auth/refresh",
+  "kind": "異常",
+  "viewpoint": "無効なRefresh Token",
+  "condition": "形式の正しくない文字列",
+  "expected": "401 AUTH-003",
+  "executedAt": "2026-10-23T05:26:01+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "anon",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/auth/refresh",
+        "body": {
+          "refreshToken": "invalid.refr…(masked)"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "AUTH-003",
+          "message": "無効なRefresh Tokenです。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 401,
+      "actual": 401,
+      "ok": true
+    },
+    {
+      "name": "エラーコード（AUTH-003）",
+      "expected": "AUTH-003",
+      "actual": "AUTH-003",
+      "ok": true
+    }
+  ]
+}

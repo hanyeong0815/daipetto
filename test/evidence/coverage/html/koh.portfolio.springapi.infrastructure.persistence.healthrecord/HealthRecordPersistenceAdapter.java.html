@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HealthRecordPersistenceAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.infrastructure.persistence.healthrecord</a> &gt; <span class="el_source">HealthRecordPersistenceAdapter.java</span></div><h1>HealthRecordPersistenceAdapter.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.infrastructure.persistence.healthrecord;
+
+import koh.portfolio.springapi.domain.healthrecord.model.HealthRecord;
+import koh.portfolio.springapi.domain.healthrecord.port.HealthRecordRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+@RequiredArgsConstructor
+public class HealthRecordPersistenceAdapter implements HealthRecordRepository {
+    private final HealthRecordJpaRepository healthRecordJpaRepository;
+    private final HealthRecordMapper healthRecordMapper;
+
+    @Override
+    public HealthRecord save(HealthRecord healthRecord) {
+<span class="nc" id="L20">        HealthRecordEntity savedEntity = healthRecordJpaRepository.save(healthRecordMapper.toEntity(healthRecord));</span>
+
+<span class="nc" id="L22">        return healthRecordMapper.toDomain(savedEntity);</span>
+    }
+
+    @Override
+    public Optional&lt;HealthRecord&gt; findById(Long id) {
+<span class="nc" id="L27">        return healthRecordJpaRepository.findByIdAndDeletedAtIsNull(id)</span>
+<span class="nc" id="L28">                .map(healthRecordMapper::toDomain);</span>
+    }
+
+    @Override
+    public Optional&lt;HealthRecord&gt; findByIdForUpdate(Long id) {
+<span class="fc" id="L33">        return healthRecordJpaRepository.findByIdForUpdate(id)</span>
+<span class="fc" id="L34">                .map(healthRecordMapper::toDomain);</span>
+    }
+
+    @Override
+    public List&lt;HealthRecord&gt; findAllByPetId(Long petId) {
+<span class="nc" id="L39">        return healthRecordJpaRepository.findAllByPetIdAndDeletedAtIsNullOrderByRecordedDateDesc(petId)</span>
+<span class="nc" id="L40">                .stream().map(healthRecordMapper::toDomain).toList();</span>
+    }
+
+    @Override
+    public void softDelete(Long id, LocalDateTime deletedAt) {
+<span class="nc" id="L45">        healthRecordJpaRepository.softDeleteById(id, deletedAt);</span>
+<span class="nc" id="L46">    }</span>
+
+    @Override
+    public boolean updateContent(HealthRecord healthRecord) {
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        return healthRecordJpaRepository.updateContent(</span>
+<span class="fc" id="L51">                healthRecord.getId(),</span>
+<span class="fc" id="L52">                healthRecord.getWeight(),</span>
+<span class="fc" id="L53">                healthRecord.getSymptom(),</span>
+<span class="fc" id="L54">                healthRecord.getMemo(),</span>
+<span class="fc" id="L55">                healthRecord.getRecordedDate(),</span>
+<span class="fc" id="L56">                healthRecord.getUpdatedAt()</span>
+        ) == 1;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

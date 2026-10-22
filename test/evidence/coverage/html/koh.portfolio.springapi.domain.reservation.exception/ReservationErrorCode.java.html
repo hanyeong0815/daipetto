@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReservationErrorCode.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.domain.reservation.exception</a> &gt; <span class="el_source">ReservationErrorCode.java</span></div><h1>ReservationErrorCode.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.domain.reservation.exception;
+
+import koh.portfolio.springapi.common.exception.ErrorCode;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+
+<span class="fc" id="L7">@RequiredArgsConstructor</span>
+public enum ReservationErrorCode implements ErrorCode {
+<span class="fc" id="L9">    RESERVATION_DUPLICATED(&quot;RESERVATION-001&quot;, &quot;�뿢�겓雅덄큵歷덀겳�겎�걲��&quot;, HttpStatus.CONFLICT),</span>
+<span class="fc" id="L10">    RESERVATION_SCHEDULE_NOT_FOUND(&quot;RESERVATION-002&quot;, &quot;耶섇쑉�걮�겒�걚雅덄큵�옞�곥겲�걼�겘�뙁若싥걮�걼�뾽�솫�겓掠욁걬�겒�걚雅덄큵�옞�겎�걲��&quot;, HttpStatus.NOT_FOUND),</span>
+<span class="fc" id="L11">    RESERVATION_SCHEDULE_BLOCKED(&quot;RESERVATION-003&quot;, &quot;雅덄큵�옞�걣BLOCKED�듁�뀑�겗�걼�굙雅덄큵�겎�걤�겲�걵�굯��&quot;, HttpStatus.CONFLICT),</span>
+<span class="fc" id="L12">    NOT_PET_OWNER(&quot;RESERVATION-004&quot;, &quot;耶섇쑉�걮�겒�걚�깪�긿�깉�곥겲�걼�겘餓뽧겗�깺�꺖�궣�꺖�겗�깪�긿�깉�겎�걲��&quot;, HttpStatus.FORBIDDEN),</span>
+<span class="fc" id="L13">    PAST_DATETIME(&quot;RESERVATION-005&quot;, &quot;�걥�렮�겗�뿥�셽�겓�겘雅덄큵�겎�걤�겲�걵�굯��&quot;, HttpStatus.BAD_REQUEST),</span>
+<span class="fc" id="L14">    RESERVATION_NOT_FOUND(&quot;RESERVATION-006&quot;, &quot;耶섇쑉�걮�겒�걚雅덄큵�겎�걲��&quot;, HttpStatus.NOT_FOUND),</span>
+<span class="fc" id="L15">    NOT_RESERVATION_OWNER(&quot;RESERVATION-007&quot;, &quot;雅덄큵�끾쑍雅뷩겎�겘�걗�굤�겲�걵�굯��&quot;, HttpStatus.FORBIDDEN),</span>
+<span class="fc" id="L16">    INVALID_STATE_TRANSITION(&quot;RESERVATION-008&quot;, &quot;�뤎�쑉�겗�듁�뀑�걢�굢�겘鸚됪쎍�겎�걤�겲�걵�굯��&quot;, HttpStatus.CONFLICT),</span>
+<span class="fc" id="L17">    HOSPITAL_NOT_AVAILABLE(&quot;RESERVATION-009&quot;, &quot;�닶�뵪�걶閭㏘릎�겗�뾽�솫�겎�걲��&quot;, HttpStatus.CONFLICT),</span>
+<span class="fc" id="L18">    DEFAULT(&quot;RESERVATION-999&quot;, &quot;雅덄큵�뼟�ｃ궓�꺀�꺖�겎�걲��&quot;, HttpStatus.INTERNAL_SERVER_ERROR);</span>
+
+    private final String code;
+    private final String message;
+    private final HttpStatus status;
+
+    @Override
+    public String code() {
+<span class="fc" id="L26">        return code;</span>
+    }
+
+    @Override
+    public HttpStatus defaultHttpStatus() {
+<span class="nc" id="L31">        return status;</span>
+    }
+
+    @Override
+    public String defaultMessage() {
+<span class="fc" id="L36">        return message;</span>
+    }
+
+    @Override
+    public RuntimeException defaultException() {
+<span class="fc" id="L41">        return new ReservationException(this);</span>
+    }
+
+    @Override
+    public RuntimeException defaultException(Throwable cause) {
+<span class="fc" id="L46">        return new ReservationException(this, cause);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

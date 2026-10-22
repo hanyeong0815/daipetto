@@ -1,0 +1,78 @@
+{
+  "id": "UT-04-004",
+  "feature": "UT-04",
+  "api": "GET /api/v1/pets/{petId}/vaccinations",
+  "kind": "正常",
+  "viewpoint": "一覧の並び順",
+  "condition": "接種予定日の異なる3件",
+  "expected": "200、接種予定日の昇順",
+  "executedAt": "2026-10-23T05:26:08+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/pets/25/vaccinations"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": [
+            {
+              "vaccinationId": 3,
+              "vaccineName": "混合ワクチン",
+              "scheduledDate": "2026-11-02",
+              "completedDate": null,
+              "status": "SCHEDULED"
+            },
+            {
+              "vaccinationId": 4,
+              "vaccineName": "混合ワクチン",
+              "scheduledDate": "2026-11-12",
+              "completedDate": null,
+              "status": "SCHEDULED"
+            },
+            {
+              "vaccinationId": 2,
+              "vaccineName": "混合ワクチン",
+              "scheduledDate": "2026-11-22",
+              "completedDate": null,
+              "status": "SCHEDULED"
+            }
+          ],
+          "code": null,
+          "message": null
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "接種予定日の昇順",
+      "expected": [
+        "2026-11-02",
+        "2026-11-12",
+        "2026-11-22"
+      ],
+      "actual": [
+        "2026-11-02",
+        "2026-11-12",
+        "2026-11-22"
+      ],
+      "ok": true
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { authApi } from '../api/auth'
+import { extractErrorMessage } from '../api/client'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
@@ -41,8 +42,9 @@ export default function RegisterPage() {
         return
       }
       navigate('/login')
-    } catch {
-      setError('会員登録に失敗しました。もう一度お試しください。')
+    } catch (err) {
+      // 入力エラー（VALIDATION-001）・メール重複（USER-001）はAPIのメッセージで理由を示す（SC-002 異常系、単体テスト D-009）
+      setError(extractErrorMessage(err, '会員登録に失敗しました。もう一度お試しください。'))
     } finally {
       setIsLoading(false)
     }

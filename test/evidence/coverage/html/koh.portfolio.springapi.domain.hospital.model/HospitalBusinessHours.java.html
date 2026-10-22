@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HospitalBusinessHours.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.domain.hospital.model</a> &gt; <span class="el_source">HospitalBusinessHours.java</span></div><h1>HospitalBusinessHours.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.domain.hospital.model;
+
+import koh.portfolio.springapi.common.exception.Preconditions;
+import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Getter
+@AllArgsConstructor
+public class HospitalBusinessHours {
+    private static final int MIN_SLOT_MINUTES = 5;
+    private static final int MAX_SLOT_MINUTES = 240;
+
+    private Long id;
+    private Long hospitalId;
+    private DayOfWeek dayOfWeek;
+    private LocalTime openTime;
+    private LocalTime closeTime;
+    private LocalTime breakStartTime;
+    private LocalTime breakEndTime;
+    private Integer slotDurationMinutes;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+
+    public static HospitalBusinessHours create(Long hospitalId, DayOfWeek dayOfWeek, LocalTime openTime, LocalTime closeTime, LocalTime breakStartTime, LocalTime breakEndTime, Integer slotDurationMinutes) {
+<span class="fc" id="L33">        validateHours(openTime, closeTime, breakStartTime, breakEndTime, slotDurationMinutes);</span>
+<span class="fc" id="L34">        LocalDateTime now = LocalDateTime.now();</span>
+
+<span class="fc" id="L36">        return new HospitalBusinessHours(null, hospitalId, dayOfWeek, openTime, closeTime, breakStartTime, breakEndTime, slotDurationMinutes, now, now);</span>
+    }
+
+    public HospitalBusinessHours update(LocalTime openTime, LocalTime closeTime, LocalTime breakStartTime, LocalTime breakEndTime, Integer slotDurationMinutes) {
+<span class="fc" id="L40">        validateHours(openTime, closeTime, breakStartTime, breakEndTime, slotDurationMinutes);</span>
+
+<span class="fc" id="L42">        return new HospitalBusinessHours(this.id, this.hospitalId, this.dayOfWeek, openTime, closeTime, breakStartTime, breakEndTime, slotDurationMinutes, this.createdAt, LocalDateTime.now());</span>
+    }
+
+    // 雅덄큵�옞�겗�눎�땿�뵟�닇竊�06_ERD 짠18竊됥�귡뼀冶뗣�쒍폂�넩�뼀冶뗣꺕鴉묉넩永귚틙�쒐탞雅녴굮�걹�굦�걻�굦�옞�겗�빓�걬�겎�뙷�늾�겂�겍AVAILABLE��
+    // 鴉묉넩�셽�뼋�굚�릪�걯�빓�걬�겎�뙷�늾�겂�겍BLOCKED�겗�옞�겓�걲�굥�귛뙷�뼋�겗塋��빊竊덃옞�겗�빓�걬�겓繹��걼�겒�걚餘뗣굤竊됥겘鵝쒌굢�겒�걚
+    public List&lt;HospitalSchedule&gt; slotsOn(LocalDate date) {
+<span class="fc" id="L48">        List&lt;HospitalSchedule&gt; slots = new ArrayList&lt;&gt;();</span>
+        // �쇉�뙯�셽�겗濾쒑㉫�굠�굤�뎺�겓岳앭춼�걬�굦�걼訝띷�ｃ겒�ㅳ겎�굚�꽒�솏�꺂�꺖�깤�굜�녻빪�걮�걼�옞�굮鵝쒌굢�겒�걚
+<span class="pc bpc" id="L50" title="1 of 6 branches missed.">        if (slotDurationMinutes == null || slotDurationMinutes &lt;= 0 || !openTime.isBefore(closeTime)) {</span>
+<span class="fc" id="L51">            return slots;</span>
+        }
+
+        // LocalTime �겗�뒥嶸쀣겘 0 �셽�굮�겲�걼�걚�겎藥삠걤�댗�굥�걼�굙��0 �셽�걢�굢�겗�깏�깕燁믡겎鼇덄츞�걲�굥竊덄쭜餓δ툔�굚�늾�굤�뜥�겍�겒�걚�괨EVIEW-001 R-02竊�
+<span class="fc" id="L55">        long open = openTime.toNanoOfDay();</span>
+<span class="fc" id="L56">        long close = closeTime.toNanoOfDay();</span>
+        // 鴉묉넩�겘訝←ク�겏�굚�뼳璵��셽�뼋�냵�겓�룑�굙�굥�귛뼳璵��셽�뼋鸚뽧꺕�뼳璵��셽�뼋�겏�뇥�겒�굢�겒�걚鴉묉넩竊덃쩂鼇쇔뎺�겗岳앭춼�ㅿ펹�겘鴉묉넩�겒�걮�겏�걮�겍�돮�걚��
+        // �뼳璵��셽�뼋鸚뽧겓�옞�굮鵝쒌굢�겒�걚竊늃EVIEW-001 R-01竊�
+<span class="fc bfc" id="L59" title="All 4 branches covered.">        boolean hasBreak = breakStartTime != null &amp;&amp; breakEndTime != null;</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        long breakStart = hasBreak ? clamp(breakStartTime.toNanoOfDay(), open, close) : close;</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        long breakEnd = hasBreak ? clamp(breakEndTime.toNanoOfDay(), open, close) : close;</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (breakStart &gt;= breakEnd) {</span>
+<span class="fc" id="L63">            addSlots(slots, date, open, close, false);</span>
+<span class="fc" id="L64">            return slots;</span>
+        }
+
+<span class="fc" id="L67">        addSlots(slots, date, open, breakStart, false);</span>
+<span class="fc" id="L68">        addSlots(slots, date, breakStart, breakEnd, true);</span>
+<span class="fc" id="L69">        addSlots(slots, date, breakEnd, close, false);</span>
+<span class="fc" id="L70">        return slots;</span>
+    }
+
+    private void addSlots(List&lt;HospitalSchedule&gt; slots, LocalDate date, long from, long to, boolean blocked) {
+<span class="fc" id="L74">        long duration = slotDurationMinutes * 60_000_000_000L;</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        for (long start = from; start + duration &lt;= to; start += duration) {</span>
+<span class="fc" id="L76">            HospitalSchedule slot = HospitalSchedule.create(</span>
+<span class="fc" id="L77">                    hospitalId, date, LocalTime.ofNanoOfDay(start), LocalTime.ofNanoOfDay(start + duration));</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            slots.add(blocked ? slot.block() : slot);</span>
+        }
+<span class="fc" id="L80">    }</span>
+
+    private static long clamp(long value, long min, long max) {
+<span class="fc" id="L83">        return Math.max(min, Math.min(max, value));</span>
+    }
+
+    // �뼀冶� &lt; 永귚틙�곫옞�겗�빓�걬 5��240 �늽�곦폂�넩�겘�뼀冶뗣꺕永귚틙�겗訝→뼶�굮�뙁若싥걮�곩뼳璵��셽�뼋�냵�겎 �뼀冶� &lt; 永귚틙
+    private static void validateHours(LocalTime openTime, LocalTime closeTime, LocalTime breakStartTime, LocalTime breakEndTime, Integer slotDurationMinutes) {
+<span class="pc bpc" id="L88" title="1 of 4 branches missed.">        boolean noBreak = breakStartTime == null &amp;&amp; breakEndTime == null;</span>
+<span class="fc bfc" id="L89" title="All 4 branches covered.">        boolean validBreak = breakStartTime != null &amp;&amp; breakEndTime != null</span>
+<span class="fc bfc" id="L90" title="All 6 branches covered.">                &amp;&amp; !breakStartTime.isBefore(openTime) &amp;&amp; breakStartTime.isBefore(breakEndTime) &amp;&amp; !breakEndTime.isAfter(closeTime);</span>
+
+<span class="fc" id="L92">        Preconditions.validate(</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                openTime.isBefore(closeTime)</span>
+<span class="fc bfc" id="L94" title="All 8 branches covered.">                        &amp;&amp; slotDurationMinutes &gt;= MIN_SLOT_MINUTES &amp;&amp; slotDurationMinutes &lt;= MAX_SLOT_MINUTES</span>
+                        &amp;&amp; (noBreak || validBreak),
+                HospitalErrorCode.INVALID_BUSINESS_HOURS
+        );
+<span class="fc" id="L98">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AdminUserController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.presentation.user</a> &gt; <span class="el_source">AdminUserController.java</span></div><h1>AdminUserController.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.presentation.user;
+
+import jakarta.validation.Valid;
+import koh.portfolio.springapi.application.user.dto.AdminUserDto.AdminUserResponse;
+import koh.portfolio.springapi.application.user.dto.AdminUserDto.ChangeRoleRequest;
+import koh.portfolio.springapi.application.user.usecase.ChangeUserRoleUseCase;
+import koh.portfolio.springapi.application.user.usecase.ChangeUserStatusUseCase;
+import koh.portfolio.springapi.application.user.usecase.SearchUsersUseCase;
+import koh.portfolio.springapi.common.response.ApiResponse;
+import koh.portfolio.springapi.common.response.PageResponse;
+import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
+import koh.portfolio.springapi.domain.user.model.Role;
+import koh.portfolio.springapi.domain.user.model.UserStatus;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+// SC-015 �깺�꺖�궣�꺖嶸←릤竊덀궥�궧�깇�깲嶸←릤�끹겗�겳竊�
+@RestController
+@RequestMapping(&quot;/api/v1/admin/users&quot;)
+@RequiredArgsConstructor
+@PreAuthorize(&quot;hasAuthority('ROLE_SYSTEM_ADMIN')&quot;)
+public class AdminUserController {
+    private final SearchUsersUseCase searchUsersUseCase;
+    private final ChangeUserStatusUseCase changeUserStatusUseCase;
+    private final ChangeUserRoleUseCase changeUserRoleUseCase;
+
+    @GetMapping
+    public ResponseEntity&lt;ApiResponse&lt;PageResponse&lt;AdminUserResponse&gt;&gt;&gt; searchUsers(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Role role,
+            @RequestParam(required = false) UserStatus status,
+            @RequestParam(defaultValue = &quot;0&quot;) int page,
+            @RequestParam(defaultValue = &quot;20&quot;) int size
+    ) {
+<span class="fc" id="L38">        return ResponseEntity.ok(ApiResponse.success(searchUsersUseCase.execute(keyword, role, status, page, size)));</span>
+    }
+
+    @PatchMapping(&quot;/{userId}/suspend&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;Void&gt;&gt; suspendUser(Authentication authentication, @PathVariable Long userId) {
+<span class="fc" id="L43">        changeUserStatusUseCase.execute(extractUserId(authentication), userId, UserStatus.SUSPENDED);</span>
+<span class="fc" id="L44">        return ResponseEntity.ok(ApiResponse.success(null));</span>
+    }
+
+    @PatchMapping(&quot;/{userId}/activate&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;Void&gt;&gt; activateUser(Authentication authentication, @PathVariable Long userId) {
+<span class="fc" id="L49">        changeUserStatusUseCase.execute(extractUserId(authentication), userId, UserStatus.ACTIVE);</span>
+<span class="fc" id="L50">        return ResponseEntity.ok(ApiResponse.success(null));</span>
+    }
+
+    @PatchMapping(&quot;/{userId}/role&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;Void&gt;&gt; changeRole(
+            Authentication authentication,
+            @PathVariable Long userId,
+            @Valid @RequestBody ChangeRoleRequest request
+    ) {
+<span class="fc" id="L59">        changeUserRoleUseCase.execute(extractUserId(authentication), userId, request.role());</span>
+<span class="fc" id="L60">        return ResponseEntity.ok(ApiResponse.success(null));</span>
+    }
+
+    private Long extractUserId(Authentication authentication) {
+<span class="pc bpc" id="L64" title="2 of 4 branches missed.">        if (authentication == null || !(authentication.getPrincipal() instanceof Long userId)) {</span>
+<span class="nc" id="L65">            throw AuthErrorCode.AUTH_FAILED.defaultException();</span>
+        }
+<span class="fc" id="L67">        return userId;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

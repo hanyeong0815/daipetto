@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="koh.portfolio.springapi.infrastructure.security.JwtProviderTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-10-22T20:18:06.105Z" hostname="HOME-PC" time="0.013">
+  <properties/>
+  <testcase name="Access Tokenを生成し、userIdとroleを取得できる" classname="koh.portfolio.springapi.infrastructure.security.JwtProviderTest" time="0.004"/>
+  <testcase name="Access Tokenを生成し、userIdを取得できる" classname="koh.portfolio.springapi.infrastructure.security.JwtProviderTest" time="0.003"/>
+  <testcase name="Access TokenはvalidateAccessTokenでtrueを返却する" classname="koh.portfolio.springapi.infrastructure.security.JwtProviderTest" time="0.001"/>
+  <testcase name="同一ユーザー・同一秒に連続発行してもRefresh Tokenは重複しない" classname="koh.portfolio.springapi.infrastructure.security.JwtProviderTest" time="0.002"/>
+  <testcase name="不正なTokenの場合、validateTokenはfalseを返却する" classname="koh.portfolio.springapi.infrastructure.security.JwtProviderTest" time="0.0"/>
+  <testcase name="Refresh TokenはvalidateAccessTokenでfalseを返却する" classname="koh.portfolio.springapi.infrastructure.security.JwtProviderTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

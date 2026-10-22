@@ -1,0 +1,93 @@
+{
+  "id": "UT-06-006",
+  "feature": "UT-06",
+  "api": "GET /api/v1/admin/hospitals/{hospitalId}/admins",
+  "kind": "正常",
+  "viewpoint": "病院管理者一覧",
+  "condition": "病院1（病院管理者1名が紐付き）",
+  "expected": "200、userId・email・nicknameを返す。存在しない病院は404 HOSPITAL-001",
+  "executedAt": "2026-10-23T05:26:12+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/hospitals/1/admins"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": [
+            {
+              "userId": 3,
+              "email": "ut-vet@daipetto.test",
+              "nickname": "HappyVet"
+            }
+          ],
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/hospitals/99999999/admins"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "HOSPITAL-001",
+          "message": "存在しない病院です。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "紐付いた病院管理者",
+      "expected": [
+        [
+          3,
+          "ut-vet@daipetto.test"
+        ]
+      ],
+      "actual": [
+        [
+          3,
+          "ut-vet@daipetto.test"
+        ]
+      ],
+      "ok": true
+    },
+    {
+      "name": "HTTPステータス",
+      "expected": 404,
+      "actual": 404,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "HOSPITAL-001",
+      "actual": "HOSPITAL-001",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+select id, email, nickname, role, status from users where email like '%sato%';
+2|screen-sato@daipetto.test|佐藤|ROLE_USER|SUSPENDED
+-- all users
+1|田中|ACTIVE
+2|佐藤|SUSPENDED
+3|さくら院長|ACTIVE
+4|システム管理者|ACTIVE
+5|山田|ACTIVE

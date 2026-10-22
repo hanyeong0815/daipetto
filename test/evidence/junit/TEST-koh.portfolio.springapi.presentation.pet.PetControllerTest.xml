@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="koh.portfolio.springapi.presentation.pet.PetControllerTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-10-22T20:18:11.166Z" hostname="HOME-PC" time="0.07">
+  <properties/>
+  <testcase name="POST /api/v1/pets - Content-Typeがtext/plainの場合は415（COMMON-003）で、登録しない" classname="koh.portfolio.springapi.presentation.pet.PetControllerTest" time="0.007"/>
+  <testcase name="GET /api/v1/pets - ペット一覧取得成功" classname="koh.portfolio.springapi.presentation.pet.PetControllerTest" time="0.006"/>
+  <testcase name="GET /api/v1/pets/{petId} - ペット詳細取得成功" classname="koh.portfolio.springapi.presentation.pet.PetControllerTest" time="0.005"/>
+  <testcase name="POST /api/v1/pets - ペット登録成功" classname="koh.portfolio.springapi.presentation.pet.PetControllerTest" time="0.01"/>
+  <testcase name="POST /api/v1/pets - 名前51文字・品種101文字・負の体重・桁数超過の体重はValidation失敗（列の長さ・DECIMAL(5,2)）" classname="koh.portfolio.springapi.presentation.pet.PetControllerTest" time="0.012"/>
+  <testcase name="POST /api/v1/pets - 性別は任意項目のため省略しても登録できる" classname="koh.portfolio.springapi.presentation.pet.PetControllerTest" time="0.002"/>
+  <testcase name="DELETE /api/v1/pets/{petId} - ペット論理削除成功" classname="koh.portfolio.springapi.presentation.pet.PetControllerTest" time="0.003"/>
+  <testcase name="PATCH /api/v1/pets/{petId} - ペット情報更新成功" classname="koh.portfolio.springapi.presentation.pet.PetControllerTest" time="0.009"/>
+  <testcase name="POST /api/v1/pets - petTypeがnullの場合Validation失敗" classname="koh.portfolio.springapi.presentation.pet.PetControllerTest" time="0.004"/>
+  <testcase name="POST /api/v1/pets - nameが空白の場合Validation失敗" classname="koh.portfolio.springapi.presentation.pet.PetControllerTest" time="0.005"/>
+  <system-out><![CDATA[2026-10-23T05:18:10.655+09:00  INFO 28624 --- [    Test worker] t.c.s.AnnotationConfigContextLoaderUtils : Could not detect default configuration classes for test class [koh.portfolio.springapi.presentation.pet.PetControllerTest]: PetControllerTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+2026-10-23T05:18:10.690+09:00  INFO 28624 --- [    Test worker] .b.t.c.SpringBootTestContextBootstrapper : Found @SpringBootConfiguration koh.portfolio.springapi.SpringApiApplication for test class koh.portfolio.springapi.presentation.pet.PetControllerTest
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::               (v3.3.13)
+
+2026-10-23T05:18:10.707+09:00  INFO 28624 --- [    Test worker] k.p.s.p.pet.PetControllerTest            : Starting PetControllerTest using Java 17.0.19 with PID 28624 (started by yoeha in E:\workspace\daipetto\spring-api)
+2026-10-23T05:18:10.708+09:00  INFO 28624 --- [    Test worker] k.p.s.p.pet.PetControllerTest            : No active profile set, falling back to 1 default profile: "default"
+2026-10-23T05:18:11.156+09:00  WARN 28624 --- [    Test worker] .s.s.UserDetailsServiceAutoConfiguration : 
+
+Using generated security password: eace991f-ae49-4661-b1a6-d3cb398f5fd6
+
+This generated password is for development use only. Your security configuration must be updated before running your application in production.
+
+2026-10-23T05:18:11.156+09:00  INFO 28624 --- [    Test worker] r$InitializeUserDetailsManagerConfigurer : Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager
+2026-10-23T05:18:11.163+09:00  INFO 28624 --- [    Test worker] o.s.b.t.m.w.SpringBootMockServletContext : Initializing Spring TestDispatcherServlet ''
+2026-10-23T05:18:11.163+09:00  INFO 28624 --- [    Test worker] o.s.t.web.servlet.TestDispatcherServlet  : Initializing Servlet ''
+2026-10-23T05:18:11.163+09:00  INFO 28624 --- [    Test worker] o.s.t.web.servlet.TestDispatcherServlet  : Completed initialization in 0 ms
+2026-10-23T05:18:11.166+09:00  INFO 28624 --- [    Test worker] k.p.s.p.pet.PetControllerTest            : Started PetControllerTest in 0.474 seconds (process running for 33.382)
+2026-10-23T05:18:11.203+09:00  WARN 28624 --- [    Test worker] k.p.s.c.e.GlobalExceptionHandler         : Validation exception occurred. message=size must be between 0 and 50
+2026-10-23T05:18:11.205+09:00  WARN 28624 --- [    Test worker] k.p.s.c.e.GlobalExceptionHandler         : Validation exception occurred. message=size must be between 0 and 100
+2026-10-23T05:18:11.207+09:00  WARN 28624 --- [    Test worker] k.p.s.c.e.GlobalExceptionHandler         : Validation exception occurred. message=must be greater than or equal to 0
+2026-10-23T05:18:11.208+09:00  WARN 28624 --- [    Test worker] k.p.s.c.e.GlobalExceptionHandler         : Validation exception occurred. message=numeric value out of bounds (<3 digits>.<2 digits> expected)
+2026-10-23T05:18:11.230+09:00  WARN 28624 --- [    Test worker] k.p.s.c.e.GlobalExceptionHandler         : Validation exception occurred. message=must not be null
+2026-10-23T05:18:11.235+09:00  WARN 28624 --- [    Test worker] k.p.s.c.e.GlobalExceptionHandler         : Validation exception occurred. message=must not be blank
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

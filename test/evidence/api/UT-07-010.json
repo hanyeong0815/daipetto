@@ -1,0 +1,135 @@
+{
+  "id": "UT-07-010",
+  "feature": "UT-07",
+  "api": "PATCH /api/v1/admin/hospitals/{hospitalId}/business-hours/{businessHoursId}",
+  "kind": "異常",
+  "viewpoint": "更新時の診療時間の不正値（Codex G-09）",
+  "condition": "終了が開始より前／単位241分／休憩が営業時間外",
+  "expected": "いずれも400 HOSPITAL-009、診療時間は変更されない",
+  "executedAt": "2026-10-23T05:26:14+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/hospitals/20/business-hours/9",
+        "body": {
+          "openTime": "18:00",
+          "closeTime": "09:00",
+          "slotDurationMinutes": 30
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "HOSPITAL-009",
+          "message": "診療時間の設定が正しくありません。"
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/hospitals/20/business-hours/9",
+        "body": {
+          "openTime": "09:00",
+          "closeTime": "18:00",
+          "slotDurationMinutes": 241
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "HOSPITAL-009",
+          "message": "診療時間の設定が正しくありません。"
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/hospitals/20/business-hours/9",
+        "body": {
+          "openTime": "09:00",
+          "closeTime": "18:00",
+          "breakStartTime": "08:00",
+          "breakEndTime": "10:00",
+          "slotDurationMinutes": 30
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "HOSPITAL-009",
+          "message": "診療時間の設定が正しくありません。"
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "診療時間",
+      "query": "SELECT open_time||','||close_time||','||slot_duration_minutes FROM hospital_business_hours WHERE id=9;",
+      "result": "09:00:00,18:00:00,30"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 400,
+      "actual": 400,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "HOSPITAL-009",
+      "actual": "HOSPITAL-009",
+      "ok": true
+    },
+    {
+      "name": "HTTPステータス",
+      "expected": 400,
+      "actual": 400,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "HOSPITAL-009",
+      "actual": "HOSPITAL-009",
+      "ok": true
+    },
+    {
+      "name": "HTTPステータス",
+      "expected": 400,
+      "actual": 400,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "HOSPITAL-009",
+      "actual": "HOSPITAL-009",
+      "ok": true
+    },
+    {
+      "name": "変更されない",
+      "expected": "09:00:00,18:00:00,30",
+      "actual": "09:00:00,18:00:00,30",
+      "ok": true
+    }
+  ]
+}

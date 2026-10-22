@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Vaccination.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.domain.vaccination.model</a> &gt; <span class="el_source">Vaccination.java</span></div><h1>Vaccination.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.domain.vaccination.model;
+
+import koh.portfolio.springapi.common.exception.Preconditions;
+import koh.portfolio.springapi.domain.vaccination.exception.VaccinationErrorCode;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+@Getter
+@AllArgsConstructor
+public class Vaccination {
+    private Long id;
+    private Long petId;
+    private String vaccineName;
+    private LocalDate scheduledDate;
+    private LocalDate completedDate;
+    // �꺁�깯�궎�꺍���꺖�곦에歷덀겳�겗�렏葉�雅덂츣�뿥竊덃쑋�곦에�겒�굢null竊됥�귚틛若싨뿥�걫�겏�겓1�썮�걽�걨�싩윥�걲�굥�걼�굙�겗�쎅�뜲
+    private LocalDate remindedDate;
+    private VaccinationStatus status;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    private LocalDateTime deletedAt;
+
+    public static Vaccination create(Long petId, String vaccineName, LocalDate scheduledDate) {
+<span class="fc" id="L27">        LocalDateTime now = LocalDateTime.now();</span>
+
+<span class="fc" id="L29">        return new Vaccination(null, petId, vaccineName, scheduledDate, null, null,</span>
+                VaccinationStatus.SCHEDULED, now, now, null);
+    }
+
+    public Vaccination complete(LocalDate completedDate) {
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        Preconditions.validate(this.status == VaccinationStatus.SCHEDULED, VaccinationErrorCode.INVALID_STATE_TRANSITION);</span>
+
+<span class="fc" id="L36">        return new Vaccination(this.id, this.petId, this.vaccineName, this.scheduledDate, completedDate, this.remindedDate,</span>
+<span class="fc" id="L37">                VaccinationStatus.COMPLETED, this.createdAt, LocalDateTime.now(), this.deletedAt);</span>
+    }
+
+    public Vaccination cancel() {
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        Preconditions.validate(this.status == VaccinationStatus.SCHEDULED, VaccinationErrorCode.INVALID_STATE_TRANSITION);</span>
+
+<span class="fc" id="L43">        return new Vaccination(this.id, this.petId, this.vaccineName, this.scheduledDate, null, this.remindedDate,</span>
+<span class="fc" id="L44">                VaccinationStatus.CANCELLED, this.createdAt, LocalDateTime.now(), this.deletedAt);</span>
+    }
+
+    // 08_State_Design 짠7�뚦냽�쇉�뙯��: 訝�閭㏂걮�걼雅덂츣�굮�뼭�걮�걚�렏葉�雅덂츣�뿥�겎 SCHEDULED �겓�댗�걲��
+    // �곦에歷덀겳�겗�쎅�뜲�굚易덀걲�걼�굙�곫뼭�걮�걚雅덂츣�뿥�겎�뵻�굙�겍�꺁�깯�궎�꺍���꺖野얕괌�겓�겒�굥
+    public Vaccination reschedule(LocalDate scheduledDate) {
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        Preconditions.validate(this.status == VaccinationStatus.CANCELLED, VaccinationErrorCode.INVALID_STATE_TRANSITION);</span>
+
+<span class="fc" id="L52">        return new Vaccination(this.id, this.petId, this.vaccineName, scheduledDate, null, null,</span>
+<span class="fc" id="L53">                VaccinationStatus.SCHEDULED, this.createdAt, LocalDateTime.now(), this.deletedAt);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

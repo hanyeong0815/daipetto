@@ -1,0 +1,70 @@
+{
+  "id": "UT-01-009",
+  "feature": "UT-01",
+  "api": "GET /api/v1/users/me",
+  "kind": "正常",
+  "viewpoint": "マイページ取得",
+  "condition": "ログイン中の一般ユーザー",
+  "expected": "200、userId・email・nickname・role・statusを返し、パスワードを含まない",
+  "executedAt": "2026-10-23T05:25:59+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/users/me"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": {
+            "userId": 1,
+            "email": "ut-tanaka@daipetto.test",
+            "nickname": "Tanaka",
+            "role": "ROLE_USER",
+            "status": "ACTIVE"
+          },
+          "code": null,
+          "message": null
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "本人の情報",
+      "expected": [
+        1,
+        "ut-tanaka@daipetto.test",
+        "ROLE_USER",
+        "ACTIVE"
+      ],
+      "actual": [
+        1,
+        "ut-tanaka@daipetto.test",
+        "ROLE_USER",
+        "ACTIVE"
+      ],
+      "ok": true
+    },
+    {
+      "name": "パスワードを含まない",
+      "expected": false,
+      "actual": false,
+      "ok": true
+    }
+  ]
+}

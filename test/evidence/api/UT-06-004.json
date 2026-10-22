@@ -1,0 +1,113 @@
+{
+  "id": "UT-06-004",
+  "feature": "UT-06",
+  "api": "POST /api/v1/admin/hospitals/{hospitalId}/admins",
+  "kind": "異常",
+  "viewpoint": "存在しない病院・ユーザー、userIdなし",
+  "condition": "存在しない病院／存在しないユーザー／Request本文が{}",
+  "expected": "404 HOSPITAL-001／404 USER-003／400 VALIDATION-001",
+  "executedAt": "2026-10-23T05:26:12+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/hospitals/99999999/admins",
+        "body": {
+          "userId": 4
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "HOSPITAL-001",
+          "message": "存在しない病院です。"
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/hospitals/1/admins",
+        "body": {
+          "userId": 99999999
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "USER-003",
+          "message": "存在しないユーザーです。"
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/hospitals/1/admins",
+        "body": {}
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "VALIDATION-001",
+          "message": "must not be null"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 404,
+      "actual": 404,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "HOSPITAL-001",
+      "actual": "HOSPITAL-001",
+      "ok": true
+    },
+    {
+      "name": "HTTPステータス",
+      "expected": 404,
+      "actual": 404,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "USER-003",
+      "actual": "USER-003",
+      "ok": true
+    },
+    {
+      "name": "HTTPステータス",
+      "expected": 400,
+      "actual": 400,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "VALIDATION-001",
+      "actual": "VALIDATION-001",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "id": "UT-09-001",
+  "feature": "UT-09",
+  "api": "POST /api/v1/reservations",
+  "kind": "正常",
+  "viewpoint": "予約申請",
+  "condition": "本人のペット・営業中の病院の未来のAVAILABLE枠・メモ",
+  "expected": "201、reservationIdを返し、状態REQUESTED",
+  "executedAt": "2026-10-23T05:26:17+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/reservations",
+        "body": {
+          "petId": 35,
+          "hospitalId": 1,
+          "scheduleId": 44,
+          "memo": "健康診断"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "success": true,
+          "data": {
+            "reservationId": 1,
+            "status": "REQUESTED"
+          },
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "status",
+      "query": "SELECT status FROM reservations WHERE id=1;",
+      "result": "REQUESTED"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 201,
+      "actual": 201,
+      "ok": true
+    },
+    {
+      "name": "状態",
+      "expected": [
+        "REQUESTED",
+        "REQUESTED"
+      ],
+      "actual": [
+        "REQUESTED",
+        "REQUESTED"
+      ],
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReservationPersistenceAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.infrastructure.persistence.reservation</a> &gt; <span class="el_source">ReservationPersistenceAdapter.java</span></div><h1>ReservationPersistenceAdapter.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.infrastructure.persistence.reservation;
+
+import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode;
+import koh.portfolio.springapi.domain.reservation.model.AdminReservationView;
+import koh.portfolio.springapi.domain.reservation.model.Reservation;
+import koh.portfolio.springapi.domain.reservation.model.ReservationStatus;
+import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
+import lombok.RequiredArgsConstructor;
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+@RequiredArgsConstructor
+public class ReservationPersistenceAdapter implements ReservationRepository {
+    private static final String ACTIVE_SCHEDULE_CONSTRAINT = &quot;uq_reservations_active_schedule&quot;;
+
+    private final ReservationJpaRepository reservationJpaRepository;
+    private final ReservationMapper reservationMapper;
+
+    @Override
+    public Reservation save(Reservation reservation) {
+<span class="fc" id="L28">        ReservationEntity reservationEntity = reservationMapper.toEntity(reservation);</span>
+
+        try {
+            // uq_reservations_active_schedule竊늊8竊됮걬�룏�굮�걪�걪�겎濾쒐윥�걲�굥�걼�굙flush�겲�겎烏뚣걝��
+            // commit�셽�겲�겎�걛兩뜰걬�걵�굥�겏SERVER-001�겏�걮�겍鸚뽧겓�눣�겍�걮�겲�걝
+<span class="nc" id="L33">            ReservationEntity savedEntity = reservationJpaRepository.saveAndFlush(reservationEntity);</span>
+
+<span class="nc" id="L35">            return reservationMapper.toDomain(savedEntity);</span>
+<span class="fc" id="L36">        } catch (DataIntegrityViolationException e) {</span>
+            // 雅덄큵�옞�겗訝��꼷�댍榮꾠걽�걨�굮RESERVATION-001�겓鸚됪룢�걲�굥��
+            // 餓뽧겗�빐�릦�㏝걬�룏�겲�겎�뚪뇥筽뉏틛榮꾠�띲겓誤뗣걵�굥�겏�렅�썱�굮�슑�걮�겍�걮�겲�걝
+<span class="fc bfc" id="L39" title="All 2 branches covered.">            if (!isActiveScheduleViolation(e)) {</span>
+<span class="fc" id="L40">                throw e;</span>
+            }
+
+<span class="fc" id="L43">            throw ReservationErrorCode.RESERVATION_DUPLICATED.defaultException(e);</span>
+        }
+    }
+
+    private boolean isActiveScheduleViolation(DataIntegrityViolationException e) {
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">        if (e.getCause() instanceof ConstraintViolationException violation</span>
+<span class="nc bnc" id="L49" title="All 2 branches missed.">                &amp;&amp; ACTIVE_SCHEDULE_CONSTRAINT.equalsIgnoreCase(violation.getConstraintName())) {</span>
+<span class="nc" id="L50">            return true;</span>
+        }
+
+<span class="fc" id="L53">        String message = e.getMostSpecificCause().getMessage();</span>
+
+<span class="pc bpc" id="L55" title="1 of 4 branches missed.">        return message != null &amp;&amp; message.toLowerCase().contains(ACTIVE_SCHEDULE_CONSTRAINT);</span>
+    }
+    @Override
+    public List&lt;AdminReservationView&gt; findAllForAdmin(Long hospitalId, ReservationStatus status, LocalDate date) {
+<span class="fc" id="L59">        return reservationJpaRepository.findAllForAdmin(hospitalId, status, date);</span>
+    }
+
+
+    @Override
+    public boolean updateStatus(Long reservationId, ReservationStatus expectedStatus, ReservationStatus newStatus, LocalDateTime updatedAt) {
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        return reservationJpaRepository.updateStatus(reservationId, expectedStatus, newStatus, updatedAt) == 1;</span>
+    }
+
+    @Override
+    public Optional&lt;Reservation&gt; findById(Long id) {
+<span class="nc" id="L70">        return reservationJpaRepository.findByIdAndDeletedAtIsNull(id)</span>
+<span class="nc" id="L71">                .map(reservationMapper::toDomain);</span>
+    }
+
+    @Override
+    public List&lt;Reservation&gt; findAllByUserId(Long userId) {
+<span class="nc" id="L76">        return reservationJpaRepository.findAllByUserIdAndDeletedAtIsNull(userId)</span>
+<span class="nc" id="L77">                .stream().map(reservationMapper::toDomain).toList();</span>
+    }
+
+    @Override
+    public boolean existsActiveByScheduleId(Long scheduleId) {
+<span class="nc" id="L82">        return reservationJpaRepository.existsByScheduleIdAndStatusInAndDeletedAtIsNull(</span>
+<span class="nc" id="L83">                scheduleId, List.of(ReservationStatus.REQUESTED, ReservationStatus.APPROVED)</span>
+        );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,89 @@
+{
+  "id": "UT-08-004",
+  "feature": "UT-08",
+  "api": "PATCH .../schedules/{scheduleId}/block, /unblock",
+  "kind": "正常",
+  "viewpoint": "BLOCKED・AVAILABLEの切り替え",
+  "condition": "AVAILABLEの予約枠",
+  "expected": "blockで200・BLOCKED、unblockで200・AVAILABLE",
+  "executedAt": "2026-10-23T05:26:15+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "vet",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/hospitals/1/schedules/5/block"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": null,
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "status",
+      "query": "SELECT status FROM hospital_schedules WHERE id=5;",
+      "result": "BLOCKED"
+    },
+    {
+      "type": "http",
+      "actor": "vet",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/hospitals/1/schedules/5/unblock"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": null,
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "status",
+      "query": "SELECT status FROM hospital_schedules WHERE id=5;",
+      "result": "AVAILABLE"
+    }
+  ],
+  "checks": [
+    {
+      "name": "block",
+      "expected": [
+        200,
+        "BLOCKED"
+      ],
+      "actual": [
+        200,
+        "BLOCKED"
+      ],
+      "ok": true
+    },
+    {
+      "name": "unblock",
+      "expected": [
+        200,
+        "AVAILABLE"
+      ],
+      "actual": [
+        200,
+        "AVAILABLE"
+      ],
+      "ok": true
+    }
+  ]
+}

@@ -260,4 +260,18 @@ class PetControllerTest {
 
         verify(deletePetUseCase).execute(1L, 1L);
     }
+
+    @Test
+    @DisplayName("POST /api/v1/pets - Content-Typeがtext/plainの場合は415（COMMON-003）で、登録しない")
+    void create_pet_fail_when_content_type_unsupported() throws Exception {
+        // when & then
+        mockMvc.perform(post("/api/v1/pets")
+                        .principal(auth(1L))
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("{\"name\":\"Momo\",\"petType\":\"CAT\"}"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.code").value("COMMON-003"));
+
+        verifyNoInteractions(createPetUseCase);
+    }
 }

@@ -1,0 +1,9 @@
+-- slots per month for hospital 1 (after 生成する for 2026-12, then a supplementary run for 2027-01)
+  month  | slots | days | blocked 
+---------+-------+------+---------
+ 2026-10 |   120 |    8 |      12
+ 2026-11 |   402 |   25 |      42
+ 2026-12 |   438 |   27 |      46
+ 2027-01 |   408 |   26 |      42
+(4 rows)
+

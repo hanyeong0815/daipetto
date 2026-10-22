@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HospitalScheduleAdminController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.presentation.hospital</a> &gt; <span class="el_source">HospitalScheduleAdminController.java</span></div><h1>HospitalScheduleAdminController.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.presentation.hospital;
+
+import jakarta.validation.Valid;
+import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.CreateHospitalScheduleRequest;
+import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.CreateHospitalScheduleResponse;
+import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.GenerateHospitalSchedulesRequest;
+import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.GenerateHospitalSchedulesResponse;
+import koh.portfolio.springapi.application.hospital.usecase.BlockHospitalScheduleUseCase;
+import koh.portfolio.springapi.application.hospital.usecase.CreateHospitalScheduleUseCase;
+import koh.portfolio.springapi.application.hospital.usecase.GenerateHospitalSchedulesUseCase;
+import koh.portfolio.springapi.application.hospital.usecase.UnblockHospitalScheduleUseCase;
+import koh.portfolio.springapi.common.response.ApiResponse;
+import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping(&quot;/api/v1/admin/hospitals&quot;)
+@RequiredArgsConstructor
+public class HospitalScheduleAdminController {
+    private final CreateHospitalScheduleUseCase createHospitalScheduleUseCase;
+    private final BlockHospitalScheduleUseCase blockHospitalScheduleUseCase;
+    private final UnblockHospitalScheduleUseCase unblockHospitalScheduleUseCase;
+    private final GenerateHospitalSchedulesUseCase generateHospitalSchedulesUseCase;
+
+    @PostMapping(&quot;{hospitalId}/schedules&quot;)
+    @PreAuthorize(&quot;hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;CreateHospitalScheduleResponse&gt;&gt; createHospitalSchedule(
+            Authentication authentication,
+            @PathVariable Long hospitalId,
+            @RequestBody @Valid CreateHospitalScheduleRequest request
+    ) {
+<span class="fc" id="L37">        CreateHospitalScheduleResponse createdHospitalScheduleId = createHospitalScheduleUseCase.execute(extractUserId(authentication), hospitalId, request);</span>
+
+<span class="fc" id="L39">        return ResponseEntity</span>
+<span class="fc" id="L40">                .status(HttpStatus.CREATED)</span>
+<span class="fc" id="L41">                .body(ApiResponse.success(createdHospitalScheduleId));</span>
+    }
+
+    @PostMapping(&quot;/{hospitalId}/schedules/generate&quot;)
+    @PreAuthorize(&quot;hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;GenerateHospitalSchedulesResponse&gt;&gt; generateHospitalSchedules(
+            Authentication authentication,
+            @PathVariable Long hospitalId,
+            @RequestBody @Valid GenerateHospitalSchedulesRequest request
+    ) {
+<span class="fc" id="L51">        return ResponseEntity.ok(ApiResponse.success(</span>
+<span class="fc" id="L52">                generateHospitalSchedulesUseCase.execute(extractUserId(authentication), hospitalId, request.month())));</span>
+    }
+
+    @PatchMapping(&quot;/{hospitalId}/schedules/{scheduleId}/block&quot;)
+    @PreAuthorize(&quot;hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;Void&gt;&gt; blockHospitalSchedule(
+            Authentication authentication,
+            @PathVariable Long hospitalId,
+            @PathVariable Long scheduleId
+    ) {
+<span class="fc" id="L62">        blockHospitalScheduleUseCase.execute(extractUserId(authentication), hospitalId, scheduleId);</span>
+
+<span class="fc" id="L64">        return ResponseEntity.ok(ApiResponse.success(null));</span>
+    }
+
+    @PatchMapping(&quot;/{hospitalId}/schedules/{scheduleId}/unblock&quot;)
+    @PreAuthorize(&quot;hasAnyAuthority('ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN')&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;Void&gt;&gt; unblockHospitalSchedule(
+            Authentication authentication,
+            @PathVariable Long hospitalId,
+            @PathVariable Long scheduleId
+    ) {
+<span class="fc" id="L74">        unblockHospitalScheduleUseCase.execute(extractUserId(authentication), hospitalId, scheduleId);</span>
+
+<span class="fc" id="L76">        return ResponseEntity.ok(ApiResponse.success(null));</span>
+    }
+
+    private Long extractUserId(Authentication authentication) {
+<span class="pc bpc" id="L80" title="2 of 4 branches missed.">        if (authentication == null || !(authentication.getPrincipal() instanceof Long userId)) {</span>
+<span class="nc" id="L81">            throw AuthErrorCode.AUTH_FAILED.defaultException();</span>
+        }
+<span class="fc" id="L83">        return userId;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

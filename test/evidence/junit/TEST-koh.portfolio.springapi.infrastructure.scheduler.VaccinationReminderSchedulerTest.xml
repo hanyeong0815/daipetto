@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="koh.portfolio.springapi.infrastructure.scheduler.VaccinationReminderSchedulerTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-10-22T20:18:05.868Z" hostname="HOME-PC" time="0.042">
+  <properties/>
+  <testcase name="remind実行時、JSTの当日を指定してユースケースを1回だけ呼び出す" classname="koh.portfolio.springapi.infrastructure.scheduler.VaccinationReminderSchedulerTest" time="0.041"/>
+  <testcase name="remindは毎日9時（JST）にスケジュールされる" classname="koh.portfolio.springapi.infrastructure.scheduler.VaccinationReminderSchedulerTest" time="0.0"/>
+  <system-out><![CDATA[2026-10-23T05:18:05.909+09:00  INFO 28624 --- [    Test worker] k.p.s.i.s.VaccinationReminderScheduler   : ワクチン接種リマインダ?通知を0件作成しました
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

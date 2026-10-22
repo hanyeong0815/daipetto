@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="koh.portfolio.springapi.presentation.hospital.HospitalBusinessHoursAdminControllerTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-10-22T20:18:08.665Z" hostname="HOME-PC" time="0.04">
+  <properties/>
+  <testcase name="DELETE /api/v1/admin/hospitals/{hospitalId}/business-hours/{businessHoursId} - 営業時間削除成功" classname="koh.portfolio.springapi.presentation.hospital.HospitalBusinessHoursAdminControllerTest" time="0.006"/>
+  <testcase name="PATCH /api/v1/admin/hospitals/{hospitalId}/business-hours/{businessHoursId} - 営業時間更新成功" classname="koh.portfolio.springapi.presentation.hospital.HospitalBusinessHoursAdminControllerTest" time="0.01"/>
+  <testcase name="POST /api/v1/admin/hospitals/{hospitalId}/business-hours - 営業時間登録成功" classname="koh.portfolio.springapi.presentation.hospital.HospitalBusinessHoursAdminControllerTest" time="0.017"/>
+  <testcase name="POST /api/v1/admin/hospitals/{hospitalId}/business-hours - dayOfWeekがnullの場合Validation失敗" classname="koh.portfolio.springapi.presentation.hospital.HospitalBusinessHoursAdminControllerTest" time="0.006"/>
+  <system-out><![CDATA[2026-10-23T05:18:08.254+09:00  INFO 28624 --- [    Test worker] t.c.s.AnnotationConfigContextLoaderUtils : Could not detect default configuration classes for test class [koh.portfolio.springapi.presentation.hospital.HospitalBusinessHoursAdminControllerTest]: HospitalBusinessHoursAdminControllerTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+2026-10-23T05:18:08.262+09:00  INFO 28624 --- [    Test worker] .b.t.c.SpringBootTestContextBootstrapper : Found @SpringBootConfiguration koh.portfolio.springapi.SpringApiApplication for test class koh.portfolio.springapi.presentation.hospital.HospitalBusinessHoursAdminControllerTest
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::               (v3.3.13)
+
+2026-10-23T05:18:08.278+09:00  INFO 28624 --- [    Test worker] HospitalBusinessHoursAdminControllerTest : Starting HospitalBusinessHoursAdminControllerTest using Java 17.0.19 with PID 28624 (started by yoeha in E:\workspace\daipetto\spring-api)
+2026-10-23T05:18:08.279+09:00  INFO 28624 --- [    Test worker] HospitalBusinessHoursAdminControllerTest : No active profile set, falling back to 1 default profile: "default"
+2026-10-23T05:18:08.652+09:00  WARN 28624 --- [    Test worker] .s.s.UserDetailsServiceAutoConfiguration : 
+
+Using generated security password: d9ca6192-4f53-4615-8297-472912ce5b13
+
+This generated password is for development use only. Your security configuration must be updated before running your application in production.
+
+2026-10-23T05:18:08.653+09:00  INFO 28624 --- [    Test worker] r$InitializeUserDetailsManagerConfigurer : Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager
+2026-10-23T05:18:08.661+09:00  INFO 28624 --- [    Test worker] o.s.b.t.m.w.SpringBootMockServletContext : Initializing Spring TestDispatcherServlet ''
+2026-10-23T05:18:08.661+09:00  INFO 28624 --- [    Test worker] o.s.t.web.servlet.TestDispatcherServlet  : Initializing Servlet ''
+2026-10-23T05:18:08.661+09:00  INFO 28624 --- [    Test worker] o.s.t.web.servlet.TestDispatcherServlet  : Completed initialization in 0 ms
+2026-10-23T05:18:08.664+09:00  INFO 28624 --- [    Test worker] HospitalBusinessHoursAdminControllerTest : Started HospitalBusinessHoursAdminControllerTest in 0.4 seconds (process running for 30.88)
+2026-10-23T05:18:08.703+09:00  WARN 28624 --- [    Test worker] k.p.s.c.e.GlobalExceptionHandler         : Validation exception occurred. message=must not be null
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

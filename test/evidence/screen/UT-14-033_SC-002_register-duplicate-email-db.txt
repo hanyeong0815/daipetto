@@ -1,0 +1,6 @@
+select id, email, nickname, role, status from users where email='screen-tanaka@daipetto.test';
+1|screen-tanaka@daipetto.test|田中|ROLE_USER|ACTIVE
+select count(*) from users where email='screen-tanaka@daipetto.test';
+1
+select count(*) from users where nickname='重複テスト';
+0

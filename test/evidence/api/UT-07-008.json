@@ -1,0 +1,56 @@
+{
+  "id": "UT-07-008",
+  "feature": "UT-07",
+  "api": "POST /api/v1/admin/hospitals/{hospitalId}/business-hours",
+  "kind": "異常",
+  "viewpoint": "紐付いていない病院の診療時間",
+  "condition": "病院管理者が紐付いていない病院",
+  "expected": "403 HOSPITAL-005",
+  "executedAt": "2026-10-23T05:26:14+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "vet",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/hospitals/2/business-hours",
+        "body": {
+          "dayOfWeek": "SUNDAY",
+          "openTime": "09:00",
+          "closeTime": "18:00",
+          "breakStartTime": "12:00",
+          "breakEndTime": "13:00",
+          "slotDurationMinutes": 30
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "HOSPITAL-005",
+          "message": "管理対象外の病院です。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 403,
+      "actual": 403,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "HOSPITAL-005",
+      "actual": "HOSPITAL-005",
+      "ok": true
+    }
+  ]
+}

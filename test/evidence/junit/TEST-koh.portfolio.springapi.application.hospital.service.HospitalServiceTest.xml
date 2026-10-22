@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="koh.portfolio.springapi.application.hospital.service.HospitalServiceTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-10-22T20:17:57.118Z" hostname="HOME-PC" time="0.023">
+  <properties/>
+  <testcase name="存在しない病院停止時、HOSPITAL-001例外が発生する" classname="koh.portfolio.springapi.application.hospital.service.HospitalServiceTest" time="0.002"/>
+  <testcase name="病院一覧取得成功時、keyword・areaをリポジトリに渡し一覧を返却する" classname="koh.portfolio.springapi.application.hospital.service.HospitalServiceTest" time="0.002"/>
+  <testcase name="管理対象外の病院の情報更新はHOSPITAL-005となり、読み取り・更新を行わない" classname="koh.portfolio.springapi.application.hospital.service.HospitalServiceTest" time="0.002"/>
+  <testcase name="存在しない病院の詳細取得時、HOSPITAL-001例外が発生する" classname="koh.portfolio.springapi.application.hospital.service.HospitalServiceTest" time="0.002"/>
+  <testcase name="病院停止成功時、status列だけをSUSPENDEDに更新し情報列は書き込まない" classname="koh.portfolio.springapi.application.hospital.service.HospitalServiceTest" time="0.001"/>
+  <testcase name="存在しない病院更新時、HOSPITAL-001例外が発生する" classname="koh.portfolio.springapi.application.hospital.service.HospitalServiceTest" time="0.003"/>
+  <testcase name="病院詳細取得成功時、病院情報を返却する" classname="koh.portfolio.springapi.application.hospital.service.HospitalServiceTest" time="0.001"/>
+  <testcase name="病院登録成功時、登録されたhospitalIdを返却する" classname="koh.portfolio.springapi.application.hospital.service.HospitalServiceTest" time="0.003"/>
+  <testcase name="読み取り後に病院が無くなっていた場合、情報更新は0件となりHOSPITAL-001例外が発生する" classname="koh.portfolio.springapi.application.hospital.service.HospitalServiceTest" time="0.002"/>
+  <testcase name="病院情報更新成功時、情報列だけを更新しstatusは書き込まない" classname="koh.portfolio.springapi.application.hospital.service.HospitalServiceTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

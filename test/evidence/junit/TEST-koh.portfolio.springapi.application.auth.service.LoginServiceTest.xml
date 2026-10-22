@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="koh.portfolio.springapi.application.auth.service.LoginServiceTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-22T20:17:56.205Z" hostname="HOME-PC" time="0.249">
+  <properties/>
+  <testcase name="最初の読み取り後に停止が確定した場合、排他取得後の再確認でAUTH-002となりトークンを発行しない（REVIEW-001 R-01）" classname="koh.portfolio.springapi.application.auth.service.LoginServiceTest" time="0.224"/>
+  <testcase name="ログイン成功時、Access Token・Refresh Token・Roleを返却する" classname="koh.portfolio.springapi.application.auth.service.LoginServiceTest" time="0.008"/>
+  <testcase name="停止中のユーザーはログインできない" classname="koh.portfolio.springapi.application.auth.service.LoginServiceTest" time="0.003"/>
+  <testcase name="存在しないメールアドレスの場合、AUTH-001例外が発生する" classname="koh.portfolio.springapi.application.auth.service.LoginServiceTest" time="0.003"/>
+  <testcase name="パスワードが一致しない場合、AUTH-001例外が発生する" classname="koh.portfolio.springapi.application.auth.service.LoginServiceTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

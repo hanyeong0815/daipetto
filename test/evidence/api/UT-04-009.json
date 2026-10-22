@@ -1,0 +1,65 @@
+{
+  "id": "UT-04-009",
+  "feature": "UT-04",
+  "api": "PATCH /api/v1/vaccinations/{vaccinationId}/cancel",
+  "kind": "異常",
+  "viewpoint": "不正な状態遷移（完了済みの中止）",
+  "condition": "COMPLETEDの予定",
+  "expected": "409 VACCINATION-003",
+  "executedAt": "2026-10-23T05:26:09+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/vaccinations/9/complete"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": null,
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/vaccinations/9/cancel"
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "VACCINATION-003",
+          "message": "現在の状態では変更できません。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 409,
+      "actual": 409,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "VACCINATION-003",
+      "actual": "VACCINATION-003",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "id": "UT-09-006",
+  "feature": "UT-09",
+  "api": "POST /api/v1/reservations",
+  "kind": "異常",
+  "viewpoint": "病院に属さない予約枠",
+  "condition": "病院2の予約枠を病院1として申請",
+  "expected": "404 RESERVATION-002",
+  "executedAt": "2026-10-23T05:26:17+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/reservations",
+        "body": {
+          "petId": 41,
+          "hospitalId": 1,
+          "scheduleId": 49
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "RESERVATION-002",
+          "message": "存在しない予約枠、または指定した病院に属さない予約枠です。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 404,
+      "actual": 404,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "RESERVATION-002",
+      "actual": "RESERVATION-002",
+      "ok": true
+    }
+  ]
+}

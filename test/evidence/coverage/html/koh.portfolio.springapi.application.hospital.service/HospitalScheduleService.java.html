@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HospitalScheduleService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.application.hospital.service</a> &gt; <span class="el_source">HospitalScheduleService.java</span></div><h1>HospitalScheduleService.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.application.hospital.service;
+
+import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.CreateHospitalScheduleRequest;
+import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.CreateHospitalScheduleResponse;
+import koh.portfolio.springapi.application.hospital.dto.HospitalScheduleDto.HospitalScheduleResponse;
+import koh.portfolio.springapi.application.hospital.usecase.CreateHospitalScheduleUseCase;
+import koh.portfolio.springapi.application.hospital.usecase.GetHospitalScheduleListUseCase;
+import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
+import koh.portfolio.springapi.domain.hospital.model.HospitalSchedule;
+import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
+import koh.portfolio.springapi.domain.hospital.port.HospitalScheduleRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+import static koh.portfolio.springapi.common.exception.Preconditions.validate;
+
+@Service
+@RequiredArgsConstructor
+public class HospitalScheduleService implements GetHospitalScheduleListUseCase, CreateHospitalScheduleUseCase {
+    private final HospitalAccessChecker hospitalAccessChecker;
+    private final HospitalRepository hospitalRepository;
+    private final HospitalScheduleRepository hospitalScheduleRepository;
+
+    @Override
+    public List&lt;HospitalScheduleResponse&gt; execute(Long hospitalId) {
+<span class="fc" id="L28">        validate(hospitalRepository.findById(hospitalId).isPresent(), HospitalErrorCode.HOSPITAL_NOT_FOUND);</span>
+
+<span class="fc" id="L30">        List&lt;HospitalSchedule&gt; schedules = hospitalScheduleRepository.findAllByHospitalId(hospitalId);</span>
+
+<span class="fc" id="L32">        return schedules.stream()</span>
+<span class="fc" id="L33">                .map(</span>
+<span class="fc" id="L34">                        schedule -&gt; HospitalScheduleResponse.builder()</span>
+<span class="fc" id="L35">                                .scheduleId(schedule.getId())</span>
+<span class="fc" id="L36">                                .availableDate(schedule.getAvailableDate())</span>
+<span class="fc" id="L37">                                .startTime(schedule.getStartTime())</span>
+<span class="fc" id="L38">                                .endTime(schedule.getEndTime())</span>
+<span class="fc" id="L39">                                .status(schedule.getStatus())</span>
+<span class="fc" id="L40">                                .build()</span>
+                )
+<span class="fc" id="L42">                .toList();</span>
+    }
+
+    @Override
+    public CreateHospitalScheduleResponse execute(Long userId, Long hospitalId, CreateHospitalScheduleRequest request) {
+<span class="fc" id="L47">        hospitalAccessChecker.checkManageable(userId, hospitalId);</span>
+
+<span class="fc" id="L49">        validate(</span>
+<span class="fc" id="L50">                hospitalRepository.existsById(hospitalId),</span>
+                HospitalErrorCode.HOSPITAL_NOT_FOUND
+        );
+
+<span class="fc" id="L54">        HospitalSchedule createHospitalSchedule = HospitalSchedule.create(</span>
+                hospitalId,
+<span class="fc" id="L56">                request.availableDate(),</span>
+<span class="fc" id="L57">                request.startTime(),</span>
+<span class="fc" id="L58">                request.endTime()</span>
+        );
+
+<span class="fc" id="L61">        HospitalSchedule savedHospitalSchedule = hospitalScheduleRepository.save(createHospitalSchedule);</span>
+
+<span class="fc" id="L63">        return CreateHospitalScheduleResponse.builder()</span>
+<span class="fc" id="L64">                .scheduleId(savedHospitalSchedule.getId())</span>
+<span class="fc" id="L65">                .build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

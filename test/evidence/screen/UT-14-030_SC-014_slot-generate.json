@@ -1,0 +1,13 @@
+{
+  "id": "UT-14-030",
+  "screen": "SC-014 病院管理（病院管理者）",
+  "operation": "さくら院長で /admin/hospitals を開き、予約枠の自動生成で月を 2026-12 にして「生成する」を押す",
+  "observed": {
+    "initialScreen": "管理する病院=さくら動物病院が自動選択。営業時間: 月〜金 09:00-18:00 / 土 09:00-12:00 / 日 休診。「予約枠の自動生成」セクションあり",
+    "request": "POST /api/v1/admin/hospitals/1/schedules/generate → 200、続けて GET /api/v1/hospitals/1/schedules → 200",
+    "db": "hospital_schedules(hospital_id=1) の 2026-12 が 0件 → 438件（27日分、うち BLOCKED 46件=休憩時間）。10月120件・11月402件は変化なし",
+    "successMessage": "成功メッセージはページ最上部に2秒だけ表示されるフラッシュで、2026-12 の実行時は画面が下にスクロールされており、スクリーンショットに写らなかった。同じ画面でフラッシュを30秒に延長（ブラウザ側 setTimeout を一時パッチ、製品コード変更なし）して補足実行した 2027-01 では「2027-01の予約枠を408件作成しました（26日分）」が表示された（UT-14-030_SC-014_slot-generate-success-message.jpg）",
+    "note": "補足実行の 2027-01 分（408件）もスクラッチDBに作成されている"
+  },
+  "verdict": "OK"
+}

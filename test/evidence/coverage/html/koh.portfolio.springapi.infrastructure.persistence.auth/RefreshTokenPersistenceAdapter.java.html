@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RefreshTokenPersistenceAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.infrastructure.persistence.auth</a> &gt; <span class="el_source">RefreshTokenPersistenceAdapter.java</span></div><h1>RefreshTokenPersistenceAdapter.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.infrastructure.persistence.auth;
+
+import koh.portfolio.springapi.domain.auth.model.RefreshToken;
+import koh.portfolio.springapi.domain.auth.port.RefreshTokenRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+@RequiredArgsConstructor
+public class RefreshTokenPersistenceAdapter implements RefreshTokenRepository {
+    private final RefreshTokenJpaRepository refreshTokenJpaRepository;
+    private final RefreshTokenMapper refreshTokenMapper;
+
+    @Override
+    public RefreshToken save(RefreshToken refreshToken) {
+<span class="fc" id="L18">        RefreshTokenEntity savedEntity = refreshTokenJpaRepository.save(refreshTokenMapper.toEntity(refreshToken));</span>
+
+<span class="fc" id="L20">        return refreshTokenMapper.toDomain(savedEntity);</span>
+    }
+
+    @Override
+    public Optional&lt;RefreshToken&gt; findByToken(String token) {
+<span class="nc" id="L25">        return refreshTokenJpaRepository.findByToken(token)</span>
+<span class="nc" id="L26">                .map(refreshTokenMapper::toDomain);</span>
+    }
+
+    @Override
+    public int revokeAllByUserId(Long userId) {
+<span class="fc" id="L31">        return refreshTokenJpaRepository.revokeAllActiveTokensByUserId(userId);</span>
+    }
+
+    @Override
+    public int revokeByToken(String token) {
+<span class="fc" id="L36">        return refreshTokenJpaRepository.revokeByToken(token);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,76 @@
+{
+  "id": "UT-02-006",
+  "feature": "UT-02",
+  "api": "GET /api/v1/pets",
+  "kind": "正常",
+  "viewpoint": "ペット一覧",
+  "condition": "本人と他人がそれぞれペットを持つ",
+  "expected": "200、本人のペットだけを返す（他人のペットを含まない）",
+  "executedAt": "2026-10-23T05:26:05+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/pets"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": [
+            {
+              "id": 1,
+              "name": "Momo",
+              "petType": "CAT",
+              "weight": 4.25,
+              "breed": "スコティッシュフォールド"
+            },
+            {
+              "id": 2,
+              "name": "Kuro",
+              "petType": "DOG",
+              "weight": null,
+              "breed": null
+            },
+            {
+              "id": 3,
+              "name": "Mine",
+              "petType": "CAT",
+              "weight": null,
+              "breed": null
+            }
+          ],
+          "code": null,
+          "message": null
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "本人のペットを含む",
+      "expected": true,
+      "actual": true,
+      "ok": true
+    },
+    {
+      "name": "他人のペットを含まない",
+      "expected": false,
+      "actual": false,
+      "ok": true
+    }
+  ]
+}

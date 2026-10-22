@@ -1,0 +1,60 @@
+{
+  "id": "UT-03-011",
+  "feature": "UT-03",
+  "api": "DELETE /api/v1/health-records/{healthRecordId}",
+  "kind": "異常",
+  "viewpoint": "他人の記録の削除",
+  "condition": "他のユーザーのペットの記録",
+  "expected": "403 HEALTH-002、削除されない",
+  "executedAt": "2026-10-23T05:26:07+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/health-records/9"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "HEALTH-002",
+          "message": "存在しないペット、または他のユーザーのペットです。"
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "deleted_at",
+      "query": "SELECT (deleted_at IS NULL)::text FROM health_records WHERE id=9;",
+      "result": "true"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 403,
+      "actual": 403,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "HEALTH-002",
+      "actual": "HEALTH-002",
+      "ok": true
+    },
+    {
+      "name": "削除されない",
+      "expected": "true",
+      "actual": "true",
+      "ok": true
+    }
+  ]
+}

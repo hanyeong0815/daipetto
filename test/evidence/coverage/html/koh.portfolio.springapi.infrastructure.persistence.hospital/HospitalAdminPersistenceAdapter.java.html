@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HospitalAdminPersistenceAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.infrastructure.persistence.hospital</a> &gt; <span class="el_source">HospitalAdminPersistenceAdapter.java</span></div><h1>HospitalAdminPersistenceAdapter.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.infrastructure.persistence.hospital;
+
+import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
+import koh.portfolio.springapi.domain.hospital.model.HospitalAdmin;
+import koh.portfolio.springapi.domain.hospital.model.HospitalAdminSummary;
+import koh.portfolio.springapi.domain.hospital.port.HospitalAdminRepository;
+import lombok.RequiredArgsConstructor;
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+@RequiredArgsConstructor
+public class HospitalAdminPersistenceAdapter implements HospitalAdminRepository {
+    private static final String UNIQUE_LINK_CONSTRAINT = &quot;uq_hospital_admins_user_hospital&quot;;
+
+    private final HospitalAdminJpaRepository hospitalAdminJpaRepository;
+    private final HospitalAdminMapper hospitalAdminMapper;
+
+    @Override
+    public boolean exists(Long userId, Long hospitalId) {
+<span class="fc" id="L24">        return hospitalAdminJpaRepository.existsByUserIdAndHospitalId(userId, hospitalId);</span>
+    }
+
+    @Override
+    public HospitalAdmin save(HospitalAdmin hospitalAdmin) {
+        try {
+            // 訝��꼷�댍榮꾦걬�룏�굮�걪�걪�겎濾쒐윥�걲�굥�걼�굙flush�겲�겎烏뚣걝竊늓ommit�셽�걽�겏SERVER-001�겓�겒�굥竊�
+<span class="fc" id="L31">            return hospitalAdminMapper.toDomain(</span>
+<span class="fc" id="L32">                    hospitalAdminJpaRepository.saveAndFlush(hospitalAdminMapper.toEntity(hospitalAdmin)));</span>
+<span class="fc" id="L33">        } catch (DataIntegrityViolationException e) {</span>
+            // 榮먧퍡�걨�겗訝��꼷�댍榮꾠걽�걨�굮�뇥筽뉎겏�걮�겍�돮�걝竊뉶K�걬�룏�겒�겑�겗�렅�썱�굮�슑�걬�겒�걚竊�
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">            if (!isUniqueLinkViolation(e)) {</span>
+<span class="nc" id="L36">                throw e;</span>
+            }
+<span class="fc" id="L38">            throw HospitalErrorCode.HOSPITAL_ADMIN_DUPLICATED.defaultException(e);</span>
+        }
+    }
+
+    private boolean isUniqueLinkViolation(DataIntegrityViolationException e) {
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">        if (e.getCause() instanceof ConstraintViolationException violation</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">                &amp;&amp; UNIQUE_LINK_CONSTRAINT.equalsIgnoreCase(violation.getConstraintName())) {</span>
+<span class="nc" id="L45">            return true;</span>
+        }
+<span class="fc" id="L47">        String message = e.getMostSpecificCause().getMessage();</span>
+<span class="pc bpc" id="L48" title="2 of 4 branches missed.">        return message != null &amp;&amp; message.toLowerCase().contains(UNIQUE_LINK_CONSTRAINT);</span>
+    }
+
+    @Override
+    public boolean delete(Long userId, Long hospitalId) {
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        return hospitalAdminJpaRepository.deleteLink(userId, hospitalId) == 1;</span>
+    }
+
+    @Override
+    public void deleteAllByUserId(Long userId) {
+<span class="fc" id="L58">        hospitalAdminJpaRepository.deleteAllByUser(userId);</span>
+<span class="fc" id="L59">    }</span>
+
+    @Override
+    public List&lt;Long&gt; findHospitalIdsByUserId(Long userId) {
+<span class="fc" id="L63">        return hospitalAdminJpaRepository.findHospitalIdsByUserId(userId);</span>
+    }
+
+    @Override
+    public List&lt;HospitalAdminSummary&gt; findAdminsByHospitalId(Long hospitalId) {
+<span class="fc" id="L68">        return hospitalAdminJpaRepository.findAdminsByHospitalId(hospitalId);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

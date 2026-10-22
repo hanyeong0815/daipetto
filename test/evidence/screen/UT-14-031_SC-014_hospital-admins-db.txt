@@ -1,0 +1,5 @@
+ hospital_id |      name      |  nickname  |          email           
+-------------+----------------+------------+--------------------------
+           1 | さくら動物病院 | さくら院長 | screen-vet@daipetto.test
+(1 row)
+

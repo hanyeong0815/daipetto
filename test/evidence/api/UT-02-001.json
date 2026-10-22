@@ -1,0 +1,72 @@
+{
+  "id": "UT-02-001",
+  "feature": "UT-02",
+  "api": "POST /api/v1/pets",
+  "kind": "正常",
+  "viewpoint": "ペット登録（全項目）",
+  "condition": "名前・種類・誕生日・性別・体重・品種・去勢/避妊・マイクロチップ番号",
+  "expected": "201、petIdを返し、全項目が保存される",
+  "executedAt": "2026-10-23T05:26:04+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/pets",
+        "body": {
+          "name": "Momo",
+          "petType": "CAT",
+          "birthDate": "2022-04-01",
+          "gender": "FEMALE",
+          "weight": 4.25,
+          "breed": "スコティッシュフォールド",
+          "neutered": true,
+          "microchipNumber": "392141000123456"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "success": true,
+          "data": {
+            "petId": 1
+          },
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "保存内容",
+      "query": "SELECT name||','||pet_type||','||birth_date||','||gender||','||weight||','||breed||','||neutered||','||microchip_number FROM pets WHERE id=1;",
+      "result": "Momo,CAT,2022-04-01,FEMALE,4.25,スコティッシュフォールド,true,392141000123456"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 201,
+      "actual": 201,
+      "ok": true
+    },
+    {
+      "name": "petId",
+      "expected": "数値のID",
+      "actual": 1,
+      "ok": true
+    },
+    {
+      "name": "保存内容",
+      "expected": "Momo,CAT,2022-04-01,FEMALE,4.25,スコティッシュフォールド,true,392141000123456",
+      "actual": "Momo,CAT,2022-04-01,FEMALE,4.25,スコティッシュフォールド,true,392141000123456",
+      "ok": true
+    }
+  ]
+}

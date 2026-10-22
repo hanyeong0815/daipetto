@@ -1,0 +1,62 @@
+{
+  "id": "UT-13-005",
+  "feature": "UT-13",
+  "api": "DELETE /api/v1/hospitals（代表）",
+  "kind": "異常",
+  "viewpoint": "許可されていないHTTPメソッド",
+  "condition": "定義されていないメソッド（DELETE /api/v1/hospitals）",
+  "expected": "405 COMMON-002（共通エラー形式。500にしない）",
+  "executedAt": "2026-10-23T05:26:27+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/hospitals"
+      },
+      "response": {
+        "status": 405,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "COMMON-002",
+          "message": "許可されていないHTTPメソッドです。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 405,
+      "actual": 405,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "COMMON-002",
+      "actual": "COMMON-002",
+      "ok": true
+    },
+    {
+      "name": "共通エラー形式",
+      "expected": [
+        false,
+        null,
+        "string"
+      ],
+      "actual": [
+        false,
+        null,
+        "string"
+      ],
+      "ok": true
+    }
+  ]
+}

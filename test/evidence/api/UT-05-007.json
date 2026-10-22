@@ -1,0 +1,59 @@
+{
+  "id": "UT-05-007",
+  "feature": "UT-05",
+  "api": "PATCH /api/v1/admin/hospitals/{hospitalId}",
+  "kind": "正常",
+  "viewpoint": "病院更新（紐付いた病院管理者）",
+  "condition": "病院管理者が紐付いた病院の名前・住所・電話番号を変更",
+  "expected": "200、情報列だけが更新され、状態は変わらない",
+  "executedAt": "2026-10-23T05:26:10+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "vet",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/hospitals/7",
+        "body": {
+          "name": "更新後動物病院",
+          "address": "東京都港区",
+          "phoneNumber": "03-0000-0000"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": null,
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "更新後",
+      "query": "SELECT name||','||address||','||phone_number||','||status FROM hospitals WHERE id=7;",
+      "result": "更新後動物病院,東京都港区,03-0000-0000,ACTIVE"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "更新後",
+      "expected": "更新後動物病院,東京都港区,03-0000-0000,ACTIVE",
+      "actual": "更新後動物病院,東京都港区,03-0000-0000,ACTIVE",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "id": "UT-06-002",
+  "feature": "UT-06",
+  "api": "POST /api/v1/admin/hospitals/{hospitalId}/admins",
+  "kind": "異常",
+  "viewpoint": "紐付けの重複",
+  "condition": "既に紐付いているユーザー",
+  "expected": "409 HOSPITAL-007",
+  "executedAt": "2026-10-23T05:26:12+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/hospitals/1/admins",
+        "body": {
+          "userId": 3
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "HOSPITAL-007",
+          "message": "既に紐付けられている病院管理者です。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 409,
+      "actual": 409,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "HOSPITAL-007",
+      "actual": "HOSPITAL-007",
+      "ok": true
+    }
+  ]
+}

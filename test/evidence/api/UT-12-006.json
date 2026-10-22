@@ -1,0 +1,77 @@
+{
+  "id": "UT-12-006",
+  "feature": "UT-12",
+  "api": "GET /api/v1/admin/users",
+  "kind": "異常",
+  "viewpoint": "権限（システム管理者以外）",
+  "condition": "一般ユーザー／病院管理者",
+  "expected": "いずれも403 AUTH-005",
+  "executedAt": "2026-10-23T05:26:27+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/users"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "AUTH-005",
+          "message": "アクセス権限がありません。"
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "vet",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/users/2/suspend"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "AUTH-005",
+          "message": "アクセス権限がありません。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 403,
+      "actual": 403,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "AUTH-005",
+      "actual": "AUTH-005",
+      "ok": true
+    },
+    {
+      "name": "HTTPステータス",
+      "expected": 403,
+      "actual": 403,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "AUTH-005",
+      "actual": "AUTH-005",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ChangeUserRoleService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.application.user.service</a> &gt; <span class="el_source">ChangeUserRoleService.java</span></div><h1>ChangeUserRoleService.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.application.user.service;
+
+import koh.portfolio.springapi.application.user.usecase.ChangeUserRoleUseCase;
+import koh.portfolio.springapi.common.exception.Preconditions;
+import koh.portfolio.springapi.domain.hospital.port.HospitalAdminRepository;
+import koh.portfolio.springapi.domain.user.exception.UserErrorCode;
+import koh.portfolio.springapi.domain.user.model.Role;
+import koh.portfolio.springapi.domain.user.port.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+
+@Service
+@RequiredArgsConstructor
+public class ChangeUserRoleService implements ChangeUserRoleUseCase {
+    private final UserRepository userRepository;
+    private final HospitalAdminRepository hospitalAdminRepository;
+
+    @Override
+    @Transactional
+    public void execute(Long adminId, Long userId, Role role) {
+        // �눎�늽�겗與⑶솏�굮訝뗣걩�굥�겏�궥�궧�깇�깲嶸←릤�끹걣掠끹겒�걦�겒�굤孃쀣굥�걼�굙獵곫�㏂걲�굥
+<span class="fc bfc" id="L25" title="All 2 branches covered.">        Preconditions.validate(!adminId.equals(userId), UserErrorCode.CANNOT_CHANGE_SELF);</span>
+
+        // JwtAuthenticationFilter �겘�뤎�쑉�겗與⑶솏�겎沃띹㉫�걲�굥�걼�굙�곫뼭�걮�걚與⑶솏�겘轝▲겗�꺁�궚�궓�궧�깉�걢�굢�룏�삝�걬�굦�굥
+<span class="fc" id="L28">        Preconditions.validate(</span>
+<span class="fc" id="L29">                userRepository.updateRole(userId, role, LocalDateTime.now()),</span>
+                UserErrorCode.NO_SUCH_USER
+        );
+
+        // �뾽�솫嶸←릤�끹겎�겒�걦�겒�겂�걼�깺�꺖�궣�꺖�겗�뾽�솫榮먧퍡�걨�굮鸚뽧걲竊덂냽�겞�뾽�솫嶸←릤�끹겓�걮�걼�졃�릦�겘�뵻�굙�겍榮먧퍡�걨�굥竊�
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (role != Role.ROLE_HOSPITAL_ADMIN) {</span>
+<span class="fc" id="L35">            hospitalAdminRepository.deleteAllByUserId(userId);</span>
+        }
+<span class="fc" id="L37">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

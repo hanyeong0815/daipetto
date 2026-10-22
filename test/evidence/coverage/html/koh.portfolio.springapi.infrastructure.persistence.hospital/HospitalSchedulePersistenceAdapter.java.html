@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HospitalSchedulePersistenceAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.infrastructure.persistence.hospital</a> &gt; <span class="el_source">HospitalSchedulePersistenceAdapter.java</span></div><h1>HospitalSchedulePersistenceAdapter.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.infrastructure.persistence.hospital;
+
+import koh.portfolio.springapi.domain.hospital.model.HospitalSchedule;
+import koh.portfolio.springapi.domain.hospital.port.HospitalScheduleRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+@RequiredArgsConstructor
+public class HospitalSchedulePersistenceAdapter implements HospitalScheduleRepository {
+    private final HospitalScheduleJpaRepository hospitalScheduleJpaRepository;
+    private final HospitalScheduleMapper hospitalScheduleMapper;
+
+    @Override
+    public List&lt;HospitalSchedule&gt; findAllByHospitalId(Long hospitalId) {
+<span class="fc" id="L20">        return hospitalScheduleJpaRepository.findAllByHospitalIdOrderByAvailableDateAscStartTimeAsc(hospitalId)</span>
+<span class="fc" id="L21">                .stream().map(hospitalScheduleMapper::toDomain).toList();</span>
+    }
+
+    @Override
+    public HospitalSchedule save(HospitalSchedule hospitalSchedule) {
+<span class="nc" id="L26">        return hospitalScheduleMapper.toDomain(</span>
+<span class="nc" id="L27">                hospitalScheduleJpaRepository.save(</span>
+<span class="nc" id="L28">                        hospitalScheduleMapper.toEntity(hospitalSchedule)</span>
+                )
+        );
+    }
+
+    @Override
+    public Optional&lt;HospitalSchedule&gt; findById(Long id) {
+<span class="nc" id="L35">        return hospitalScheduleJpaRepository.findById(id)</span>
+<span class="nc" id="L36">                .map(hospitalScheduleMapper::toDomain);</span>
+    }
+
+    @Override
+    public List&lt;LocalDate&gt; findDatesWithSchedules(Long hospitalId, LocalDate from, LocalDate to) {
+<span class="fc" id="L41">        return hospitalScheduleJpaRepository.findDatesWithSchedules(hospitalId, from, to);</span>
+    }
+
+    @Override
+    public void saveAll(List&lt;HospitalSchedule&gt; hospitalSchedules) {
+<span class="fc" id="L46">        hospitalScheduleJpaRepository.saveAll(hospitalSchedules.stream().map(hospitalScheduleMapper::toEntity).toList());</span>
+<span class="fc" id="L47">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

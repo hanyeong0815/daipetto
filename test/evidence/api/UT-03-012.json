@@ -1,0 +1,95 @@
+{
+  "id": "UT-03-012",
+  "feature": "UT-03",
+  "api": "PATCH /api/v1/health-records/{healthRecordId}",
+  "kind": "異常",
+  "viewpoint": "更新時の体重の不正値（Codex G-03）",
+  "condition": "本人の記録に weight = -0.01／weight = 1000（整数部4桁）",
+  "expected": "いずれも400 VALIDATION-001、記録は変更されない",
+  "executedAt": "2026-10-23T05:26:07+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/health-records/10",
+        "body": {
+          "weight": -0.01
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "VALIDATION-001",
+          "message": "must be greater than or equal to 0"
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/health-records/10",
+        "body": {
+          "weight": 1000
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "VALIDATION-001",
+          "message": "numeric value out of bounds (<3 digits>.<2 digits> expected)"
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "weight",
+      "query": "SELECT weight FROM health_records WHERE id=10;",
+      "result": "4.50"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 400,
+      "actual": 400,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "VALIDATION-001",
+      "actual": "VALIDATION-001",
+      "ok": true
+    },
+    {
+      "name": "HTTPステータス",
+      "expected": 400,
+      "actual": 400,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "VALIDATION-001",
+      "actual": "VALIDATION-001",
+      "ok": true
+    },
+    {
+      "name": "変更されない",
+      "expected": "4.50",
+      "actual": "4.50",
+      "ok": true
+    }
+  ]
+}

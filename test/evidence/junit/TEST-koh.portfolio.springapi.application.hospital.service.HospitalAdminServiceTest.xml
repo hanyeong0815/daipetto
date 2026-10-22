@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="koh.portfolio.springapi.application.hospital.service.HospitalAdminServiceTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-10-22T20:17:56.692Z" hostname="HOME-PC" time="0.13">
+  <properties/>
+  <testcase name="病院管理者権限のユーザーを病院に紐付ける" classname="koh.portfolio.springapi.application.hospital.service.HospitalAdminServiceTest" time="0.105"/>
+  <testcase name="存在しないユーザーはAUTH-005" classname="koh.portfolio.springapi.application.hospital.service.HospitalAdminServiceTest" time="0.003"/>
+  <testcase name="紐付けの解除。紐付けが無ければHOSPITAL-008" classname="koh.portfolio.springapi.application.hospital.service.HospitalAdminServiceTest" time="0.003"/>
+  <testcase name="紐付けの失敗: 病院なしHOSPITAL-001・ユーザーなし/削除済みUSER-003・権限違いHOSPITAL-006・既存HOSPITAL-007" classname="koh.portfolio.springapi.application.hospital.service.HospitalAdminServiceTest" time="0.004"/>
+  <testcase name="システム管理者はすべての病院、病院管理者は紐付いた病院だけを管理できる（それ以外はHOSPITAL-005）" classname="koh.portfolio.springapi.application.hospital.service.HospitalAdminServiceTest" time="0.003"/>
+  <testcase name="管理対象の病院: システム管理者は停止中を含む全病院、病院管理者は紐付いた病院だけ" classname="koh.portfolio.springapi.application.hospital.service.HospitalAdminServiceTest" time="0.009"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

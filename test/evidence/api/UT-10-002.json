@@ -1,0 +1,66 @@
+{
+  "id": "UT-10-002",
+  "feature": "UT-10",
+  "api": "GET /api/v1/admin/reservations",
+  "kind": "正常",
+  "viewpoint": "状態・日付での絞り込み",
+  "condition": "状態REQUESTED・予約枠の日付を指定",
+  "expected": "200、条件に一致する予約だけを日付・開始時刻順で返す",
+  "executedAt": "2026-10-23T05:26:19+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "vet2",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/reservations?hospitalId=25&status=REQUESTED&date=2026-11-02"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": [
+            {
+              "reservationId": 12,
+              "status": "REQUESTED",
+              "availableDate": "2026-11-02",
+              "startTime": "12:30:00",
+              "endTime": "12:45:00",
+              "userId": 1,
+              "userNickname": "Tanaka",
+              "petName": "Momo",
+              "petType": "CAT",
+              "memo": "咳が続いています",
+              "createdAt": "2026-10-23T05:26:19+09:00"
+            }
+          ],
+          "code": null,
+          "message": null
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "REQUESTEDだけ",
+      "expected": [
+        12
+      ],
+      "actual": [
+        12
+      ],
+      "ok": true
+    }
+  ]
+}

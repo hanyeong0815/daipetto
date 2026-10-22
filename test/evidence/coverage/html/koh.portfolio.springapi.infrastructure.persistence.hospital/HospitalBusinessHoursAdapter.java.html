@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HospitalBusinessHoursAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.infrastructure.persistence.hospital</a> &gt; <span class="el_source">HospitalBusinessHoursAdapter.java</span></div><h1>HospitalBusinessHoursAdapter.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.infrastructure.persistence.hospital;
+
+import koh.portfolio.springapi.domain.hospital.model.HospitalBusinessHours;
+import koh.portfolio.springapi.domain.hospital.port.HospitalBusinessHoursRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Repository;
+
+import java.time.DayOfWeek;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+@RequiredArgsConstructor
+public class HospitalBusinessHoursAdapter implements HospitalBusinessHoursRepository {
+    private final HospitalBusinessHoursJpaRepository hospitalBusinessHoursJpaRepository;
+    private final HospitalBusinessHoursMapper hospitalBusinessHoursMapper;
+
+
+    @Override
+    public HospitalBusinessHours save(HospitalBusinessHours hospitalBusinessHours) {
+<span class="nc" id="L21">        return hospitalBusinessHoursMapper.toDomain(</span>
+<span class="nc" id="L22">                hospitalBusinessHoursJpaRepository.save(</span>
+<span class="nc" id="L23">                        hospitalBusinessHoursMapper.toEntity(hospitalBusinessHours)</span>
+                )
+        );
+    }
+
+    @Override
+    public Optional&lt;HospitalBusinessHours&gt; findById(Long id) {
+<span class="nc" id="L30">        return hospitalBusinessHoursJpaRepository.findById(id)</span>
+<span class="nc" id="L31">                .map(hospitalBusinessHoursMapper::toDomain);</span>
+    }
+
+    @Override
+    public List&lt;HospitalBusinessHours&gt; findByHospitalId(Long hospitalId) {
+<span class="nc" id="L36">        return hospitalBusinessHoursJpaRepository.findByHospitalId(hospitalId)</span>
+<span class="nc" id="L37">                .stream().map(hospitalBusinessHoursMapper::toDomain)</span>
+<span class="nc" id="L38">                .toList();</span>
+    }
+
+    @Override
+    public boolean existsByHospitalIdAndDayOfWeek(Long hospitalId, DayOfWeek dayOfWeek) {
+<span class="nc" id="L43">        return hospitalBusinessHoursJpaRepository.existsByHospitalIdAndDayOfWeek(hospitalId, dayOfWeek);</span>
+    }
+
+    @Override
+    public void deleteById(Long id) {
+<span class="nc" id="L48">        hospitalBusinessHoursJpaRepository.deleteById(id);</span>
+<span class="nc" id="L49">    }</span>
+
+    @Override
+    public boolean updateHours(HospitalBusinessHours hospitalBusinessHours) {
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        return hospitalBusinessHoursJpaRepository.updateHours(</span>
+<span class="fc" id="L54">                hospitalBusinessHours.getId(),</span>
+<span class="fc" id="L55">                hospitalBusinessHours.getHospitalId(),</span>
+<span class="fc" id="L56">                hospitalBusinessHours.getOpenTime(),</span>
+<span class="fc" id="L57">                hospitalBusinessHours.getCloseTime(),</span>
+<span class="fc" id="L58">                hospitalBusinessHours.getBreakStartTime(),</span>
+<span class="fc" id="L59">                hospitalBusinessHours.getBreakEndTime(),</span>
+<span class="fc" id="L60">                hospitalBusinessHours.getSlotDurationMinutes(),</span>
+<span class="fc" id="L61">                hospitalBusinessHours.getUpdatedAt()</span>
+        ) == 1;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

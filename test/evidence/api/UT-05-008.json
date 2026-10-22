@@ -1,0 +1,64 @@
+{
+  "id": "UT-05-008",
+  "feature": "UT-05",
+  "api": "PATCH /api/v1/admin/hospitals/{hospitalId}",
+  "kind": "異常",
+  "viewpoint": "紐付いていない病院の更新",
+  "condition": "病院管理者が紐付いていない病院",
+  "expected": "403 HOSPITAL-005、変更されない",
+  "executedAt": "2026-10-23T05:26:10+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "vet",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/hospitals/2",
+        "body": {
+          "name": "乗っ取り",
+          "address": "X"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "HOSPITAL-005",
+          "message": "管理対象外の病院です。"
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "name",
+      "query": "SELECT (name <> '乗っ取り')::text FROM hospitals WHERE id=2;",
+      "result": "true"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 403,
+      "actual": 403,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "HOSPITAL-005",
+      "actual": "HOSPITAL-005",
+      "ok": true
+    },
+    {
+      "name": "変更されない",
+      "expected": "true",
+      "actual": "true",
+      "ok": true
+    }
+  ]
+}

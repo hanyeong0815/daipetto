@@ -1,0 +1,60 @@
+{
+  "id": "UT-02-002",
+  "feature": "UT-02",
+  "api": "POST /api/v1/pets",
+  "kind": "正常",
+  "viewpoint": "任意項目の省略",
+  "condition": "名前・種類だけ（性別・体重・品種などを省略）",
+  "expected": "201、省略した項目はNULL（性別は「不明」）、去勢/避妊はfalse",
+  "executedAt": "2026-10-23T05:26:04+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/pets",
+        "body": {
+          "name": "Kuro",
+          "petType": "DOG"
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "success": true,
+          "data": {
+            "petId": 2
+          },
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "保存内容",
+      "query": "SELECT coalesce(gender,'NULL')||','||coalesce(weight::text,'NULL')||','||coalesce(breed,'NULL')||','||neutered FROM pets WHERE id=2;",
+      "result": "NULL,NULL,NULL,false"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 201,
+      "actual": 201,
+      "ok": true
+    },
+    {
+      "name": "省略項目",
+      "expected": "NULL,NULL,NULL,false",
+      "actual": "NULL,NULL,NULL,false",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "id": "UT-02-013",
+  "feature": "UT-02",
+  "api": "DELETE /api/v1/pets/{petId}",
+  "kind": "異常",
+  "viewpoint": "他人のペットの削除",
+  "condition": "他のユーザーのペットID",
+  "expected": "401 PET-002、削除されない",
+  "executedAt": "2026-10-23T05:26:06+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/pets/10"
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "PET-002",
+          "message": "飼い主が異なります。"
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "deleted_at",
+      "query": "SELECT (deleted_at IS NULL)::text FROM pets WHERE id=10;",
+      "result": "true"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 401,
+      "actual": 401,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "PET-002",
+      "actual": "PET-002",
+      "ok": true
+    },
+    {
+      "name": "削除されない",
+      "expected": "true",
+      "actual": "true",
+      "ok": true
+    }
+  ]
+}

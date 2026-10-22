@@ -1,0 +1,66 @@
+{
+  "id": "UT-10-003",
+  "feature": "UT-10",
+  "api": "PATCH /api/v1/admin/reservations/{reservationId}/approve",
+  "kind": "正常",
+  "viewpoint": "予約承認と通知",
+  "condition": "申請中の予約（紐付いた病院管理者）",
+  "expected": "200、APPROVEDになり、予約者にRESERVATION_APPROVEDの通知が1件作られる",
+  "executedAt": "2026-10-23T05:26:19+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "vet",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/reservations/14/approve"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": null,
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "status",
+      "query": "SELECT status FROM reservations WHERE id=14;",
+      "result": "APPROVED"
+    },
+    {
+      "type": "db",
+      "label": "通知",
+      "query": "SELECT count(*)||','||min(notification_type) FROM notifications WHERE reservation_id=14 AND user_id=1;",
+      "result": "1,RESERVATION_APPROVED"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "状態",
+      "expected": "APPROVED",
+      "actual": "APPROVED",
+      "ok": true
+    },
+    {
+      "name": "通知",
+      "expected": "1,RESERVATION_APPROVED",
+      "actual": "1,RESERVATION_APPROVED",
+      "ok": true
+    }
+  ]
+}

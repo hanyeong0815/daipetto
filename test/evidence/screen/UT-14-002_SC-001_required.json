@@ -1,0 +1,12 @@
+{
+  "id": "UT-14-002",
+  "screen": "SC-001 ログイン",
+  "operation": "メールアドレス・パスワードを空欄のまま「ログイン」を押す",
+  "observed": {
+    "inputs": [["email", "required=true", "valueMissing=true"], ["password", "required=true", "valueMissing=true"]],
+    "formCheckValidity": false,
+    "loginRequestsSent": 0,
+    "note": "ブラウザ標準の必須入力チェック（required属性）で送信が止まる。吹き出しはブラウザのネイティブ表示のためスクリーンショットに写らない"
+  },
+  "verdict": "OK"
+}

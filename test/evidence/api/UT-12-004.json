@@ -1,0 +1,91 @@
+{
+  "id": "UT-12-004",
+  "feature": "UT-12",
+  "api": "PATCH /api/v1/admin/users/{userId}/role",
+  "kind": "正常",
+  "viewpoint": "権限変更の即時反映",
+  "condition": "一般ユーザーを病院管理者に変更",
+  "expected": "200、同じAccess Tokenの次のリクエストから新しい権限で認可される（管理API 403 → 200）",
+  "executedAt": "2026-10-23T05:26:26+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "準備したユーザー",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/hospitals/mine"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "AUTH-005",
+          "message": "アクセス権限がありません。"
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/users/17/role",
+        "body": {
+          "role": "ROLE_HOSPITAL_ADMIN"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": null,
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "準備したユーザー",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/hospitals/mine"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": [],
+          "code": null,
+          "message": null
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "変更前",
+      "expected": 403,
+      "actual": 403,
+      "ok": true
+    },
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "変更後（同じToken）",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    }
+  ]
+}

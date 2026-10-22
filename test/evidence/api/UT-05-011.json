@@ -1,0 +1,146 @@
+{
+  "id": "UT-05-011",
+  "feature": "UT-05",
+  "api": "GET /api/v1/admin/hospitals/mine",
+  "kind": "正常",
+  "viewpoint": "管理対象の病院一覧",
+  "condition": "システム管理者／病院1だけに紐付いた病院管理者",
+  "expected": "200。システム管理者は停止中を含む全病院、病院管理者は紐付いた病院だけ",
+  "executedAt": "2026-10-23T05:26:11+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/hospitals/mine"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": [
+            {
+              "hospitalId": 1,
+              "name": "さくら動物病院（病院1）",
+              "address": "東京都渋谷区",
+              "phoneNumber": null,
+              "status": "ACTIVE"
+            },
+            {
+              "hospitalId": 2,
+              "name": "みどり動物病院（病院2）",
+              "address": "東京都渋谷区",
+              "phoneNumber": null,
+              "status": "ACTIVE"
+            },
+            {
+              "hospitalId": 3,
+              "name": "さくら動物病院",
+              "address": "東京都渋谷区",
+              "phoneNumber": "03-1234-5678",
+              "status": "ACTIVE"
+            },
+            {
+              "hospitalId": 4,
+              "name": "検索70282A動物病院",
+              "address": "東京都千代田区",
+              "phoneNumber": null,
+              "status": "ACTIVE"
+            },
+            {
+              "hospitalId": 5,
+              "name": "検索70282B動物病院",
+              "address": "大阪府大阪市",
+              "phoneNumber": null,
+              "status": "ACTIVE"
+            },
+            {
+              "hospitalId": 6,
+              "name": "検索70282停止動物病院",
+              "address": "東京都千代田区",
+              "phoneNumber": null,
+              "status": "SUSPENDED"
+            },
+            {
+              "hospitalId": 7,
+              "name": "更新後動物病院",
+              "address": "東京都港区",
+              "phoneNumber": "03-0000-0000",
+              "status": "ACTIVE"
+            },
+            {
+              "hospitalId": 8,
+              "name": "停止対象70941",
+              "address": "東京都千代田区",
+              "phoneNumber": null,
+              "status": "SUSPENDED"
+            }
+          ],
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "論理削除されていない病院数",
+      "query": "SELECT count(*) FROM hospitals WHERE deleted_at IS NULL;",
+      "result": "8"
+    },
+    {
+      "type": "http",
+      "actor": "vet2",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/hospitals/mine"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": [],
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "紐付いた病院",
+      "query": "SELECT coalesce(string_agg(hospital_id::text, ',' ORDER BY hospital_id), '') FROM hospital_admins WHERE user_id=4;",
+      "result": ""
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "システム管理者は全病院",
+      "expected": 8,
+      "actual": 8,
+      "ok": true
+    },
+    {
+      "name": "停止中も含む",
+      "expected": true,
+      "actual": true,
+      "ok": true
+    },
+    {
+      "name": "病院管理者は紐付いた病院だけ",
+      "expected": "",
+      "actual": "",
+      "ok": true
+    }
+  ]
+}

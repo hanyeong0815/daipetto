@@ -2,6 +2,7 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.3.13'
     id 'io.spring.dependency-management' version '1.1.7'
+    id 'jacoco'
 }
 
 group = 'koh.portfolio'
@@ -65,4 +66,18 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // 単体テストのカバレッジ（C0/C1）を test/evidence に残すため、テスト後に必ずレポートを作る
+    finalizedBy jacocoTestReport
+}
+
+jacoco {
+    toolVersion = '0.8.12'
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+    }
 }

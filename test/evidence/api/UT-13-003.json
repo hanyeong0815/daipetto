@@ -1,0 +1,48 @@
+{
+  "id": "UT-13-003",
+  "feature": "UT-13",
+  "api": "GET /api/v1/pets/{petId}（代表）",
+  "kind": "異常",
+  "viewpoint": "パス変数の型不正",
+  "condition": "petId = \"abc\"",
+  "expected": "400 VALIDATION-001（500にしない）",
+  "executedAt": "2026-10-23T05:26:27+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/pets/abc"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "VALIDATION-001",
+          "message": "入力内容を確認してください。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 400,
+      "actual": 400,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "VALIDATION-001",
+      "actual": "VALIDATION-001",
+      "ok": true
+    }
+  ]
+}

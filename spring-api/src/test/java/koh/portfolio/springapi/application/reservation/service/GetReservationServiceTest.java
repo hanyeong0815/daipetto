@@ -17,6 +17,7 @@ import koh.portfolio.springapi.domain.reservation.exception.ReservationErrorCode
 import koh.portfolio.springapi.domain.reservation.model.Reservation;
 import koh.portfolio.springapi.domain.reservation.model.ReservationStatus;
 import koh.portfolio.springapi.domain.reservation.port.ReservationRepository;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -156,5 +157,94 @@ class GetReservationServiceTest {
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
                         .isEqualTo(ReservationErrorCode.NOT_RESERVATION_OWNER.code()));
+    }
+
+    // ------------------------------------- 追加: 関連データ欠落（REVIEW-001 G-10）
+
+    private void assertErrorCode(ThrowingCallable call, ReservationErrorCode errorCode) {
+        assertThatThrownBy(call)
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code()).isEqualTo(errorCode.code()));
+    }
+
+    private void givenListWithMissing(String missing) {
+        when(reservationRepository.findAllByUserId(userId)).thenReturn(List.of(reservation(userId, ReservationStatus.REQUESTED)));
+        mockRelatedEntities();
+        givenMissing(missing);
+    }
+
+    private void givenDetailWithMissing(String missing) {
+        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation(userId, ReservationStatus.REQUESTED)));
+        mockRelatedEntities();
+        givenMissing(missing);
+    }
+
+    private void givenMissing(String missing) {
+        switch (missing) {
+            case "hospital" -> when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.empty());
+            case "schedule" -> when(hospitalScheduleRepository.findById(scheduleId)).thenReturn(Optional.empty());
+            case "pet" -> when(petRepository.findByIdIncludingDeleted(petId)).thenReturn(Optional.empty());
+            default -> throw new IllegalArgumentException(missing);
+        }
+    }
+
+    @Test
+    @DisplayName("予約一覧で病院が取得できない場合、RESERVATION-002例外が発生する")
+    void get_reservation_list_fail_when_hospital_missing() {
+        // given
+        givenListWithMissing("hospital");
+
+        // when & then
+        assertErrorCode(() -> getReservationService.execute(userId), ReservationErrorCode.RESERVATION_SCHEDULE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("予約一覧で予約枠が取得できない場合、RESERVATION-002例外が発生する")
+    void get_reservation_list_fail_when_schedule_missing() {
+        // given
+        givenListWithMissing("schedule");
+
+        // when & then
+        assertErrorCode(() -> getReservationService.execute(userId), ReservationErrorCode.RESERVATION_SCHEDULE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("予約一覧で論理削除済みを含めてもペットが取得できない場合、RESERVATION-004例外が発生する")
+    void get_reservation_list_fail_when_pet_missing_even_including_deleted() {
+        // given
+        givenListWithMissing("pet");
+
+        // when & then
+        assertErrorCode(() -> getReservationService.execute(userId), ReservationErrorCode.NOT_PET_OWNER);
+    }
+
+    @Test
+    @DisplayName("予約詳細で病院が取得できない場合、RESERVATION-002例外が発生する")
+    void get_reservation_detail_fail_when_hospital_missing() {
+        // given
+        givenDetailWithMissing("hospital");
+
+        // when & then
+        assertErrorCode(() -> getReservationService.execute(userId, reservationId), ReservationErrorCode.RESERVATION_SCHEDULE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("予約詳細で予約枠が取得できない場合、RESERVATION-002例外が発生する")
+    void get_reservation_detail_fail_when_schedule_missing() {
+        // given
+        givenDetailWithMissing("schedule");
+
+        // when & then
+        assertErrorCode(() -> getReservationService.execute(userId, reservationId), ReservationErrorCode.RESERVATION_SCHEDULE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("予約詳細で論理削除済みを含めてもペットが取得できない場合、RESERVATION-004例外が発生する")
+    void get_reservation_detail_fail_when_pet_missing_even_including_deleted() {
+        // given
+        givenDetailWithMissing("pet");
+
+        // when & then
+        assertErrorCode(() -> getReservationService.execute(userId, reservationId), ReservationErrorCode.NOT_PET_OWNER);
     }
 }

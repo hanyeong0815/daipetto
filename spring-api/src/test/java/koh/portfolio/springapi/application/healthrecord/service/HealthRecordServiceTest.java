@@ -332,4 +332,41 @@ class HealthRecordServiceTest {
 
         verify(healthRecordRepository, never()).softDelete(anyLong(), any(LocalDateTime.class));
     }
+
+    // ------------------------------------- 追加: ペット消失（REVIEW-001 G-10）
+
+    @Test
+    @DisplayName("健康記録は存在するがペットが取得できない場合、更新はHEALTH-002例外が発生する")
+    void update_health_record_fail_when_pet_not_found() {
+        // given
+        UpdateHealthRecordRequest request = new UpdateHealthRecordRequest(new BigDecimal("5.10"), null, null, null);
+
+        when(healthRecordRepository.findByIdForUpdate(healthRecordId)).thenReturn(Optional.of(healthRecord()));
+        when(petRepository.findById(petId)).thenReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> updateHealthRecordService.execute(userId, healthRecordId, request))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                        .isEqualTo(HealthRecordErrorCode.NOT_PET_OWNER.code()));
+
+        verify(healthRecordRepository, never()).updateContent(any(HealthRecord.class));
+        verify(healthRecordRepository, never()).save(any(HealthRecord.class));
+    }
+
+    @Test
+    @DisplayName("健康記録は存在するがペットが取得できない場合、削除はHEALTH-002例外が発生する")
+    void delete_health_record_fail_when_pet_not_found() {
+        // given
+        when(healthRecordRepository.findById(healthRecordId)).thenReturn(Optional.of(healthRecord()));
+        when(petRepository.findById(petId)).thenReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> deleteHealthRecordService.execute(userId, healthRecordId))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                        .isEqualTo(HealthRecordErrorCode.NOT_PET_OWNER.code()));
+
+        verify(healthRecordRepository, never()).softDelete(anyLong(), any(LocalDateTime.class));
+    }
 }

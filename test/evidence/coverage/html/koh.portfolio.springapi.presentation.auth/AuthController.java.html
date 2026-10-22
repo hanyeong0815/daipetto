@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuthController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.presentation.auth</a> &gt; <span class="el_source">AuthController.java</span></div><h1>AuthController.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.presentation.auth;
+
+import jakarta.validation.Valid;
+import koh.portfolio.springapi.application.auth.dto.LoginDto;
+import koh.portfolio.springapi.application.auth.dto.LoginDto.LoginResponse;
+import koh.portfolio.springapi.application.auth.dto.LogoutDto.LogoutResponse;
+import koh.portfolio.springapi.application.auth.dto.RefreshTokenDto.RefreshTokenRequest;
+import koh.portfolio.springapi.application.auth.dto.RefreshTokenDto.RefreshTokenResponse;
+import koh.portfolio.springapi.application.auth.usecase.LoginUseCase;
+import koh.portfolio.springapi.application.auth.usecase.LogoutUseCase;
+import koh.portfolio.springapi.application.auth.usecase.RefreshTokenUseCase;
+import koh.portfolio.springapi.common.response.ApiResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping(&quot;/api/v1/auth&quot;)
+@RequiredArgsConstructor
+public class AuthController {
+    private final LoginUseCase loginUseCase;
+    private final RefreshTokenUseCase refreshTokenUseCase;
+    private final LogoutUseCase logoutUseCase;
+
+    @PostMapping(&quot;/login&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;LoginResponse&gt;&gt; login(@Valid @RequestBody final LoginDto.LoginRequest request) {
+<span class="fc" id="L31">        LoginResponse response = loginUseCase.execute(request);</span>
+
+<span class="fc" id="L33">        return ResponseEntity.ok(ApiResponse.success(response));</span>
+    }
+
+    @PostMapping(&quot;/refresh&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;RefreshTokenResponse&gt;&gt; refresh(
+            @Valid @RequestBody RefreshTokenRequest request
+            ) {
+<span class="fc" id="L40">        RefreshTokenResponse response = refreshTokenUseCase.execute(request);</span>
+
+<span class="fc" id="L42">        return ResponseEntity.ok(ApiResponse.success(response));</span>
+    }
+
+    @PostMapping(&quot;/logout&quot;)
+    public ResponseEntity&lt;ApiResponse&lt;LogoutResponse&gt;&gt; logout(Authentication authentication) {
+<span class="fc" id="L47">        Long userId = (Long) authentication.getPrincipal();</span>
+
+<span class="fc" id="L49">        LogoutResponse isLogout = logoutUseCase.execute(userId);</span>
+
+<span class="fc" id="L51">        return ResponseEntity.ok(ApiResponse.success(</span>
+                isLogout,
+                &quot;�꺆�궛�궋�궑�깉�걮�겲�걮�걼��&quot;
+        ));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

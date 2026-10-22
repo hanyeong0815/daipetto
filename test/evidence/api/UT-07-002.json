@@ -1,0 +1,83 @@
+{
+  "id": "UT-07-002",
+  "feature": "UT-07",
+  "api": "POST /api/v1/admin/hospitals/{hospitalId}/business-hours",
+  "kind": "異常",
+  "viewpoint": "同じ曜日の重複登録",
+  "condition": "登録済みの曜日",
+  "expected": "409 HOSPITAL-004",
+  "executedAt": "2026-10-23T05:26:13+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/hospitals/13/business-hours",
+        "body": {
+          "dayOfWeek": "MONDAY",
+          "openTime": "09:00",
+          "closeTime": "18:00",
+          "breakStartTime": "12:00",
+          "breakEndTime": "13:00",
+          "slotDurationMinutes": 30
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "success": true,
+          "data": {
+            "businessHoursId": 2
+          },
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/admin/hospitals/13/business-hours",
+        "body": {
+          "dayOfWeek": "MONDAY",
+          "openTime": "09:00",
+          "closeTime": "18:00",
+          "breakStartTime": "12:00",
+          "breakEndTime": "13:00",
+          "slotDurationMinutes": 30
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "HOSPITAL-004",
+          "message": "既に登録されている曜日です。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 409,
+      "actual": 409,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "HOSPITAL-004",
+      "actual": "HOSPITAL-004",
+      "ok": true
+    }
+  ]
+}

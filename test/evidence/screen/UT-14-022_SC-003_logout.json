@@ -1,0 +1,12 @@
+{
+  "id": "UT-14-022",
+  "screen": "共通ヘッダー（ログアウト）",
+  "operation": "ヘッダー右上のログアウトボタンを押し、確認ダイアログ「ログアウトしますか？」でOK",
+  "observed": {
+    "confirmMessage": "ログアウトしますか？",
+    "request": "POST /api/v1/auth/logout → 200",
+    "pathAfter": "/login",
+    "storedRefreshTokenAfter": null
+  },
+  "verdict": "OK"
+}

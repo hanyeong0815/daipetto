@@ -1,0 +1,66 @@
+{
+  "id": "UT-10-009",
+  "feature": "UT-10",
+  "api": "PATCH /api/v1/admin/reservations/{reservationId}/complete",
+  "kind": "異常",
+  "viewpoint": "存在しない予約の診療完了（Codex G-05）",
+  "condition": "存在しない予約ID（病院管理者）",
+  "expected": "404 RESERVATION-006（予約の確認が所属の確認より先）、通知は作られない",
+  "executedAt": "2026-10-23T05:26:18+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "db",
+      "label": "書き込み前の行数",
+      "query": "SELECT string_agg(t||'='||n, ',' ORDER BY t) FROM (SELECT 'hospitals' t, count(*) n FROM hospitals UNION ALL SELECT 'hospital_admins', count(*) FROM hospital_admins UNION ALL SELECT 'hospital_business_hours', count(*) FROM hospital_business_hours UNION ALL SELECT 'hospital_schedules', count(*) FROM hospital_schedules UNION ALL SELECT 'blocked_schedules', count(*) FROM hospital_schedules WHERE status='BLOCKED' UNION ALL SELECT 'reservations_not_requested', count(*) FROM reservations WHERE status<>'REQUESTED' UNION ALL SELECT 'notifications', count(*) FROM notifications UNION ALL SELECT 'suspended_users', count(*) FROM users WHERE status='SUSPENDED' UNION ALL SELECT 'admin_role_users', count(*) FROM users WHERE role<>'ROLE_USER') x;",
+      "result": "admin_role_users=4,blocked_schedules=12,hospital_admins=3,hospital_business_hours=10,hospitals=24,hospital_schedules=57,notifications=0,reservations_not_requested=2,suspended_users=2"
+    },
+    {
+      "type": "http",
+      "actor": "vet",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/admin/reservations/99999999/complete"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "RESERVATION-006",
+          "message": "存在しない予約です。"
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "書き込み後の行数",
+      "query": "SELECT string_agg(t||'='||n, ',' ORDER BY t) FROM (SELECT 'hospitals' t, count(*) n FROM hospitals UNION ALL SELECT 'hospital_admins', count(*) FROM hospital_admins UNION ALL SELECT 'hospital_business_hours', count(*) FROM hospital_business_hours UNION ALL SELECT 'hospital_schedules', count(*) FROM hospital_schedules UNION ALL SELECT 'blocked_schedules', count(*) FROM hospital_schedules WHERE status='BLOCKED' UNION ALL SELECT 'reservations_not_requested', count(*) FROM reservations WHERE status<>'REQUESTED' UNION ALL SELECT 'notifications', count(*) FROM notifications UNION ALL SELECT 'suspended_users', count(*) FROM users WHERE status='SUSPENDED' UNION ALL SELECT 'admin_role_users', count(*) FROM users WHERE role<>'ROLE_USER') x;",
+      "result": "admin_role_users=4,blocked_schedules=12,hospital_admins=3,hospital_business_hours=10,hospitals=24,hospital_schedules=57,notifications=0,reservations_not_requested=2,suspended_users=2"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 404,
+      "actual": 404,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "RESERVATION-006",
+      "actual": "RESERVATION-006",
+      "ok": true
+    },
+    {
+      "name": "書き込みなし",
+      "expected": "admin_role_users=4,blocked_schedules=12,hospital_admins=3,hospital_business_hours=10,hospitals=24,hospital_schedules=57,notifications=0,reservations_not_requested=2,suspended_users=2",
+      "actual": "admin_role_users=4,blocked_schedules=12,hospital_admins=3,hospital_business_hours=10,hospitals=24,hospital_schedules=57,notifications=0,reservations_not_requested=2,suspended_users=2",
+      "ok": true
+    }
+  ]
+}

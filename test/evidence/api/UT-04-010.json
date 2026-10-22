@@ -1,0 +1,74 @@
+{
+  "id": "UT-04-010",
+  "feature": "UT-04",
+  "api": "PATCH /api/v1/vaccinations/{vaccinationId}/reschedule",
+  "kind": "正常",
+  "viewpoint": "中止した予定の再登録",
+  "condition": "CANCELLEDの予定、新しい接種予定日",
+  "expected": "200、SCHEDULEDに戻り、新しい予定日になる",
+  "executedAt": "2026-10-23T05:26:09+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/vaccinations/10/cancel"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": null,
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/vaccinations/10/reschedule",
+        "body": {
+          "scheduledDate": "2026-12-02"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": null,
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "状態",
+      "query": "SELECT status||','||scheduled_date FROM vaccinations WHERE id=10;",
+      "result": "SCHEDULED,2026-12-02"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "状態・予定日",
+      "expected": "SCHEDULED,2026-12-02",
+      "actual": "SCHEDULED,2026-12-02",
+      "ok": true
+    }
+  ]
+}

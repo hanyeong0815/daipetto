@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.application.user.service</a> &gt; <span class="el_source">UserService.java</span></div><h1>UserService.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.application.user.service;
+
+import koh.portfolio.springapi.application.user.dto.RegisterUserDto.RegisterUserRequest;
+import koh.portfolio.springapi.application.user.dto.RegisterUserDto.RegisterUserResponse;
+import koh.portfolio.springapi.application.user.usecase.RegisterUserUseCase;
+import koh.portfolio.springapi.domain.user.exception.UserErrorCode;
+import koh.portfolio.springapi.domain.user.model.User;
+import koh.portfolio.springapi.domain.user.port.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import static koh.portfolio.springapi.common.exception.Preconditions.validate;
+
+@Service
+@RequiredArgsConstructor
+public class UserService implements RegisterUserUseCase {
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    @Override
+    @Transactional
+    public RegisterUserResponse execute(RegisterUserRequest request) {
+<span class="nc" id="L25">        validate(</span>
+<span class="nc bnc" id="L26" title="All 2 branches missed.">                !userRepository.existsByEmail(request.email()),</span>
+                UserErrorCode.EMAIL_ALREADY_USED
+        );
+
+<span class="nc" id="L30">        String hashedPassword = passwordEncoder.encode(request.password());</span>
+
+<span class="nc" id="L32">        User user = User.register(</span>
+<span class="nc" id="L33">                request.email(),</span>
+                hashedPassword,
+<span class="nc" id="L35">                request.nickname()</span>
+        );
+
+<span class="nc" id="L38">        User savedUser = userRepository.save(user);</span>
+
+<span class="nc" id="L40">        return RegisterUserResponse.builder()</span>
+<span class="nc" id="L41">                .userId(savedUser.getId())</span>
+<span class="nc" id="L42">                .build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

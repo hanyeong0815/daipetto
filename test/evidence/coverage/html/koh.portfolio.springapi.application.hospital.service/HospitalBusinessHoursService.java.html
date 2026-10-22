@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HospitalBusinessHoursService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.application.hospital.service</a> &gt; <span class="el_source">HospitalBusinessHoursService.java</span></div><h1>HospitalBusinessHoursService.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.application.hospital.service;
+
+import koh.portfolio.springapi.application.hospital.dto.HospitalBusinessHoursDto.CreateHospitalBusinessHoursRequest;
+import koh.portfolio.springapi.application.hospital.dto.HospitalBusinessHoursDto.CreateHospitalBusinessHoursResponse;
+import koh.portfolio.springapi.application.hospital.dto.HospitalBusinessHoursDto.HospitalBusinessHoursResponse;
+import koh.portfolio.springapi.application.hospital.usecase.CreateHospitalBusinessHoursUseCase;
+import koh.portfolio.springapi.application.hospital.usecase.GetHospitalBusinessHoursListUseCase;
+import koh.portfolio.springapi.domain.hospital.exception.HospitalErrorCode;
+import koh.portfolio.springapi.domain.hospital.model.HospitalBusinessHours;
+import koh.portfolio.springapi.domain.hospital.port.HospitalBusinessHoursRepository;
+import koh.portfolio.springapi.domain.hospital.port.HospitalRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+import static koh.portfolio.springapi.common.exception.Preconditions.validate;
+
+@Service
+@RequiredArgsConstructor
+public class HospitalBusinessHoursService implements GetHospitalBusinessHoursListUseCase, CreateHospitalBusinessHoursUseCase {
+    private final HospitalAccessChecker hospitalAccessChecker;
+    private final HospitalRepository hospitalRepository;
+    private final HospitalBusinessHoursRepository hospitalBusinessHoursRepository;
+
+    @Override
+    public List&lt;HospitalBusinessHoursResponse&gt; execute(Long hospitalId) {
+<span class="fc" id="L28">        validate(hospitalRepository.existsById(hospitalId), HospitalErrorCode.HOSPITAL_NOT_FOUND);</span>
+
+<span class="fc" id="L30">        List&lt;HospitalBusinessHours&gt; businessHours = hospitalBusinessHoursRepository.findByHospitalId(hospitalId);</span>
+
+<span class="fc" id="L32">        return businessHours.stream()</span>
+<span class="fc" id="L33">                .map(</span>
+<span class="fc" id="L34">                        businessHour -&gt; HospitalBusinessHoursResponse.builder()</span>
+<span class="fc" id="L35">                                .businessHoursId(businessHour.getId())</span>
+<span class="fc" id="L36">                                .dayOfWeek(businessHour.getDayOfWeek())</span>
+<span class="fc" id="L37">                                .openTime(businessHour.getOpenTime())</span>
+<span class="fc" id="L38">                                .closeTime(businessHour.getCloseTime())</span>
+<span class="fc" id="L39">                                .breakStartTime(businessHour.getBreakStartTime())</span>
+<span class="fc" id="L40">                                .breakEndTime(businessHour.getBreakEndTime())</span>
+<span class="fc" id="L41">                                .slotDurationMinutes(businessHour.getSlotDurationMinutes())</span>
+<span class="fc" id="L42">                                .build()</span>
+                )
+<span class="fc" id="L44">                .toList();</span>
+    }
+
+    @Override
+    public CreateHospitalBusinessHoursResponse execute(Long userId, Long hospitalId, CreateHospitalBusinessHoursRequest request) {
+<span class="fc" id="L49">        hospitalAccessChecker.checkManageable(userId, hospitalId);</span>
+
+<span class="fc" id="L51">        validate(hospitalRepository.existsById(hospitalId), HospitalErrorCode.HOSPITAL_NOT_FOUND);</span>
+<span class="fc" id="L52">        validate(</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                !hospitalBusinessHoursRepository.existsByHospitalIdAndDayOfWeek(hospitalId, request.dayOfWeek()),</span>
+                HospitalErrorCode.HOSPITAL_BUSINESS_HOURS_DUPLICATED
+        );
+
+<span class="fc" id="L57">        HospitalBusinessHours createHospitalBusinessHours = HospitalBusinessHours.create(</span>
+                hospitalId,
+<span class="fc" id="L59">                request.dayOfWeek(),</span>
+<span class="fc" id="L60">                request.openTime(),</span>
+<span class="fc" id="L61">                request.closeTime(),</span>
+<span class="fc" id="L62">                request.breakStartTime(),</span>
+<span class="fc" id="L63">                request.breakEndTime(),</span>
+<span class="fc" id="L64">                request.slotDurationMinutes()</span>
+        );
+
+<span class="fc" id="L67">        HospitalBusinessHours savedHospitalBusinessHours = hospitalBusinessHoursRepository.save(createHospitalBusinessHours);</span>
+
+<span class="fc" id="L69">        return CreateHospitalBusinessHoursResponse.builder()</span>
+<span class="fc" id="L70">                .businessHoursId(savedHospitalBusinessHours.getId())</span>
+<span class="fc" id="L71">                .build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

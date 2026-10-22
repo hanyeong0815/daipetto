@@ -1,6 +1,6 @@
 # Daipetto — 作業TODOリスト
 
-最終更新: 2026-10-22
+最終更新: 2026-10-23
 
 ---
 
@@ -215,6 +215,16 @@
 **検証（2026-10-03）**: テスト31件追加で`./gradlew clean test` 192件green。実PostgreSQL（捨てDB `daipetto_hn`）でV9/V10適用・`ddl-auto: validate`通過を確認し、API 14項目のスモークも全通過（`.ai-collab/tasks/2026-10-03-health-notification/scripts/smoke-health-notification.mjs`）
 
 ---
+
+## 🧪 単体テスト（2026-10-23、ブランチ `test/unit-test`）
+
+- [x] テストフォルダ `test/` を作成（README・仕様書 `spec/UT-01〜UT-14`・結果 `RESULTS.md`・不具合 `DEFECTS.md`・エビデンス `evidence/`）
+- [x] 自動テスト（JUnit）342件、JaCoCoでカバレッジを出力
+- [x] API単体テスト 134項目（全52エンドポイント、実HTTP・使い捨てPostgreSQL、項目ごとのJSONエビデンス）
+- [x] 画面単体テスト 33項目（SC-001〜SC-016、画面写し）
+- [x] 見つかった不具合（D-001〜D-009）の修正・設計書の修正と再テスト
+- [x] Codex（gpt-6.1-sol）によるテスト設計レビュー（G-01〜G-11 を項目に追加）
+- [x] Codex による結果の最終検証（REVIEW-003 ACCEPTED、2026-10-23）
 
 ## 🚧 未実装 — Django Analysis API
 

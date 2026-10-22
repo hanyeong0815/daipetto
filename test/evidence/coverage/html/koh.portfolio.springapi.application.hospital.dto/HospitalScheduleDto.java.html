@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="ko"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HospitalScheduleDto.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">spring-api</a> &gt; <a href="index.source.html" class="el_package">koh.portfolio.springapi.application.hospital.dto</a> &gt; <span class="el_source">HospitalScheduleDto.java</span></div><h1>HospitalScheduleDto.java</h1><pre class="source lang-java linenums">package koh.portfolio.springapi.application.hospital.dto;
+
+import jakarta.validation.constraints.NotNull;
+import koh.portfolio.springapi.domain.hospital.model.HospitalScheduleStatus;
+import lombok.Builder;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.YearMonth;
+
+<span class="nc" id="L11">public record HospitalScheduleDto() {</span>
+    // 雅덄큵�옞�겗�눎�땿�뵟�닇竊덃뎸�땿若잒죱竊됥�굆onth �겘 &quot;2026-11&quot; 壤℡폀
+<span class="fc" id="L13">    public record GenerateHospitalSchedulesRequest(</span>
+            @NotNull YearMonth month
+    ) {}
+
+    // 鵝쒏닇�걮�걼�옞�빊�곫옞�굮鵝쒌겂�걼�뿥�빊�곫뿢耶섅겗�옞�걣�걗�겂�걼�걼�굙繇쎼겙�걮�걼�뿥�빊竊덁폂鼇뷸뿥�겘�맜�겲�겒�걚竊�
+<span class="fc" id="L18">    public record GenerateHospitalSchedulesResponse(</span>
+            int createdSlots,
+            int generatedDates,
+            int skippedDates
+    ) {}
+
+    @Builder
+<span class="fc" id="L25">    public record HospitalScheduleResponse(</span>
+            Long scheduleId,
+            LocalDate availableDate,
+            LocalTime startTime,
+            LocalTime endTime,
+            HospitalScheduleStatus status
+    ) {}
+
+<span class="fc" id="L33">    public record CreateHospitalScheduleRequest(</span>
+            @NotNull
+            LocalDate availableDate,
+            @NotNull
+            LocalTime startTime,
+            @NotNull
+            LocalTime endTime
+    ) {}
+
+    @Builder
+<span class="fc" id="L43">    public record CreateHospitalScheduleResponse(</span>
+            Long scheduleId
+    ) {}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

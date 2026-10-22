@@ -1,0 +1,58 @@
+{
+  "id": "UT-01-008",
+  "feature": "UT-01",
+  "api": "POST /api/v1/auth/login",
+  "kind": "異常",
+  "viewpoint": "利用停止中のアカウント",
+  "condition": "状態SUSPENDEDのユーザー",
+  "expected": "403 AUTH-002、Tokenを発行しない",
+  "executedAt": "2026-10-23T05:25:58+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "db",
+      "label": "利用停止にする（準備）",
+      "query": "UPDATE users SET status='SUSPENDED' WHERE id=8 RETURNING status;",
+      "result": "SUSPENDED\nUPDATE 1"
+    },
+    {
+      "type": "http",
+      "actor": "anon",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/auth/login",
+        "body": {
+          "email": "ut-suspended-1792700758677-580340@daipetto.test",
+          "password": "********"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "AUTH-002",
+          "message": "利用停止中のアカウントです。"
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 403,
+      "actual": 403,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "AUTH-002",
+      "actual": "AUTH-002",
+      "ok": true
+    }
+  ]
+}

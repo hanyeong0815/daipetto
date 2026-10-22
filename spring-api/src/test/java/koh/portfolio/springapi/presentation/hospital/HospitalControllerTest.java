@@ -21,8 +21,13 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -87,5 +92,42 @@ class HospitalControllerTest {
                 .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.name").value("Tokyo Animal Hospital"))
                 .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+    }
+
+    // ------------------------------------------------- 共通エラー（URL・メソッド）
+
+    @Test
+    @DisplayName("存在しないURLは500ではなく404（COMMON-001）")
+    void unknown_url_returns_404() throws Exception {
+        mockMvc.perform(get("/api/v1/unknown"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("COMMON-001"));
+    }
+
+    @Test
+    @DisplayName("許可されていないHTTPメソッドは500ではなく405（COMMON-002）")
+    void unsupported_method_returns_405() throws Exception {
+        mockMvc.perform(delete("/api/v1/hospitals"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.code").value("COMMON-002"));
+    }
+
+    // ------------------------------------------------------ 共通エラー（SERVER-001）
+
+    @Test
+    @DisplayName("想定外の例外は内部情報を含まないSERVER-001の500で返す")
+    void unexpected_exception_returns_server_error() throws Exception {
+        // given
+        when(getHospitalListUseCase.execute(any(), any())).thenThrow(new IllegalStateException("db password=secret"));
+
+        // when & then
+        mockMvc.perform(get("/api/v1/hospitals"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.code").value("SERVER-001"))
+                .andExpect(jsonPath("$.message").value("サーバーでエラーが発生しました。時間をおいて再度お試しください。"))
+                .andExpect(content().string(not(containsString("secret"))));
     }
 }

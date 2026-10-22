@@ -1,0 +1,64 @@
+{
+  "id": "UT-02-011",
+  "feature": "UT-02",
+  "api": "PATCH /api/v1/pets/{petId}",
+  "kind": "異常",
+  "viewpoint": "他人のペットの更新",
+  "condition": "他のユーザーのペットID",
+  "expected": "401 PET-002、変更されない",
+  "executedAt": "2026-10-23T05:26:05+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "tanaka",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/pets/8",
+        "body": {
+          "name": "Hijacked",
+          "petType": "CAT"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "success": false,
+          "data": null,
+          "code": "PET-002",
+          "message": "飼い主が異なります。"
+        }
+      }
+    },
+    {
+      "type": "db",
+      "label": "名前",
+      "query": "SELECT name FROM pets WHERE id=8;",
+      "result": "Original"
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 401,
+      "actual": 401,
+      "ok": true
+    },
+    {
+      "name": "エラーコード",
+      "expected": "PET-002",
+      "actual": "PET-002",
+      "ok": true
+    },
+    {
+      "name": "変更されない",
+      "expected": "Original",
+      "actual": "Original",
+      "ok": true
+    }
+  ]
+}

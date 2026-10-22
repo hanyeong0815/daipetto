@@ -1,0 +1,123 @@
+{
+  "id": "UT-12-001",
+  "feature": "UT-12",
+  "api": "GET /api/v1/admin/users",
+  "kind": "正常",
+  "viewpoint": "検索（キーワード・権限・状態・ページ）",
+  "condition": "ニックネームの一部（大文字小文字違い）、role=ROLE_HOSPITAL_ADMIN、size=1",
+  "expected": "200、条件に一致するユーザーをID順・ページ形式で返し、パスワードを含まない",
+  "executedAt": "2026-10-23T05:26:23+09:00",
+  "verdict": "OK",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_ut"
+  },
+  "steps": [
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/users?keyword=TANAKA"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": {
+            "content": [
+              {
+                "userId": 1,
+                "email": "ut-tanaka@daipetto.test",
+                "nickname": "Tanaka",
+                "role": "ROLE_USER",
+                "status": "ACTIVE",
+                "createdAt": "2026-10-23T05:25:51+09:00"
+              }
+            ],
+            "totalElements": 1,
+            "totalPages": 1,
+            "size": 20,
+            "number": 0
+          },
+          "code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "http",
+      "actor": "admin",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/admin/users?role=ROLE_HOSPITAL_ADMIN&status=ACTIVE&page=0&size=1"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": {
+            "content": [
+              {
+                "userId": 3,
+                "email": "ut-vet@daipetto.test",
+                "nickname": "HappyVet",
+                "role": "ROLE_HOSPITAL_ADMIN",
+                "status": "ACTIVE",
+                "createdAt": "2026-10-23T05:25:53+09:00"
+              }
+            ],
+            "totalElements": 3,
+            "totalPages": 3,
+            "size": 1,
+            "number": 0
+          },
+          "code": null,
+          "message": null
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "HTTPステータス",
+      "expected": 200,
+      "actual": 200,
+      "ok": true
+    },
+    {
+      "name": "キーワード一致（大文字小文字を区別しない）",
+      "expected": true,
+      "actual": true,
+      "ok": true
+    },
+    {
+      "name": "パスワードを含まない",
+      "expected": true,
+      "actual": true,
+      "ok": true
+    },
+    {
+      "name": "ページ形式",
+      "expected": [
+        1,
+        1,
+        0,
+        true
+      ],
+      "actual": [
+        1,
+        1,
+        0,
+        true
+      ],
+      "ok": true
+    },
+    {
+      "name": "権限で絞り込み",
+      "expected": "ROLE_HOSPITAL_ADMIN",
+      "actual": "ROLE_HOSPITAL_ADMIN",
+      "ok": true
+    }
+  ]
+}
