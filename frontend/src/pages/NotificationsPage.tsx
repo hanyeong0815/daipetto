@@ -10,7 +10,8 @@ const typeConfig: Record<NotificationType, { icon: string; color: string }> = {
   VACCINATION: { icon: 'vaccines', color: 'text-warning-yellow bg-warning-yellow/10' },
 }
 
-// createdAt はオフセットなしのJST日時（docs/07 §2-7）。端末のタイムゾーンで解釈し直さずそのまま表示する
+// createdAt はJSTのオフセット付き日時（例: 2026-10-21T23:59:58+09:00、docs/07 §2-7）。
+// 先頭の日付・時刻部分（JSTの壁時計時刻）をそのまま表示し、端末のタイムゾーンで解釈し直さない
 const formatDateTime = (dateTime: string) => dateTime.slice(0, 16).replace('T', ' ')
 
 export default function NotificationsPage() {

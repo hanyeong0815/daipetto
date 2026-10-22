@@ -7,6 +7,7 @@ import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
 import koh.portfolio.springapi.domain.auth.model.RefreshToken;
 import koh.portfolio.springapi.domain.auth.port.RefreshTokenRepository;
 import koh.portfolio.springapi.domain.user.model.User;
+import koh.portfolio.springapi.domain.user.model.UserStatus;
 import koh.portfolio.springapi.domain.user.port.UserRepository;
 import koh.portfolio.springapi.infrastructure.security.jwt.JwtProvider;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +51,13 @@ public class LoginService implements LoginUseCase {
 
         // 同一ユーザーのrefresh / logoutと直列化してから失効させる（REVIEW-002 R-01）
         userRepository.lockForSessionUpdate(user.getId());
+
+        // 排他取得後に最新の状態を読み直す。最初の読み取り後に管理者の停止が確定していた場合は
+        // トークンを発行しない（停止の後に有効なRefresh Tokenを残さない、REVIEW-001 R-01）
+        validate(
+                userRepository.findStatusById(user.getId()) == UserStatus.ACTIVE,
+                AuthErrorCode.SUSPENDED_ACCOUNT
+        );
 
         refreshTokenRepository.revokeAllByUserId(user.getId());
 

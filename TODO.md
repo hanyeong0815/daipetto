@@ -132,6 +132,14 @@
 - [x] `PATCH /api/v1/vaccinations/{id}/cancel` — SCHEDULED→CANCELLED（`docs/07` §6-9）。遷移元statusをWHEREに入れた条件付きUPDATE、0件ならVACCINATION-003。再登録で`reminded_date`が消えるため新しい予定日で再通知される
 - [x] `DELETE /api/v1/vaccinations/{id}` — 論理削除（`docs/07` §6-11）。`deleted_at IS NULL`の条件付きUPDATE、同時削除で負けた側はVACCINATION-001
 
+### ユーザー管理 API（2026-10-21 実装、Claude Code、ブランチ `feat/spring/user-management`）
+- [x] `GET /api/v1/admin/users` — キーワード（メール・ニックネーム）・権限・状態で検索、ページ形式（`PageResponse`）
+- [x] `PATCH /api/v1/admin/users/{id}/suspend`・`/activate` — 停止時はユーザー行の排他を取り、全Refresh Tokenを失効
+- [x] `PATCH /api/v1/admin/users/{id}/role` — 権限変更。自分自身の停止・権限変更はUSER-005
+- [x] 認証フィルターがリクエストごとにユーザーの現在の状態・権限を確認（停止・権限変更が次のリクエストから反映、`docs/09` §3-5）
+- [x] 存在しないenum値（クエリ・JSON）を500ではなく400（VALIDATION-001）で返す（`docs/12` §3-16）
+- [x] Codexレビュー（`.ai-collab/tasks/2026-10-21-user-management/`）: REVIEW-001でR-01（停止と重なったログインがトークンを発行）・R-02（一覧が空のページに留まる）・R-03 → HANDOFF-002で修正 → REVIEW-002で **ACCEPTED**（2026-10-22）
+
 ### 予約枠自動生成バッチ（設計決定、未実装 — 2026-08-02）
 > ユーザーとの設計議論の結論。`hospital_business_hours`管理APIは実装済みだが、これを元に`hospital_schedules`を自動生成するScheduler本体は未着手
 
@@ -235,7 +243,7 @@
 - [x] ログアウト — ヘッダー右上（存在しない`/profile`へのリンクだった）をログアウトボタンに変更。`POST /auth/logout`の後、失敗してもローカルのトークンを破棄
 - [x] ペット一覧の表示修正 — 一覧API（PetSummary）は品種・性別を返さないため、常に「— · メス」と表示されていた。種別と体重の表示に変更
 - [ ] 管理者画面 `AdminReservationPage` — **要判断**: 承認/却下/完了APIはあるが、管理者が予約を一覧するAPIが無い（`docs/05` SC-013は一覧表示を定義、`docs/07`に該当APIなし）。Spring側に管理者用一覧APIを追加するか、ユーザー判断待ち
-- [ ] 管理者画面 `AdminUserPage` — ユーザー管理API連動（バックエンド未実装のため連動不可）
+- [x] 管理者画面 `AdminUserPage`（2026-10-21、SC-015） — 検索（キーワード・権限・状態、20件ずつのページ）・停止/停止解除・権限変更を実API連動。自分自身の行は操作不可。Dashboardに役割別の「管理メニュー」を追加（管理画面への入口が無かったため）。`UserProfile`の型を実際の応答（`userId`・`status`）に修正
 
 ### Vaccination API 連動（2026-10-21 実装、Claude Code、ブランチ `feat/spring/vaccination`）
 - [x] ワクチン予定画面 (`VaccinationPage`、`/pets/:petId/vaccinations`、`docs/05` SC-016) — 一覧・登録・接種完了（接種日入力、未来日不可）・中止・再登録（新しい予定日）・削除。ペット切替時に前のペットの応答を反映しない

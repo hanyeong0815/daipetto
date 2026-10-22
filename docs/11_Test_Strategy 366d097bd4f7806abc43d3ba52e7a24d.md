@@ -145,6 +145,22 @@ flowchart TB
 | ROLE-T004 | ROLE_HOSPITAL_ADMIN | 病院管理 | 403 |
 | ROLE-T005 | ROLE_SYSTEM_ADMIN | 病院管理 | 成功 |
 | ROLE-T006 | 未認証 | 認証必須API | 401 |
+| ROLE-T007 | ROLE_USER・ROLE_HOSPITAL_ADMIN | ユーザー管理（`/api/v1/admin/users`） | 403 |
+
+### **ユーザー管理**
+
+| **Test ID** | **観点** | **期待結果** |
+| --- | --- | --- |
+| ADMIN-T001 | 検索（キーワード・権限・状態・ページ） | 部分一致（大文字小文字無視）、論理削除済みを除外、ID昇順、ページ情報付き。パスワードは返さない |
+| ADMIN-T002 | ユーザー停止 | SUSPENDED、全Refresh Token失効、発行済みAccess Tokenでも次のリクエストから401、ログインはAUTH-002 |
+| ADMIN-T003 | 停止解除 | ACTIVE、再ログイン可能 |
+| ADMIN-T004 | 権限変更 | 次のリクエストから新しい権限で認可される |
+| ADMIN-T005 | 自分自身の停止・権限変更 | USER-005 |
+| ADMIN-T006 | 存在しない権限名・状態名 | VALIDATION-001（500にしない） |
+| ADMIN-T007 | 停止と同時に進行中のログイン・Token再発行 | 停止の確定後に有効なRefresh Tokenが残らない（ログインはAUTH-002、再発行は後続Tokenを失効） |
+| ADMIN-T008 | 最後のページの最後の1件が停止・権限変更で条件から外れる | 画面は最後の有効なページを取り直す（空のページに留まらない） |
+
+> ADMIN-T001は`UserPersistenceAdapterTest`（H2）と`AdminUserServiceTest`、ADMIN-T002〜T006は`AdminUserServiceTest`・`AdminUserControllerTest`・`JwtAuthenticationFilterTest`で検証し、実PostgreSQL・実HTTPでの確認は受け入れスクリプト（`.ai-collab/tasks/2026-10-21-user-management/scripts/`）で行う。
 
 ---
 

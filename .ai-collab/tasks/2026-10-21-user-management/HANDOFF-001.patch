@@ -1,0 +1,1838 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index a42d003..d6c626d 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -12,7 +12,7 @@ This is the repository entry point for Codex and the canonical shared project po
+ - Agent-facing files in `.codex/` and `.ai-collab/` use concise English. User-facing replies remain Korean; product design docs and code comments retain the language rules below.
+ - Operational source of truth: `.ai-collab/PROTOCOL.md`. The original research corrections remain in `docs/codex-workflow/01_CORRECTIONS.md` for reference only.
+ 
+-Last updated: 2026-10-21 (branch `feat/spring/pet-fields-datetime`, stacked on `feat/spring/vaccination`)
++Last updated: 2026-10-21 (branch `feat/spring/user-management`, stacked on `feat/spring/pet-fields-datetime`)
+ 
+ ## 1. Areas
+ 
+@@ -60,7 +60,7 @@ Rules:
+ 6. Role checks via `@PreAuthorize("hasAuthority('ROLE_...')")`; SecurityConfig only guarantees `authenticated()`.
+ 7. Owner checks with the `Preconditions.validate` pattern (see `UpdatePetService`).
+ 8. Domain state transitions are methods returning a new immutable instance (see `Hospital.suspend()`, `Reservation.approve()`); Lombok on Domain: `@Getter`/constructors only, never `@Setter`/`@Data`.
+-9. Auth policy: access token 30 min / refresh token 14 days, refresh **rotation** (old token revoked on every use), max 1 active refresh token per user, stored in PostgreSQL (no Redis in MVP). Login, refresh and logout all take `SELECT ... FOR UPDATE` on the user row (`UserRepository.lockForSessionUpdate`) before touching tokens — without that per-user serialization the bulk revoke misses a successor token inserted by a concurrent refresh (docs/12 §3-11).
++9. Auth policy: access token 30 min / refresh token 14 days, refresh **rotation** (old token revoked on every use), max 1 active refresh token per user, stored in PostgreSQL (no Redis in MVP). Login, refresh and logout all take `SELECT ... FOR UPDATE` on the user row (`UserRepository.lockForSessionUpdate`) before touching tokens — without that per-user serialization the bulk revoke misses a successor token inserted by a concurrent refresh (docs/12 §3-11). `JwtAuthenticationFilter` loads the user on every authenticated request: suspended, deleted or missing users are not authenticated (401) and authorities come from the current DB role, so admin suspension and role changes apply on the next request (docs/09 §3-5). Admin suspension also takes the session lock and revokes all refresh tokens.
+ 
+ ## 4. API common spec
+ 
+@@ -82,6 +82,7 @@ Error messages in Japanese. New codes follow `{DOMAIN}-{seq}`; `{DOMAIN}-999` is
+ | USER-002 | 入力バリデーション | 400 |
+ | USER-003 | 存在しないユーザー | 404 |
+ | USER-004 | 利用停止中ユーザー | 403 |
++| USER-005 | 自分自身の停止・停止解除・権限変更 | 400 |
+ | PET-001 | 存在しないペット | 404 |
+ | PET-002 | 飼い主不一致 | 401 |
+ | HOSPITAL-001 | 存在しない病院 | 404 |
+@@ -147,7 +148,7 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
+ - Principal is `Long`: use `new UsernamePasswordAuthenticationToken(1L, null, authorities)` — `.with(user(...))` fails.
+ - Most unit tests mock repositories. H2 **is** available for `@DataJpaTest` (`application-test.yml`, `MODE=PostgreSQL`, `ddl-auto=create-drop`, Flyway disabled) — see `RefreshTokenPersistenceAdapterTest`; Testcontainers is not introduced.
+ - Mocked repositories prove neither real SQL nor concurrency. Null-tolerant `@Query` bugs escape them (docs/12 §3-10) and so do races (docs/12 §3-11). No PostgreSQL concurrency test exists yet.
+-- Verify: `./gradlew clean test` in `spring-api/` (261 green as of 2026-10-21).
++- Verify: `./gradlew clean test` in `spring-api/` (279 green as of 2026-10-21).
+ 
+ ## 9. Environment
+ 
+@@ -168,6 +169,7 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
+ **Vaccination (2026-10-05, branch `feat/spring/vaccination`, stacked on `feat/react-api-integration`)**: register/list/complete/cancel/reschedule/delete APIs + daily 09:00 JST reminder Scheduler creating VACCINATION notifications (dedupe: `reminded_date` claimed by a conditional UPDATE per scheduled date, cleared on reschedule). Task record `.ai-collab/tasks/2026-10-05-vaccination/`; Codex REVIEW-001 found R-01..R-04 (stale pet rows, failed load shown as empty, rescheduled reminder lost to a timestamp race, copy); fixed in HANDOFF-002 and ACCEPTED in REVIEW-002 (2026-10-21). Frontend: SC-016 vaccination screen and the SC-006 upcoming-vaccination panel (2026-10-21).
+ 
+ **Pet fields + datetime format (2026-10-21, branch `feat/spring/pet-fields-datetime`)**: merged the July pet-fields branch (breed/neutered/microchip, V13) and added those columns to the conditional `updateProfile`; pet update stays a full replacement (user decision, docs/07 §5-4); `pets.gender` made nullable (V14) and request validation added for name/breed/weight lengths; all response `LocalDateTime`s serialize as JST with offset (`LocalDateTimeJsonSerializer`, docs/07 §2-7, user decision). Frontend: pet edit screen (`/pets/:petId/edit`, reuses SC-005), breed on the pet list, 「不明」 gender. Task record `.ai-collab/tasks/2026-10-21-pet-fields-datetime/`; Codex REVIEW-001 ACCEPTED (2026-10-21, one P3 comment fix deferred).
++**User management (2026-10-21, branch `feat/spring/user-management`)**: SYSTEM_ADMIN APIs `GET /admin/users` (keyword/role/status, paged `PageResponse`), `PATCH /admin/users/{id}/suspend|activate|role` (self → USER-005; suspension locks the user row and revokes refresh tokens). The JWT filter now checks the current user status/role per request. `GlobalExceptionHandler` maps unreadable params/JSON (bad enum values) to 400 VALIDATION-001 instead of 500. Frontend: real SC-015 `AdminUserPage`, a role-dependent admin menu on the dashboard (admin screens had no entry point), `UserProfile.userId` fixed (the type said `id`). Task record `.ai-collab/tasks/2026-10-21-user-management/`.
+ 
+ **Frontend review (2026-10-04)**: API wiring is implemented, but review is CHANGES_REQUESTED in `.ai-collab/tasks/2026-10-04-frontend-api-integration/REVIEW-001.md`: F-01 private pet cache survives account changes, F-02 stale hospital schedules can overwrite the current hospital, F-03 same-day past slots remain selectable. Codex verified the frontend build and reproduced F-01/F-02 with the actual stores. Browser/Capacitor evidence remains implementer-reported; native runtime verification is pending in TODO.md. Codex owns only this review and the user-requested TODO/status update; application fixes remain with Claude. Claude fixed F-01..F-03 on 2026-10-04 (session-scoped pet store reset/guard, hospital-keyed reservation data with latest-response-wins hospital store, JST start-time rule `isUpcoming`); response in `HANDOFF-002.md`, ACCEPTED in `REVIEW-002.md` (2026-10-04). Browser and APK evidence there is implementer-reported.
+ 
+diff --git a/TODO.md b/TODO.md
+index f299299..cc0896d 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -132,6 +132,13 @@
+ - [x] `PATCH /api/v1/vaccinations/{id}/cancel` — SCHEDULED→CANCELLED（`docs/07` §6-9）。遷移元statusをWHEREに入れた条件付きUPDATE、0件ならVACCINATION-003。再登録で`reminded_date`が消えるため新しい予定日で再通知される
+ - [x] `DELETE /api/v1/vaccinations/{id}` — 論理削除（`docs/07` §6-11）。`deleted_at IS NULL`の条件付きUPDATE、同時削除で負けた側はVACCINATION-001
+ 
++### ユーザー管理 API（2026-10-21 実装、Claude Code、ブランチ `feat/spring/user-management`）
++- [x] `GET /api/v1/admin/users` — キーワード（メール・ニックネーム）・権限・状態で検索、ページ形式（`PageResponse`）
++- [x] `PATCH /api/v1/admin/users/{id}/suspend`・`/activate` — 停止時はユーザー行の排他を取り、全Refresh Tokenを失効
++- [x] `PATCH /api/v1/admin/users/{id}/role` — 権限変更。自分自身の停止・権限変更はUSER-005
++- [x] 認証フィルターがリクエストごとにユーザーの現在の状態・権限を確認（停止・権限変更が次のリクエストから反映、`docs/09` §3-5）
++- [x] 存在しないenum値（クエリ・JSON）を500ではなく400（VALIDATION-001）で返す（`docs/12` §3-16）
++
+ ### 予約枠自動生成バッチ（設計決定、未実装 — 2026-08-02）
+ > ユーザーとの設計議論の結論。`hospital_business_hours`管理APIは実装済みだが、これを元に`hospital_schedules`を自動生成するScheduler本体は未着手
+ 
+@@ -235,7 +242,7 @@
+ - [x] ログアウト — ヘッダー右上（存在しない`/profile`へのリンクだった）をログアウトボタンに変更。`POST /auth/logout`の後、失敗してもローカルのトークンを破棄
+ - [x] ペット一覧の表示修正 — 一覧API（PetSummary）は品種・性別を返さないため、常に「— · メス」と表示されていた。種別と体重の表示に変更
+ - [ ] 管理者画面 `AdminReservationPage` — **要判断**: 承認/却下/完了APIはあるが、管理者が予約を一覧するAPIが無い（`docs/05` SC-013は一覧表示を定義、`docs/07`に該当APIなし）。Spring側に管理者用一覧APIを追加するか、ユーザー判断待ち
+-- [ ] 管理者画面 `AdminUserPage` — ユーザー管理API連動（バックエンド未実装のため連動不可）
++- [x] 管理者画面 `AdminUserPage`（2026-10-21、SC-015） — 検索（キーワード・権限・状態、20件ずつのページ）・停止/停止解除・権限変更を実API連動。自分自身の行は操作不可。Dashboardに役割別の「管理メニュー」を追加（管理画面への入口が無かったため）。`UserProfile`の型を実際の応答（`userId`・`status`）に修正
+ 
+ ### Vaccination API 連動（2026-10-21 実装、Claude Code、ブランチ `feat/spring/vaccination`）
+ - [x] ワクチン予定画面 (`VaccinationPage`、`/pets/:petId/vaccinations`、`docs/05` SC-016) — 一覧・登録・接種完了（接種日入力、未来日不可）・中止・再登録（新しい予定日）・削除。ペット切替時に前のペットの応答を反映しない
+diff --git a/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md b/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md
+index 1dba4ba..5eb5295 100644
+--- a/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md	
++++ b/docs/02_Requirement_Definition 362d097bd4f78009a0c8caf70e4df7e0.md	
+@@ -329,4 +329,25 @@ SYSTEM_ADMINは病院の登録・停止を行える。HOSPITAL_ADMIN・SYSTEM_AD
+ 
+ 予約承認・却下・診療完了・ワクチン予定を通知として生成し、ユーザーが一覧・既読管理できる。
+ 
+----
+\ No newline at end of file
++---
++## **5-7. ユーザー管理機能**
++
++## **FR-ADMIN-001**
++
++### **機能名**
++
++ユーザー管理（システム管理者）
++
++### **内容**
++
++システム管理者はユーザーを検索（メールアドレス・ニックネーム・権限・状態）し、アカウントの停止・停止解除と権限変更を行える。停止・権限変更は対象ユーザーの次のリクエストから反映される。自分自身は変更できない。
++
++### **異常系**
++
++| **条件** | **処理** |
++| --- | --- |
++| 存在しないユーザー | USER-003 |
++| 自分自身の停止・権限変更 | USER-005 |
++| システム管理者以外 | AUTH-005 |
++
++---
+diff --git a/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md b/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md
+index 36ab250..6b9bba4 100644
+--- a/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md	
++++ b/docs/05_Screen_Design 362d097bd4f7806e9e80cf6e5a3f5020.md	
+@@ -754,9 +754,11 @@ flowchart TB
+ 
+ | **機能** | **内容** |
+ | --- | --- |
+-| アカウント停止 | SUSPENDED |
+-| Role変更 | 権限変更 |
+-| ユーザー検索 | 一覧検索 |
++| ユーザー検索 | メールアドレス・ニックネームの部分一致、権限・状態で絞り込み、20件ずつのページ表示（`07_API_Design` §11-7） |
++| アカウント停止 / 停止解除 | ACTIVE ⇔ SUSPENDED（確認ダイアログあり、§11-4・11-5） |
++| Role変更 | 一般ユーザー / 病院管理者 / システム管理者（§11-6） |
++
++自分自身の行には停止・権限変更の操作を表示しない（APIでもUSER-005）。操作の成功・失敗に関わらず一覧を再取得し、他の管理者による変更も反映する。入口はDashboardの「管理メニュー」（病院管理者・システム管理者のみ表示）。
+ 
+ ---
+ 
+diff --git a/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md b/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md
+index 9d4cdc8..f7ea43a 100644
+--- a/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md	
++++ b/docs/07_API_Design 363d097bd4f78052a200e297abde89f3.md	
+@@ -1741,7 +1741,7 @@ PATCH /api/v1/admin/hospitals/{hospitalId}/suspend
+ 
+ ---
+ 
+-# **11-4. ユーザー停止（未実装）**
++# **11-4. ユーザー停止**
+ 
+ ## **Endpoint**
+ 
+@@ -1749,11 +1749,111 @@ PATCH /api/v1/admin/hospitals/{hospitalId}/suspend
+ PATCH /api/v1/admin/users/{userId}/suspend
+ ```
+ 
++## **権限**
++
++| **Role** |
++| --- |
++| ROLE_SYSTEM_ADMIN |
++
++---
++
++## **説明**
++
++ユーザー状態をSUSPENDEDへ変更する（`08_State_Design` §3）。リクエストボディなし。既に停止中でも成功（同じ状態への変更）。対象ユーザーのRefresh Tokenをすべて失効させる。発行済みのAccess Tokenも、認証フィルターがリクエストごとに現在の状態を確認するため次のリクエストから401になる（`09_Security_Design` §3-5）。ログイン・Token再発行と同じユーザー行の排他（`SELECT ... FOR UPDATE`）を取ってから更新し、停止の確定後に新しいTokenが残らないようにする。
++
++## **異常系（11-4〜11-6共通）**
++
++| **Code** | **内容** |
++| --- | --- |
++| USER-003 | 存在しない・論理削除済みのユーザー |
++| USER-005 | 自分自身の停止・停止解除・権限変更 |
++| AUTH-005 | ROLE_SYSTEM_ADMIN以外 |
++
++---
++
++# **11-5. ユーザー停止解除**
++
++## **Endpoint**
++
++```
++PATCH /api/v1/admin/users/{userId}/activate
++```
++
++---
++
++## **説明**
++
++ユーザー状態をACTIVEへ戻す。リクエストボディなし。既に利用中でも成功。権限・異常系は11-4と同じ。停止中に失効したRefresh Tokenは戻らないため、利用者は再ログインする。
++
++---
++
++# **11-6. ユーザー権限変更**
++
++## **Endpoint**
++
++```
++PATCH /api/v1/admin/users/{userId}/role
++```
++
++## **Request**
++
++```json
++{
++  "role": "ROLE_HOSPITAL_ADMIN"
++}
++```
++
+ ---
+ 
+ ## **説明**
+ 
+-ユーザー状態をSUSPENDEDへ変更する。
++ユーザーの権限を変更する（`ROLE_USER` / `ROLE_HOSPITAL_ADMIN` / `ROLE_SYSTEM_ADMIN`）。認証フィルターは現在の権限で認証するため、対象ユーザーの次のリクエストから反映される。`role`なし・存在しない権限名はVALIDATION-001。権限・異常系は11-4と同じ。
++
++---
++
++# **11-7. ユーザー一覧（管理者）**
++
++## **Endpoint**
++
++```
++GET /api/v1/admin/users?keyword=tanaka&role=ROLE_USER&status=ACTIVE&page=0&size=20
++```
++
++| **Query** | **内容** |
++| --- | --- |
++| keyword | 任意。メールアドレス・ニックネームの部分一致（大文字小文字を区別しない） |
++| role | 任意。`ROLE_USER` / `ROLE_HOSPITAL_ADMIN` / `ROLE_SYSTEM_ADMIN` |
++| status | 任意。`ACTIVE` / `SUSPENDED` |
++| page | 0始まり（既定0、負数は0として扱う） |
++| size | 1〜100（既定20、0以下は20、100超は100として扱う） |
++
++論理削除済みのユーザーは含めない。ID昇順。存在しない`role`・`status`の値はVALIDATION-001。
++
++## **Response**
++
++```json
++{
++  "success": true,
++  "data": {
++    "content": [
++      {
++        "userId": 10,
++        "email": "tanaka@example.com",
++        "nickname": "Tanaka",
++        "role": "ROLE_USER",
++        "status": "ACTIVE",
++        "createdAt": "2026-10-01T12:00:00+09:00"
++      }
++    ],
++    "totalElements": 11,
++    "totalPages": 2,
++    "size": 10,
++    "number": 1
++  }
++}
++```
++
++ページ形式は§2-6の`page`・`size`に対応する（`number`は0始まりのページ番号）。
+ 
+ ---
+ 
+@@ -1786,6 +1886,7 @@ PATCH /api/v1/admin/users/{userId}/suspend
+ | 予約申請 | ○ | × | ○ |
+ | 予約承認 | × | ○ | ○ |
+ | 病院管理 | × | × | ○ |
++| ユーザー管理（11-4〜11-7） | × | × | ○ |
+ 
+ ---
+ 
+diff --git a/docs/08_State_Design 365d097bd4f7808f9b01de0aa34fa730.md b/docs/08_State_Design 365d097bd4f7808f9b01de0aa34fa730.md
+index c7cbc52..3605ca4 100644
+--- a/docs/08_State_Design 365d097bd4f7808f9b01de0aa34fa730.md	
++++ b/docs/08_State_Design 365d097bd4f7808f9b01de0aa34fa730.md	
+@@ -75,8 +75,8 @@ stateDiagram-v2
+ 
+ | **現在状態** | **次状態** | **実行者** | **条件** |
+ | --- | --- | --- | --- |
+-| ACTIVE | SUSPENDED | ROLE_SYSTEM_ADMIN | 管理者停止 |
+-| SUSPENDED | ACTIVE | ROLE_SYSTEM_ADMIN | 復旧処理 |
++| ACTIVE | SUSPENDED | ROLE_SYSTEM_ADMIN | 管理者停止（`PATCH /admin/users/{id}/suspend`、`07_API_Design` §11-4）。自分自身は不可（USER-005） |
++| SUSPENDED | ACTIVE | ROLE_SYSTEM_ADMIN | 復旧処理（`PATCH /admin/users/{id}/activate`、§11-5） |
+ 
+ ---
+ 
+@@ -85,7 +85,7 @@ stateDiagram-v2
+ | **条件** | **内容** |
+ | --- | --- |
+ | SUSPENDED | ログイン不可 |
+-| SUSPENDED | API利用不可 |
++| SUSPENDED | API利用不可（停止時に全Refresh Tokenを失効させ、認証フィルターがリクエストごとに状態を確認するため発行済みのAccess Tokenも次のリクエストから401、`09_Security_Design` §3-5） |
+ 
+ ---
+ 
+diff --git a/docs/09_Security_Design 366d097bd4f78074af53e3854d02bdc6.md b/docs/09_Security_Design 366d097bd4f78074af53e3854d02bdc6.md
+index d20cc9c..4e7b47f 100644
+--- a/docs/09_Security_Design 366d097bd4f78074af53e3854d02bdc6.md	
++++ b/docs/09_Security_Design 366d097bd4f78074af53e3854d02bdc6.md	
+@@ -135,11 +135,14 @@ refresh_tokens
+ | Logout | revoked=true |
+ | Token再発行 | 旧Token失効 |
+ | 有効期限超過 | 使用不可 |
++| ユーザー停止（管理者、`07_API_Design` §11-4） | 対象ユーザーの全Token失効 |
+ 
+ 再発行時の失効は`UPDATE ... WHERE token = ? AND revoked = false`の条件付きUPDATEで行い、**更新件数が1件の呼び出しのみ**が後続Tokenを発行できる。同時リフレッシュやログアウト後の再利用は0件更新となりAUTH-003を返す（rotationの単一消費）。
+ 
+ さらに、ログイン・再発行・ログアウトはいずれも**対象ユーザー行を`SELECT ... FOR UPDATE`で排他取得してから**Tokenを操作する。これが無いと、再発行が旧Tokenを失効させて後続Tokenをinsertする間に、ログイン／ログアウトの一括revoke（`WHERE user_id = ? AND revoked = false`）が走り、後続Tokenをスナップショットから取りこぼす。結果としてログアウト成功後もセッションが生き残る、あるいは有効なRefresh Tokenが2本残る（`docs/12` §3-11）。ユーザー単位の直列化により「有効なRefresh Tokenは1ユーザー1本」の不変条件が3操作すべてで保たれる。
+ 
++Access Token自体は失効リストを持たないが、認証フィルター（`JwtAuthenticationFilter`）が**リクエストごとにユーザーの現在の状態と権限をDBから確認**する。停止中・論理削除済み・存在しないユーザーは有効なAccess Tokenでも認証せず（401）、権限はTokenの`role`ではなく現在の値を使う。これにより管理者による停止・権限変更は、Tokenの残り有効期限（最長30分）を待たず次のリクエストから反映される（`08_State_Design` §3-4「API利用不可」）。代償として認証付きリクエストごとに主キー検索が1回増える。
++
+ ---
+ 
+ # **3-6. 認証フロー**
+diff --git a/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md b/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md
+index 0686289..1c4f093 100644
+--- a/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md	
++++ b/docs/11_Test_Strategy 366d097bd4f7806abc43d3ba52e7a24d.md	
+@@ -145,6 +145,20 @@ flowchart TB
+ | ROLE-T004 | ROLE_HOSPITAL_ADMIN | 病院管理 | 403 |
+ | ROLE-T005 | ROLE_SYSTEM_ADMIN | 病院管理 | 成功 |
+ | ROLE-T006 | 未認証 | 認証必須API | 401 |
++| ROLE-T007 | ROLE_USER・ROLE_HOSPITAL_ADMIN | ユーザー管理（`/api/v1/admin/users`） | 403 |
++
++### **ユーザー管理**
++
++| **Test ID** | **観点** | **期待結果** |
++| --- | --- | --- |
++| ADMIN-T001 | 検索（キーワード・権限・状態・ページ） | 部分一致（大文字小文字無視）、論理削除済みを除外、ID昇順、ページ情報付き。パスワードは返さない |
++| ADMIN-T002 | ユーザー停止 | SUSPENDED、全Refresh Token失効、発行済みAccess Tokenでも次のリクエストから401、ログインはAUTH-002 |
++| ADMIN-T003 | 停止解除 | ACTIVE、再ログイン可能 |
++| ADMIN-T004 | 権限変更 | 次のリクエストから新しい権限で認可される |
++| ADMIN-T005 | 自分自身の停止・権限変更 | USER-005 |
++| ADMIN-T006 | 存在しない権限名・状態名 | VALIDATION-001（500にしない） |
++
++> ADMIN-T001は`UserPersistenceAdapterTest`（H2）と`AdminUserServiceTest`、ADMIN-T002〜T006は`AdminUserServiceTest`・`AdminUserControllerTest`・`JwtAuthenticationFilterTest`で検証し、実PostgreSQL・実HTTPでの確認は受け入れスクリプト（`.ai-collab/tasks/2026-10-21-user-management/scripts/`）で行う。
+ 
+ ---
+ 
+diff --git a/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md b/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md
+index ed48408..34a5f72 100644
+--- a/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md	
++++ b/docs/12_Trouble_Shooting 366d097bd4f7806881cec706d47638df.md	
+@@ -677,6 +677,26 @@ migrationを書いたら、`06_ERD`のNULL可否・型と1列ずつ突き合わ
+ 
+ ---
+ 
++# **3-16. 存在しないenum値の指定が500になる（2026-10-21 ユーザー管理API実装時に発見）**
++
++## **症状**
++
++`GET /api/v1/admin/users?role=ROLE_ROOT`のように存在しないenum値をクエリに指定したり、JSONの`"role":"ROLE_ROOT"`のように読み取れない値を送ったりすると、SERVER-001（500）が返る。
++
++---
++
++## **原因**
++
++型変換の失敗（`MethodArgumentTypeMismatchException`）とJSONの読み取り失敗（`HttpMessageNotReadableException`）は`@Valid`の検証より前に起きるため、`MethodArgumentNotValidException`のハンドラーを通らず、`GlobalExceptionHandler`の最後の`Exception`ハンドラーで500になっていた。予約・ワクチンなど既存のAPIも同じ。
++
++---
++
++## **対応方法**
++
++`GlobalExceptionHandler`で2つの例外を受け、400（VALIDATION-001「入力内容を確認してください。」）で返す。
++
++---
++
+ # **4. Django関連**
+ 
+ # **4-1. Python Version不一致**
+diff --git a/frontend/src/api/adminUser.ts b/frontend/src/api/adminUser.ts
+new file mode 100644
+index 0000000..50218fa
+--- /dev/null
++++ b/frontend/src/api/adminUser.ts
+@@ -0,0 +1,24 @@
++import { apiClient } from './client'
++import type { AdminUser, ApiResponse, PageResponse, UserProfile } from '../types'
++
++export interface AdminUserSearch {
++  keyword?: string
++  role?: UserProfile['role']
++  status?: UserProfile['status']
++  page: number
++  size: number
++}
++
++export const adminUserApi = {
++  search: (params: AdminUserSearch) =>
++    apiClient.get<ApiResponse<PageResponse<AdminUser>>>('/api/v1/admin/users', { params }).then((r) => r.data),
++
++  suspend: (userId: number) =>
++    apiClient.patch<ApiResponse<null>>(`/api/v1/admin/users/${userId}/suspend`).then((r) => r.data),
++
++  activate: (userId: number) =>
++    apiClient.patch<ApiResponse<null>>(`/api/v1/admin/users/${userId}/activate`).then((r) => r.data),
++
++  changeRole: (userId: number, role: UserProfile['role']) =>
++    apiClient.patch<ApiResponse<null>>(`/api/v1/admin/users/${userId}/role`, { role }).then((r) => r.data),
++}
+diff --git a/frontend/src/pages/DashboardPage.tsx b/frontend/src/pages/DashboardPage.tsx
+index 8eda4f0..a0e5bee 100644
+--- a/frontend/src/pages/DashboardPage.tsx
++++ b/frontend/src/pages/DashboardPage.tsx
+@@ -78,6 +78,25 @@ export default function DashboardPage() {
+         </p>
+       </section>
+ 
++      {/* 管理メニュー（病院管理者・システム管理者のみ。管理画面への入口が他に無いため） */}
++      {(user?.role === 'ROLE_HOSPITAL_ADMIN' || user?.role === 'ROLE_SYSTEM_ADMIN') && (
++        <section className="bg-surface-container-lowest rounded-[16px] border border-neutral-gray-100 p-container-margin flex flex-col gap-sm shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
++          <h2 className="font-headline-md text-headline-md text-neutral-gray-900">管理メニュー</h2>
++          <div className="grid grid-cols-2 gap-sm">
++            {[
++              { to: '/admin/reservations', icon: 'event_note', label: '予約管理', show: true },
++              { to: '/admin/hospitals', icon: 'local_hospital', label: '病院情報管理', show: true },
++              { to: '/admin/users', icon: 'manage_accounts', label: 'ユーザー管理', show: user?.role === 'ROLE_SYSTEM_ADMIN' },
++            ].filter((m) => m.show).map((m) => (
++              <Link key={m.to} to={m.to} className="flex items-center gap-2 px-sm py-3 rounded-xl border border-neutral-gray-100 hover:bg-surface-container-low transition-colors">
++                <span className="material-symbols-outlined text-primary text-[20px]">{m.icon}</span>
++                <span className="font-label-md text-label-md text-neutral-gray-900">{m.label}</span>
++              </Link>
++            ))}
++          </div>
++        </section>
++      )}
++
+       {/* 次の予約カード */}
+       <section>
+         <Link
+diff --git a/frontend/src/pages/NotificationsPage.tsx b/frontend/src/pages/NotificationsPage.tsx
+index 0e6065d..0544e3c 100644
+--- a/frontend/src/pages/NotificationsPage.tsx
++++ b/frontend/src/pages/NotificationsPage.tsx
+@@ -10,7 +10,8 @@ const typeConfig: Record<NotificationType, { icon: string; color: string }> = {
+   VACCINATION: { icon: 'vaccines', color: 'text-warning-yellow bg-warning-yellow/10' },
+ }
+ 
+-// createdAt はオフセットなしのJST日時（docs/07 §2-7）。端末のタイムゾーンで解釈し直さずそのまま表示する
++// createdAt はJSTのオフセット付き日時（例: 2026-10-21T23:59:58+09:00、docs/07 §2-7）。
++// 先頭の日付・時刻部分（JSTの壁時計時刻）をそのまま表示し、端末のタイムゾーンで解釈し直さない
+ const formatDateTime = (dateTime: string) => dateTime.slice(0, 16).replace('T', ' ')
+ 
+ export default function NotificationsPage() {
+diff --git a/frontend/src/pages/admin/AdminUserPage.tsx b/frontend/src/pages/admin/AdminUserPage.tsx
+index d228774..187560c 100644
+--- a/frontend/src/pages/admin/AdminUserPage.tsx
++++ b/frontend/src/pages/admin/AdminUserPage.tsx
+@@ -1,119 +1,222 @@
+-import { useState } from 'react'
+-
+-type Role = 'USER' | 'HOSPITAL_ADMIN' | 'SYSTEM_ADMIN'
+-type UserStatus = 'active' | 'suspended'
+-
+-interface User {
+-  id: number
+-  email: string
+-  nickname: string
+-  role: Role
+-  status: UserStatus
+-  joinedAt: string
+-  petCount: number
+-}
++import { useEffect, useState, FormEvent } from 'react'
++import { adminUserApi } from '../../api/adminUser'
++import { extractErrorMessage } from '../../api/client'
++import { useAuthStore } from '../../stores/authStore'
++import type { AdminUser, PageResponse, UserProfile } from '../../types'
++
++type Role = UserProfile['role']
++type Status = UserProfile['status']
+ 
+-const roleConfig: Record<Role, { label: string; color: string }> = {
+-  USER: { label: '一般ユーザー', color: 'text-neutral-gray-600 bg-neutral-gray-50' },
+-  HOSPITAL_ADMIN: { label: '病院管理者', color: 'text-primary bg-primary/10' },
+-  SYSTEM_ADMIN: { label: 'システム管理者', color: 'text-error-red bg-error-red/10' },
++const ROLE_CONFIG: Record<Role, { label: string; color: string }> = {
++  ROLE_USER: { label: '一般ユーザー', color: 'text-neutral-gray-600 bg-neutral-gray-50' },
++  ROLE_HOSPITAL_ADMIN: { label: '病院管理者', color: 'text-primary bg-primary/10' },
++  ROLE_SYSTEM_ADMIN: { label: 'システム管理者', color: 'text-error-red bg-error-red/10' },
+ }
+ 
+-const mockUsers: User[] = [
+-  { id: 1, email: 'tanaka@example.com', nickname: 'ボリパパ', role: 'USER', status: 'active', joinedAt: '2024-01-15', petCount: 2 },
+-  { id: 2, email: 'sato@example.com', nickname: 'ナビママ', role: 'USER', status: 'active', joinedAt: '2024-02-20', petCount: 1 },
+-  { id: 3, email: 'hospital@happy.com', nickname: '幸せ病院', role: 'HOSPITAL_ADMIN', status: 'active', joinedAt: '2024-03-01', petCount: 0 },
+-  { id: 4, email: 'suzuki@example.com', nickname: 'コンイ飼い主', role: 'USER', status: 'suspended', joinedAt: '2024-04-10', petCount: 1 },
+-]
++const PAGE_SIZE = 20
+ 
++// SC-015 ユーザー管理（システム管理者のみ）。検索・停止/停止解除・権限変更
+ export default function AdminUserPage() {
+-  const [query, setQuery] = useState('')
++  const myId = useAuthStore((s) => s.user?.userId)
++  const [keywordInput, setKeywordInput] = useState('')
++  const [keyword, setKeyword] = useState('')
+   const [roleFilter, setRoleFilter] = useState<Role | 'all'>('all')
+-  const [users, setUsers] = useState(mockUsers)
++  const [statusFilter, setStatusFilter] = useState<Status | 'all'>('all')
++  const [page, setPage] = useState(0)
++  const [result, setResult] = useState<PageResponse<AdminUser> | null>(null)
++  const [isLoading, setIsLoading] = useState(true)
++  const [loadFailed, setLoadFailed] = useState(false)
++  const [error, setError] = useState<string | null>(null)
++  const [reloadKey, setReloadKey] = useState(0)
++  const [busyUserId, setBusyUserId] = useState<number | null>(null)
++
++  useEffect(() => {
++    // 条件を変えた後に前の条件の応答が遅れて届いても反映しない
++    let active = true
++    setIsLoading(true)
++    adminUserApi
++      .search({
++        keyword: keyword || undefined,
++        role: roleFilter === 'all' ? undefined : roleFilter,
++        status: statusFilter === 'all' ? undefined : statusFilter,
++        page,
++        size: PAGE_SIZE,
++      })
++      .then((res) => {
++        if (!active) return
++        setResult(res.data)
++        setLoadFailed(false)
++      })
++      .catch((err) => {
++        if (!active) return
++        setError(extractErrorMessage(err, 'ユーザー一覧の取得に失敗しました。'))
++        setLoadFailed(true)
++      })
++      .finally(() => active && setIsLoading(false))
++    return () => {
++      active = false
++    }
++  }, [keyword, roleFilter, statusFilter, page, reloadKey])
++
++  const handleSearch = (e: FormEvent) => {
++    e.preventDefault()
++    setPage(0)
++    setKeyword(keywordInput.trim())
++  }
+ 
+-  const filtered = users.filter((u) => {
+-    const matchQuery = u.email.includes(query) || u.nickname.includes(query)
+-    const matchRole = roleFilter === 'all' || u.role === roleFilter
+-    return matchQuery && matchRole
+-  })
++  const run = async (userId: number, action: () => Promise<unknown>, fallback: string) => {
++    setError(null)
++    setBusyUserId(userId)
++    try {
++      await action()
++    } catch (err) {
++      setError(extractErrorMessage(err, fallback))
++    } finally {
++      setBusyUserId(null)
++      // 成功・失敗どちらでも最新の状態を表示する（他の管理者による変更も反映）
++      setReloadKey((k) => k + 1)
++    }
++  }
++
++  const toggleStatus = (u: AdminUser) => {
++    if (u.status === 'ACTIVE') {
++      if (!window.confirm(`${u.nickname}（${u.email}）を停止しますか？\nログイン中のセッションも次の操作から無効になります。`)) return
++      run(u.userId, () => adminUserApi.suspend(u.userId), 'アカウントの停止に失敗しました。')
++    } else {
++      if (!window.confirm(`${u.nickname}（${u.email}）の停止を解除しますか？`)) return
++      run(u.userId, () => adminUserApi.activate(u.userId), '停止解除に失敗しました。')
++    }
++  }
+ 
+-  const toggleStatus = (id: number) => {
+-    setUsers((prev) => prev.map((u) => u.id === id ? { ...u, status: u.status === 'active' ? 'suspended' : 'active' } : u))
++  const changeRole = (u: AdminUser, role: Role) => {
++    if (role === u.role) return
++    if (!window.confirm(`${u.nickname} の権限を「${ROLE_CONFIG[role].label}」に変更しますか？\n対象ユーザーの次の操作から反映されます。`)) {
++      setReloadKey((k) => k + 1)
++      return
++    }
++    run(u.userId, () => adminUserApi.changeRole(u.userId, role), '権限の変更に失敗しました。')
+   }
+ 
++  const filterButton = (active: boolean) =>
++    `flex-shrink-0 px-4 py-2 rounded-full font-label-md text-label-md border transition-all ${active ? 'bg-pet-green-vibrant text-white border-pet-green-vibrant' : 'bg-surface-container-lowest text-neutral-gray-600 border-neutral-gray-100'}`
++
+   return (
+     <div className="px-container-margin py-lg pb-xl flex flex-col gap-lg">
+       <div>
+         <h1 className="font-headline-lg-mobile text-headline-lg-mobile text-neutral-gray-900">ユーザー管理</h1>
+-        <p className="font-body-md text-body-md text-neutral-gray-600 mt-0.5">
+-          全ユーザー {users.length}名 · アクティブ {users.filter((u) => u.status === 'active').length}名
+-        </p>
++        {result && (
++          <p className="font-body-md text-body-md text-neutral-gray-600 mt-0.5">該当 {result.totalElements}名</p>
++        )}
+       </div>
+ 
+-      <div className="relative">
++      <form onSubmit={handleSearch} className="relative">
+         <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-neutral-gray-600">search</span>
+-        <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="メールアドレスまたはニックネームで検索"
+-          className="w-full h-[48px] pl-10 pr-sm bg-surface-container-lowest border border-neutral-gray-100 rounded-xl font-body-md text-body-md text-on-surface placeholder:text-neutral-gray-600 focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all" />
+-      </div>
++        <input
++          type="search"
++          value={keywordInput}
++          onChange={(e) => setKeywordInput(e.target.value)}
++          placeholder="メールアドレスまたはニックネームで検索（Enter）"
++          aria-label="メールアドレスまたはニックネームで検索"
++          className="w-full h-[48px] pl-10 pr-sm bg-surface-container-lowest border border-neutral-gray-100 rounded-xl font-body-md text-body-md text-on-surface placeholder:text-neutral-gray-600 focus:outline-none focus:ring-2 focus:ring-pet-green-vibrant transition-all"
++        />
++      </form>
+ 
+-      <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+-        {(['all', 'USER', 'HOSPITAL_ADMIN', 'SYSTEM_ADMIN'] as const).map((r) => {
+-          const labels = { all: 'すべて', USER: 'ユーザー', HOSPITAL_ADMIN: '病院', SYSTEM_ADMIN: '管理者' }
+-          return (
+-            <button key={r} onClick={() => setRoleFilter(r)}
+-              className={`flex-shrink-0 px-4 py-2 rounded-full font-label-md text-label-md border transition-all ${roleFilter === r ? 'bg-pet-green-vibrant text-white border-pet-green-vibrant' : 'bg-surface-container-lowest text-neutral-gray-600 border-neutral-gray-100'}`}>
+-              {labels[r]}
++      <div className="flex flex-col gap-xs">
++        <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
++          {(['all', 'ROLE_USER', 'ROLE_HOSPITAL_ADMIN', 'ROLE_SYSTEM_ADMIN'] as const).map((r) => (
++            <button key={r} onClick={() => { setPage(0); setRoleFilter(r) }} className={filterButton(roleFilter === r)}>
++              {r === 'all' ? 'すべての権限' : ROLE_CONFIG[r].label}
+             </button>
+-          )
+-        })}
++          ))}
++        </div>
++        <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
++          {([['all', 'すべての状態'], ['ACTIVE', '利用中'], ['SUSPENDED', '停止中']] as const).map(([s, label]) => (
++            <button key={s} onClick={() => { setPage(0); setStatusFilter(s) }} className={filterButton(statusFilter === s)}>
++              {label}
++            </button>
++          ))}
++        </div>
+       </div>
+ 
+-      <div className="flex flex-col gap-sm">
+-        {filtered.map((u) => {
+-          const roleConf = roleConfig[u.role]
+-          return (
+-            <div key={u.id}
+-              className={`bg-surface-container-lowest rounded-xl border p-container-margin flex flex-col gap-sm shadow-[0px_2px_8px_rgba(0,0,0,0.03)] ${u.status === 'suspended' ? 'border-error-red/20 opacity-70' : 'border-neutral-gray-100'}`}>
+-              <div className="flex items-start justify-between gap-2">
+-                <div className="flex items-center gap-3 min-w-0">
+-                  <div className="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center flex-shrink-0">
+-                    <span className="material-symbols-outlined text-secondary">person</span>
++      {error && (
++        <div className="flex items-center gap-2 bg-error-red/10 border border-error-red/20 text-error-red px-sm py-3 rounded-lg font-body-md text-body-md">
++          <span className="material-symbols-outlined text-[18px] flex-shrink-0">error</span>
++          {error}
++        </div>
++      )}
++
++      {isLoading && !result ? (
++        <div className="flex items-center justify-center py-xl">
++          <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
++        </div>
++      ) : loadFailed ? (
++        <button onClick={() => { setError(null); setReloadKey((k) => k + 1) }} className="self-center font-button-text text-button-text text-primary px-4 py-2 rounded-xl border border-primary/20 hover:bg-primary/10">
++          再試行
++        </button>
++      ) : !result || result.content.length === 0 ? (
++        <p className="font-body-md text-body-md text-neutral-gray-600 text-center py-xl">該当するユーザーはいません。</p>
++      ) : (
++        <div className="flex flex-col gap-sm">
++          {result.content.map((u) => {
++            const isSelf = u.userId === myId
++            const isBusy = busyUserId === u.userId
++            return (
++              <div key={u.userId}
++                className={`bg-surface-container-lowest rounded-xl border p-container-margin flex flex-col gap-sm shadow-[0px_2px_8px_rgba(0,0,0,0.03)] ${u.status === 'SUSPENDED' ? 'border-error-red/20' : 'border-neutral-gray-100'}`}>
++                <div className="flex items-start justify-between gap-2">
++                  <div className="flex items-center gap-3 min-w-0">
++                    <div className="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center flex-shrink-0">
++                      <span className="material-symbols-outlined text-secondary">person</span>
++                    </div>
++                    <div className="min-w-0">
++                      <p className="font-body-lg text-body-lg text-neutral-gray-900 font-medium truncate">
++                        {u.nickname}{isSelf && <span className="font-label-md text-label-md text-neutral-gray-600">（自分）</span>}
++                      </p>
++                      <p className="font-label-md text-label-md text-neutral-gray-600 truncate">{u.email}</p>
++                    </div>
+                   </div>
+-                  <div className="min-w-0">
+-                    <p className="font-body-lg text-body-lg text-neutral-gray-900 font-medium truncate">{u.nickname}</p>
+-                    <p className="font-label-md text-label-md text-neutral-gray-600 truncate">{u.email}</p>
++                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
++                    <span className={`font-label-md text-label-md px-2.5 py-1 rounded-full ${ROLE_CONFIG[u.role].color}`}>{ROLE_CONFIG[u.role].label}</span>
++                    {u.status === 'SUSPENDED' && (
++                      <span className="font-label-md text-label-md text-error-red bg-error-red/10 px-2.5 py-1 rounded-full">停止中</span>
++                    )}
+                   </div>
+                 </div>
+-                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+-                  <span className={`font-label-md text-label-md px-2.5 py-1 rounded-full ${roleConf.color}`}>{roleConf.label}</span>
+-                  {u.status === 'suspended' && (
+-                    <span className="font-label-md text-label-md text-error-red bg-error-red/10 px-2.5 py-1 rounded-full">停止中</span>
+-                  )}
+-                </div>
+-              </div>
+-              <div className="flex items-center gap-4 text-neutral-gray-600">
+-                <div className="flex items-center gap-1">
+-                  <span className="material-symbols-outlined text-[14px]">pets</span>
+-                  <span className="font-label-md text-label-md">ペット {u.petCount}匹</span>
+-                </div>
+-                <div className="flex items-center gap-1">
++                <div className="flex items-center gap-1 text-neutral-gray-600">
+                   <span className="material-symbols-outlined text-[14px]">calendar_today</span>
+-                  <span className="font-label-md text-label-md">登録: {u.joinedAt}</span>
++                  <span className="font-label-md text-label-md">登録: {u.createdAt.slice(0, 10)}</span>
+                 </div>
++                {/* 自分自身の停止・権限変更はAPIでも禁止（USER-005） */}
++                {!isSelf && (
++                  <div className="flex gap-sm pt-sm border-t border-neutral-gray-100">
++                    <button onClick={() => toggleStatus(u)} disabled={isBusy}
++                      className={`flex-1 h-[36px] font-label-md text-label-md rounded-lg transition-colors disabled:opacity-50 ${u.status === 'ACTIVE' ? 'bg-error-red/10 text-error-red hover:bg-error-red/20' : 'bg-success-blue/10 text-success-blue hover:bg-success-blue/20'}`}>
++                      {u.status === 'ACTIVE' ? 'アカウント停止' : '停止解除'}
++                    </button>
++                    <select value={u.role} disabled={isBusy} onChange={(e) => changeRole(u, e.target.value as Role)}
++                      aria-label={`${u.nickname}の権限`}
++                      className="flex-1 h-[36px] px-2 bg-surface-container-low text-on-surface font-label-md text-label-md rounded-lg border border-neutral-gray-100 disabled:opacity-50">
++                      {(Object.keys(ROLE_CONFIG) as Role[]).map((r) => (
++                        <option key={r} value={r}>{ROLE_CONFIG[r].label}</option>
++                      ))}
++                    </select>
++                  </div>
++                )}
+               </div>
+-              <div className="flex gap-sm pt-sm border-t border-neutral-gray-100">
+-                <button onClick={() => toggleStatus(u.id)}
+-                  className={`flex-1 h-[36px] font-label-md text-label-md rounded-lg transition-colors ${u.status === 'active' ? 'bg-error-red/10 text-error-red hover:bg-error-red/20' : 'bg-success-blue/10 text-success-blue hover:bg-success-blue/20'}`}>
+-                  {u.status === 'active' ? 'アカウント停止' : '停止解除'}
+-                </button>
+-                <button className="flex-1 h-[36px] bg-surface-container-low text-on-surface font-label-md text-label-md rounded-lg border border-neutral-gray-100 hover:bg-surface-container transition-colors">
+-                  詳細を見る
+-                </button>
+-              </div>
+-            </div>
+-          )
+-        })}
+-      </div>
++            )
++          })}
++        </div>
++      )}
++
++      {result && result.totalPages > 1 && (
++        <div className="flex items-center justify-center gap-md">
++          <button onClick={() => setPage((p) => p - 1)} disabled={page === 0 || isLoading}
++            className="px-4 py-2 rounded-xl border border-neutral-gray-100 font-label-md text-label-md disabled:opacity-40">前へ</button>
++          <span className="font-label-md text-label-md text-neutral-gray-600">{result.number + 1} / {result.totalPages}</span>
++          <button onClick={() => setPage((p) => p + 1)} disabled={page + 1 >= result.totalPages || isLoading}
++            className="px-4 py-2 rounded-xl border border-neutral-gray-100 font-label-md text-label-md disabled:opacity-40">次へ</button>
++        </div>
++      )}
+     </div>
+   )
+ }
+diff --git a/frontend/src/types/auth.ts b/frontend/src/types/auth.ts
+index 9c382cc..c78d281 100644
+--- a/frontend/src/types/auth.ts
++++ b/frontend/src/types/auth.ts
+@@ -16,8 +16,19 @@ export interface AuthTokens {
+ 
+ // バックエンドのRole enum（Role.java）はROLE_プレフィックス付きのname()をそのまま返す
+ export interface UserProfile {
+-  id: number
++  userId: number
+   email: string
+   nickname: string
+   role: 'ROLE_USER' | 'ROLE_HOSPITAL_ADMIN' | 'ROLE_SYSTEM_ADMIN'
++  status: 'ACTIVE' | 'SUSPENDED'
++}
++
++// 管理者向けユーザー一覧（GET /api/v1/admin/users）の1件
++export interface AdminUser {
++  userId: number
++  email: string
++  nickname: string
++  role: UserProfile['role']
++  status: UserProfile['status']
++  createdAt: string
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/user/dto/AdminUserDto.java b/spring-api/src/main/java/koh/portfolio/springapi/application/user/dto/AdminUserDto.java
+new file mode 100644
+index 0000000..dc2f8bb
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/user/dto/AdminUserDto.java
+@@ -0,0 +1,24 @@
++package koh.portfolio.springapi.application.user.dto;
++
++import jakarta.validation.constraints.NotNull;
++import koh.portfolio.springapi.domain.user.model.Role;
++import koh.portfolio.springapi.domain.user.model.UserStatus;
++import lombok.Builder;
++
++import java.time.LocalDateTime;
++
++public record AdminUserDto() {
++    @Builder
++    public record AdminUserResponse(
++            Long userId,
++            String email,
++            String nickname,
++            Role role,
++            UserStatus status,
++            LocalDateTime createdAt
++    ) {}
++
++    public record ChangeRoleRequest(
++            @NotNull Role role
++    ) {}
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/user/service/ChangeUserRoleService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/user/service/ChangeUserRoleService.java
+new file mode 100644
+index 0000000..6ca9249
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/user/service/ChangeUserRoleService.java
+@@ -0,0 +1,31 @@
++package koh.portfolio.springapi.application.user.service;
++
++import koh.portfolio.springapi.application.user.usecase.ChangeUserRoleUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.user.exception.UserErrorCode;
++import koh.portfolio.springapi.domain.user.model.Role;
++import koh.portfolio.springapi.domain.user.port.UserRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.time.LocalDateTime;
++
++@Service
++@RequiredArgsConstructor
++public class ChangeUserRoleService implements ChangeUserRoleUseCase {
++    private final UserRepository userRepository;
++
++    @Override
++    @Transactional
++    public void execute(Long adminId, Long userId, Role role) {
++        // 自分の権限を下げるとシステム管理者が居なくなり得るため禁止する
++        Preconditions.validate(!adminId.equals(userId), UserErrorCode.CANNOT_CHANGE_SELF);
++
++        // JwtAuthenticationFilter は現在の権限で認証するため、新しい権限は次のリクエストから反映される
++        Preconditions.validate(
++                userRepository.updateRole(userId, role, LocalDateTime.now()),
++                UserErrorCode.NO_SUCH_USER
++        );
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/user/service/ChangeUserStatusService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/user/service/ChangeUserStatusService.java
+new file mode 100644
+index 0000000..f225560
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/user/service/ChangeUserStatusService.java
+@@ -0,0 +1,42 @@
++package koh.portfolio.springapi.application.user.service;
++
++import koh.portfolio.springapi.application.user.usecase.ChangeUserStatusUseCase;
++import koh.portfolio.springapi.common.exception.Preconditions;
++import koh.portfolio.springapi.domain.auth.port.RefreshTokenRepository;
++import koh.portfolio.springapi.domain.user.exception.UserErrorCode;
++import koh.portfolio.springapi.domain.user.model.UserStatus;
++import koh.portfolio.springapi.domain.user.port.UserRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.time.LocalDateTime;
++
++@Service
++@RequiredArgsConstructor
++public class ChangeUserStatusService implements ChangeUserStatusUseCase {
++    private final UserRepository userRepository;
++    private final RefreshTokenRepository refreshTokenRepository;
++
++    @Override
++    @Transactional
++    public void execute(Long adminId, Long userId, UserStatus status) {
++        // 自分自身を停止すると管理者が操作できなくなるため禁止する
++        Preconditions.validate(!adminId.equals(userId), UserErrorCode.CANNOT_CHANGE_SELF);
++
++        // ログイン・トークン再発行と同じユーザー行の排他を取り、停止の確定後に新しいトークンが残らないようにする
++        userRepository.lockForSessionUpdate(userId);
++
++        // 同じ状態への変更は成功として扱う（停止・復旧の二重実行で失敗させない）
++        Preconditions.validate(
++                userRepository.updateStatus(userId, status, LocalDateTime.now()),
++                UserErrorCode.NO_SUCH_USER
++        );
++
++        // 停止したユーザーの Refresh Token をすべて失効させる。発行済みの Access Token も
++        // JwtAuthenticationFilter が現在の状態を確認するため、次のリクエストから使えなくなる
++        if (status == UserStatus.SUSPENDED) {
++            refreshTokenRepository.revokeAllByUserId(userId);
++        }
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/user/service/SearchUsersService.java b/spring-api/src/main/java/koh/portfolio/springapi/application/user/service/SearchUsersService.java
+new file mode 100644
+index 0000000..143839c
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/user/service/SearchUsersService.java
+@@ -0,0 +1,44 @@
++package koh.portfolio.springapi.application.user.service;
++
++import koh.portfolio.springapi.application.user.dto.AdminUserDto.AdminUserResponse;
++import koh.portfolio.springapi.application.user.usecase.SearchUsersUseCase;
++import koh.portfolio.springapi.common.response.PageResponse;
++import koh.portfolio.springapi.domain.user.model.Role;
++import koh.portfolio.springapi.domain.user.model.UserStatus;
++import koh.portfolio.springapi.domain.user.port.UserRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.util.List;
++
++@Service
++@RequiredArgsConstructor
++public class SearchUsersService implements SearchUsersUseCase {
++    static final int DEFAULT_SIZE = 20;
++    static final int MAX_SIZE = 100;
++
++    private final UserRepository userRepository;
++
++    @Override
++    @Transactional(readOnly = true)
++    public PageResponse<AdminUserResponse> execute(String keyword, Role role, UserStatus status, int page, int size) {
++        // 範囲外のページ指定はエラーにせず丸める（page<0 → 0、size は 1〜100、0以下は既定の20）
++        int safePage = Math.max(page, 0);
++        int safeSize = size <= 0 ? DEFAULT_SIZE : Math.min(size, MAX_SIZE);
++        String safeKeyword = keyword == null || keyword.isBlank() ? null : keyword.trim();
++
++        List<AdminUserResponse> content = userRepository.search(safeKeyword, role, status, safePage, safeSize).stream()
++                .map(user -> AdminUserResponse.builder()
++                        .userId(user.getId())
++                        .email(user.getEmail())
++                        .nickname(user.getNickname())
++                        .role(user.getRole())
++                        .status(user.getStatus())
++                        .createdAt(user.getCreatedAt())
++                        .build())
++                .toList();
++
++        return PageResponse.of(content, userRepository.count(safeKeyword, role, status), safePage, safeSize);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/user/usecase/ChangeUserRoleUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/user/usecase/ChangeUserRoleUseCase.java
+new file mode 100644
+index 0000000..f30f19d
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/user/usecase/ChangeUserRoleUseCase.java
+@@ -0,0 +1,7 @@
++package koh.portfolio.springapi.application.user.usecase;
++
++import koh.portfolio.springapi.domain.user.model.Role;
++
++public interface ChangeUserRoleUseCase {
++    void execute(Long adminId, Long userId, Role role);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/user/usecase/ChangeUserStatusUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/user/usecase/ChangeUserStatusUseCase.java
+new file mode 100644
+index 0000000..b516eaa
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/user/usecase/ChangeUserStatusUseCase.java
+@@ -0,0 +1,7 @@
++package koh.portfolio.springapi.application.user.usecase;
++
++import koh.portfolio.springapi.domain.user.model.UserStatus;
++
++public interface ChangeUserStatusUseCase {
++    void execute(Long adminId, Long userId, UserStatus status);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/application/user/usecase/SearchUsersUseCase.java b/spring-api/src/main/java/koh/portfolio/springapi/application/user/usecase/SearchUsersUseCase.java
+new file mode 100644
+index 0000000..848da9e
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/application/user/usecase/SearchUsersUseCase.java
+@@ -0,0 +1,10 @@
++package koh.portfolio.springapi.application.user.usecase;
++
++import koh.portfolio.springapi.application.user.dto.AdminUserDto.AdminUserResponse;
++import koh.portfolio.springapi.common.response.PageResponse;
++import koh.portfolio.springapi.domain.user.model.Role;
++import koh.portfolio.springapi.domain.user.model.UserStatus;
++
++public interface SearchUsersUseCase {
++    PageResponse<AdminUserResponse> execute(String keyword, Role role, UserStatus status, int page, int size);
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/common/exception/GlobalExceptionHandler.java b/spring-api/src/main/java/koh/portfolio/springapi/common/exception/GlobalExceptionHandler.java
+index defad44..be7ffb0 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/common/exception/GlobalExceptionHandler.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/common/exception/GlobalExceptionHandler.java
+@@ -4,11 +4,13 @@ import koh.portfolio.springapi.common.response.ApiResponse;
+ import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
+ import lombok.extern.slf4j.Slf4j;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.http.converter.HttpMessageNotReadableException;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.validation.FieldError;
+ import org.springframework.web.bind.MethodArgumentNotValidException;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.RestControllerAdvice;
++import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+ 
+ @Slf4j
+ @RestControllerAdvice
+@@ -46,6 +48,17 @@ public class GlobalExceptionHandler {
+                 .body(ApiResponse.error("VALIDATION-001", message));
+     }
+ 
++    // 型変換できないクエリパラメータ（例: role=FOO）や読み取れないJSON（不正なenum値など）は
++    // 利用者の入力誤りのため、500ではなく400（VALIDATION-001）で返す
++    @ExceptionHandler({MethodArgumentTypeMismatchException.class, HttpMessageNotReadableException.class})
++    public ResponseEntity<ApiResponse<Void>> handleUnreadableInput(Exception exception) {
++        log.warn("Unreadable request input. message={}", exception.getMessage());
++
++        return ResponseEntity
++                .badRequest()
++                .body(ApiResponse.error("VALIDATION-001", "入力内容を確認してください。"));
++    }
++
+     @ExceptionHandler(AccessDeniedException.class)
+     public ResponseEntity<ApiResponse<Void>> handleAccessDeniedException(
+             AccessDeniedException exception
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/common/response/PageResponse.java b/spring-api/src/main/java/koh/portfolio/springapi/common/response/PageResponse.java
+new file mode 100644
+index 0000000..7980b3d
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/common/response/PageResponse.java
+@@ -0,0 +1,16 @@
++package koh.portfolio.springapi.common.response;
++
++import java.util.List;
++
++// ページ単位の一覧応答（07_API_Design §2-6、page は0始まり）
++public record PageResponse<T>(
++        List<T> content,
++        long totalElements,
++        int totalPages,
++        int size,
++        int number
++) {
++    public static <T> PageResponse<T> of(List<T> content, long totalElements, int page, int size) {
++        return new PageResponse<>(content, totalElements, (int) ((totalElements + size - 1) / size), size, page);
++    }
++}
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/user/exception/UserErrorCode.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/user/exception/UserErrorCode.java
+index c407d9f..6ffebb3 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/user/exception/UserErrorCode.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/user/exception/UserErrorCode.java
+@@ -11,6 +11,7 @@ public enum UserErrorCode implements ErrorCode {
+     VALIDATION_ERROR("USER-002", "入力内容を確認してください。", HttpStatus.BAD_REQUEST),
+     NO_SUCH_USER("USER-003", "存在しないユーザーです。", HttpStatus.NOT_FOUND),
+     SUSPENDED_USER("USER-004", "利用停止中のアカウントです。", HttpStatus.FORBIDDEN),
++    CANNOT_CHANGE_SELF("USER-005", "自分自身のアカウントの状態・権限は変更できません。", HttpStatus.BAD_REQUEST),
+     DEFAULT("USER-999", "ユーザー関連エラーです。", HttpStatus.INTERNAL_SERVER_ERROR);
+ 
+     private final String code;
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/domain/user/port/UserRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/domain/user/port/UserRepository.java
+index 0e2cf55..237d3b1 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/domain/user/port/UserRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/domain/user/port/UserRepository.java
+@@ -1,7 +1,11 @@
+ package koh.portfolio.springapi.domain.user.port;
+ 
++import koh.portfolio.springapi.domain.user.model.Role;
+ import koh.portfolio.springapi.domain.user.model.User;
++import koh.portfolio.springapi.domain.user.model.UserStatus;
+ 
++import java.time.LocalDateTime;
++import java.util.List;
+ import java.util.Optional;
+ 
+ public interface UserRepository {
+@@ -14,4 +18,13 @@ public interface UserRepository {
+     // これが無いと、refreshが旧Tokenを失効させて後続Tokenをinsertする間に
+     // login/logoutの一括revoke（user_id条件）が走り、後続Tokenを取りこぼす
+     void lockForSessionUpdate(Long userId);
++
++    // 管理者向け検索。keyword はメールアドレス・ニックネームの部分一致（大文字小文字を区別しない）、
++    // null の条件では絞り込まない。論理削除済みは除き、ID昇順で page（0始まり）・size 件を返す
++    List<User> search(String keyword, Role role, UserStatus status, int page, int size);
++    long count(String keyword, Role role, UserStatus status);
++
++    // 状態・権限は対象の列だけを条件付きUPDATEで書く。論理削除済み・存在しない場合は false
++    boolean updateStatus(Long id, UserStatus status, LocalDateTime updatedAt);
++    boolean updateRole(Long id, Role role, LocalDateTime updatedAt);
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserJpaRepository.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserJpaRepository.java
+index 8491ad4..594359d 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserJpaRepository.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserJpaRepository.java
+@@ -1,18 +1,55 @@
+ package koh.portfolio.springapi.infrastructure.persistence.user;
+ 
+ import jakarta.persistence.LockModeType;
++import koh.portfolio.springapi.domain.user.model.Role;
++import koh.portfolio.springapi.domain.user.model.UserStatus;
++import org.springframework.data.domain.Pageable;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Lock;
++import org.springframework.data.jpa.repository.Modifying;
+ import org.springframework.data.jpa.repository.Query;
+ import org.springframework.data.repository.query.Param;
+ 
++import java.time.LocalDateTime;
++import java.util.List;
+ import java.util.Optional;
+ 
+ public interface UserJpaRepository extends JpaRepository<UserEntity, Long> {
++    // null の検索条件は CAST で型を明示する（PostgreSQLで lower(bytea) になるため、12_Trouble_Shooting §3-10）
++    String SEARCH_CONDITION = " where u.deletedAt is null"
++            + " and (:keyword is null"
++            + " or lower(u.email) like lower(concat('%', cast(:keyword as string), '%'))"
++            + " or lower(u.nickname) like lower(concat('%', cast(:keyword as string), '%')))"
++            + " and (:role is null or u.role = :role)"
++            + " and (:status is null or u.status = :status)";
++
+     boolean existsByEmail(String email);
+     Optional<UserEntity> findByEmail(String email);
+ 
+     @Lock(LockModeType.PESSIMISTIC_WRITE)
+     @Query("select u from UserEntity u where u.id = :id")
+     Optional<UserEntity> findByIdForUpdate(@Param("id") Long id);
++
++    @Query("select u from UserEntity u" + SEARCH_CONDITION + " order by u.id")
++    List<UserEntity> search(
++            @Param("keyword") String keyword,
++            @Param("role") Role role,
++            @Param("status") UserStatus status,
++            Pageable pageable
++    );
++
++    @Query("select count(u) from UserEntity u" + SEARCH_CONDITION)
++    long countBySearch(
++            @Param("keyword") String keyword,
++            @Param("role") Role role,
++            @Param("status") UserStatus status
++    );
++
++    @Modifying(clearAutomatically = true, flushAutomatically = true)
++    @Query("update UserEntity set status = :status, updatedAt = :updatedAt where id = :id and deletedAt is null")
++    int updateStatus(@Param("id") Long id, @Param("status") UserStatus status, @Param("updatedAt") LocalDateTime updatedAt);
++
++    @Modifying(clearAutomatically = true, flushAutomatically = true)
++    @Query("update UserEntity set role = :role, updatedAt = :updatedAt where id = :id and deletedAt is null")
++    int updateRole(@Param("id") Long id, @Param("role") Role role, @Param("updatedAt") LocalDateTime updatedAt);
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapter.java
+index 71c1dc6..a9dba52 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapter.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapter.java
+@@ -1,10 +1,15 @@
+ package koh.portfolio.springapi.infrastructure.persistence.user;
+ 
++import koh.portfolio.springapi.domain.user.model.Role;
+ import koh.portfolio.springapi.domain.user.model.User;
++import koh.portfolio.springapi.domain.user.model.UserStatus;
+ import koh.portfolio.springapi.domain.user.port.UserRepository;
+ import lombok.RequiredArgsConstructor;
++import org.springframework.data.domain.PageRequest;
+ import org.springframework.stereotype.Repository;
+ 
++import java.time.LocalDateTime;
++import java.util.List;
+ import java.util.Optional;
+ 
+ @Repository
+@@ -42,4 +47,26 @@ public class UserPersistenceAdapter implements UserRepository {
+     public void lockForSessionUpdate(Long userId) {
+         userJpaRepository.findByIdForUpdate(userId);
+     }
++
++    @Override
++    public List<User> search(String keyword, Role role, UserStatus status, int page, int size) {
++        return userJpaRepository.search(keyword, role, status, PageRequest.of(page, size)).stream()
++                .map(userMapper::toDomain)
++                .toList();
++    }
++
++    @Override
++    public long count(String keyword, Role role, UserStatus status) {
++        return userJpaRepository.countBySearch(keyword, role, status);
++    }
++
++    @Override
++    public boolean updateStatus(Long id, UserStatus status, LocalDateTime updatedAt) {
++        return userJpaRepository.updateStatus(id, status, updatedAt) == 1;
++    }
++
++    @Override
++    public boolean updateRole(Long id, Role role, LocalDateTime updatedAt) {
++        return userJpaRepository.updateRole(id, role, updatedAt) == 1;
++    }
+ }
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/security/jwt/JwtAuthenticationFilter.java b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/security/jwt/JwtAuthenticationFilter.java
+index ad03b9b..1989f0b 100644
+--- a/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/security/jwt/JwtAuthenticationFilter.java
++++ b/spring-api/src/main/java/koh/portfolio/springapi/infrastructure/security/jwt/JwtAuthenticationFilter.java
+@@ -4,6 +4,8 @@ import jakarta.servlet.FilterChain;
+ import jakarta.servlet.ServletException;
+ import jakarta.servlet.http.HttpServletRequest;
+ import jakarta.servlet.http.HttpServletResponse;
++import koh.portfolio.springapi.domain.user.model.User;
++import koh.portfolio.springapi.domain.user.port.UserRepository;
+ import lombok.RequiredArgsConstructor;
+ import org.springframework.lang.NonNull;
+ import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+@@ -22,6 +24,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
+     private static final String BEARER_PREFIX = "Bearer ";
+ 
+     private final JwtProvider jwtProvider;
++    private final UserRepository userRepository;
+ 
+     @Override
+     protected void doFilterInternal(
+@@ -32,17 +35,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
+         String token = resolveToken(request);
+ 
+         if (token != null && jwtProvider.validateAccessToken(token)) {
+-            Long userId = jwtProvider.getUserId(token);
+-            String role = jwtProvider.getRole(token);
++            // 発行済みのAccess Tokenでも、停止・論理削除されたユーザーは認証しない（08_State_Design §3-4「API利用不可」）。
++            // 権限もトークン発行時の値ではなく現在の値を使い、管理者による権限変更を次のリクエストから反映する
++            User user = userRepository.findById(jwtProvider.getUserId(token)).orElse(null);
+ 
+-            UsernamePasswordAuthenticationToken authenticationToken =
+-                    new UsernamePasswordAuthenticationToken(
+-                            userId,
+-                            null,
+-                            List.of(new SimpleGrantedAuthority(role))
+-                    );
++            if (user != null && user.getDeletedAt() == null && !user.isSuspended()) {
++                UsernamePasswordAuthenticationToken authenticationToken =
++                        new UsernamePasswordAuthenticationToken(
++                                user.getId(),
++                                null,
++                                List.of(new SimpleGrantedAuthority(user.getRole().name()))
++                        );
+ 
+-            SecurityContextHolder.getContext().setAuthentication(authenticationToken);
++                SecurityContextHolder.getContext().setAuthentication(authenticationToken);
++            }
+         }
+ 
+         filterChain.doFilter(request, response);
+diff --git a/spring-api/src/main/java/koh/portfolio/springapi/presentation/user/AdminUserController.java b/spring-api/src/main/java/koh/portfolio/springapi/presentation/user/AdminUserController.java
+new file mode 100644
+index 0000000..0fda5d7
+--- /dev/null
++++ b/spring-api/src/main/java/koh/portfolio/springapi/presentation/user/AdminUserController.java
+@@ -0,0 +1,69 @@
++package koh.portfolio.springapi.presentation.user;
++
++import jakarta.validation.Valid;
++import koh.portfolio.springapi.application.user.dto.AdminUserDto.AdminUserResponse;
++import koh.portfolio.springapi.application.user.dto.AdminUserDto.ChangeRoleRequest;
++import koh.portfolio.springapi.application.user.usecase.ChangeUserRoleUseCase;
++import koh.portfolio.springapi.application.user.usecase.ChangeUserStatusUseCase;
++import koh.portfolio.springapi.application.user.usecase.SearchUsersUseCase;
++import koh.portfolio.springapi.common.response.ApiResponse;
++import koh.portfolio.springapi.common.response.PageResponse;
++import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
++import koh.portfolio.springapi.domain.user.model.Role;
++import koh.portfolio.springapi.domain.user.model.UserStatus;
++import lombok.RequiredArgsConstructor;
++import org.springframework.http.ResponseEntity;
++import org.springframework.security.access.prepost.PreAuthorize;
++import org.springframework.security.core.Authentication;
++import org.springframework.web.bind.annotation.*;
++
++// SC-015 ユーザー管理（システム管理者のみ）
++@RestController
++@RequestMapping("/api/v1/admin/users")
++@RequiredArgsConstructor
++@PreAuthorize("hasAuthority('ROLE_SYSTEM_ADMIN')")
++public class AdminUserController {
++    private final SearchUsersUseCase searchUsersUseCase;
++    private final ChangeUserStatusUseCase changeUserStatusUseCase;
++    private final ChangeUserRoleUseCase changeUserRoleUseCase;
++
++    @GetMapping
++    public ResponseEntity<ApiResponse<PageResponse<AdminUserResponse>>> searchUsers(
++            @RequestParam(required = false) String keyword,
++            @RequestParam(required = false) Role role,
++            @RequestParam(required = false) UserStatus status,
++            @RequestParam(defaultValue = "0") int page,
++            @RequestParam(defaultValue = "20") int size
++    ) {
++        return ResponseEntity.ok(ApiResponse.success(searchUsersUseCase.execute(keyword, role, status, page, size)));
++    }
++
++    @PatchMapping("/{userId}/suspend")
++    public ResponseEntity<ApiResponse<Void>> suspendUser(Authentication authentication, @PathVariable Long userId) {
++        changeUserStatusUseCase.execute(extractUserId(authentication), userId, UserStatus.SUSPENDED);
++        return ResponseEntity.ok(ApiResponse.success(null));
++    }
++
++    @PatchMapping("/{userId}/activate")
++    public ResponseEntity<ApiResponse<Void>> activateUser(Authentication authentication, @PathVariable Long userId) {
++        changeUserStatusUseCase.execute(extractUserId(authentication), userId, UserStatus.ACTIVE);
++        return ResponseEntity.ok(ApiResponse.success(null));
++    }
++
++    @PatchMapping("/{userId}/role")
++    public ResponseEntity<ApiResponse<Void>> changeRole(
++            Authentication authentication,
++            @PathVariable Long userId,
++            @Valid @RequestBody ChangeRoleRequest request
++    ) {
++        changeUserRoleUseCase.execute(extractUserId(authentication), userId, request.role());
++        return ResponseEntity.ok(ApiResponse.success(null));
++    }
++
++    private Long extractUserId(Authentication authentication) {
++        if (authentication == null || !(authentication.getPrincipal() instanceof Long userId)) {
++            throw AuthErrorCode.AUTH_FAILED.defaultException();
++        }
++        return userId;
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/application/user/service/AdminUserServiceTest.java b/spring-api/src/test/java/koh/portfolio/springapi/application/user/service/AdminUserServiceTest.java
+new file mode 100644
+index 0000000..ebd2b39
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/application/user/service/AdminUserServiceTest.java
+@@ -0,0 +1,174 @@
++package koh.portfolio.springapi.application.user.service;
++
++import koh.portfolio.springapi.application.user.dto.AdminUserDto.AdminUserResponse;
++import koh.portfolio.springapi.common.exception.CustomException;
++import koh.portfolio.springapi.common.response.PageResponse;
++import koh.portfolio.springapi.domain.auth.port.RefreshTokenRepository;
++import koh.portfolio.springapi.domain.user.exception.UserErrorCode;
++import koh.portfolio.springapi.domain.user.model.Role;
++import koh.portfolio.springapi.domain.user.model.User;
++import koh.portfolio.springapi.domain.user.model.UserStatus;
++import koh.portfolio.springapi.domain.user.port.UserRepository;
++import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.mockito.InOrder;
++
++import java.time.LocalDateTime;
++import java.util.List;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.anyInt;
++import static org.mockito.ArgumentMatchers.anyLong;
++import static org.mockito.ArgumentMatchers.eq;
++import static org.mockito.ArgumentMatchers.isNull;
++import static org.mockito.Mockito.*;
++
++class AdminUserServiceTest {
++
++    private UserRepository userRepository;
++    private RefreshTokenRepository refreshTokenRepository;
++    private SearchUsersService searchUsersService;
++    private ChangeUserStatusService changeUserStatusService;
++    private ChangeUserRoleService changeUserRoleService;
++
++    private final Long adminId = 1L;
++    private final Long userId = 10L;
++
++    @BeforeEach
++    void setUp() {
++        userRepository = mock(UserRepository.class);
++        refreshTokenRepository = mock(RefreshTokenRepository.class);
++        searchUsersService = new SearchUsersService(userRepository);
++        changeUserStatusService = new ChangeUserStatusService(userRepository, refreshTokenRepository);
++        changeUserRoleService = new ChangeUserRoleService(userRepository);
++    }
++
++    private void assertErrorCode(ThrowingCallable call, UserErrorCode errorCode) {
++        assertThatThrownBy(call)
++                .isInstanceOf(CustomException.class)
++                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code()).isEqualTo(errorCode.code()));
++    }
++
++    // ------------------------------------------------------------------ search
++
++    @Test
++    @DisplayName("ユーザー検索結果をパスワードを含まない応答に変換し、ページ情報を付ける")
++    void search_users_maps_and_pages() {
++        // given
++        LocalDateTime createdAt = LocalDateTime.of(2026, 10, 1, 12, 0);
++        User user = new User(userId, "tanaka@example.com", "$2a$secret", "Tanaka", Role.ROLE_USER, UserStatus.ACTIVE,
++                createdAt, createdAt, null);
++        when(userRepository.search("tanaka", Role.ROLE_USER, UserStatus.ACTIVE, 1, 2)).thenReturn(List.of(user));
++        when(userRepository.count("tanaka", Role.ROLE_USER, UserStatus.ACTIVE)).thenReturn(3L);
++
++        // when
++        PageResponse<AdminUserResponse> page = searchUsersService.execute(" tanaka ", Role.ROLE_USER, UserStatus.ACTIVE, 1, 2);
++
++        // then
++        assertThat(page.content()).containsExactly(new AdminUserResponse(userId, "tanaka@example.com", "Tanaka",
++                Role.ROLE_USER, UserStatus.ACTIVE, createdAt));
++        assertThat(page.totalElements()).isEqualTo(3);
++        assertThat(page.totalPages()).isEqualTo(2);
++        assertThat(page.number()).isEqualTo(1);
++        assertThat(page.size()).isEqualTo(2);
++    }
++
++    @Test
++    @DisplayName("範囲外のページ指定は丸め、空白のキーワードは条件なしとして扱う")
++    void search_users_clamps_paging_and_blank_keyword() {
++        // given
++        when(userRepository.search(any(), any(), any(), anyInt(), anyInt())).thenReturn(List.of());
++
++        // when
++        searchUsersService.execute("  ", null, null, -3, 0);
++        searchUsersService.execute(null, null, null, 0, 1000);
++
++        // then
++        verify(userRepository).search(isNull(), isNull(), isNull(), eq(0), eq(SearchUsersService.DEFAULT_SIZE));
++        verify(userRepository).search(isNull(), isNull(), isNull(), eq(0), eq(SearchUsersService.MAX_SIZE));
++    }
++
++    // ------------------------------------------------------------------ status
++
++    @Test
++    @DisplayName("停止時はユーザー行を排他取得してから状態を更新し、Refresh Tokenをすべて失効させる")
++    void suspend_user_locks_updates_and_revokes() {
++        // given
++        when(userRepository.updateStatus(eq(userId), eq(UserStatus.SUSPENDED), any())).thenReturn(true);
++
++        // when
++        changeUserStatusService.execute(adminId, userId, UserStatus.SUSPENDED);
++
++        // then
++        InOrder order = inOrder(userRepository, refreshTokenRepository);
++        order.verify(userRepository).lockForSessionUpdate(userId);
++        order.verify(userRepository).updateStatus(eq(userId), eq(UserStatus.SUSPENDED), any(LocalDateTime.class));
++        order.verify(refreshTokenRepository).revokeAllByUserId(userId);
++    }
++
++    @Test
++    @DisplayName("復旧時は状態だけを更新し、トークンは失効させない")
++    void activate_user_does_not_revoke() {
++        // given
++        when(userRepository.updateStatus(eq(userId), eq(UserStatus.ACTIVE), any())).thenReturn(true);
++
++        // when
++        changeUserStatusService.execute(adminId, userId, UserStatus.ACTIVE);
++
++        // then
++        verify(userRepository).updateStatus(eq(userId), eq(UserStatus.ACTIVE), any(LocalDateTime.class));
++        verifyNoInteractions(refreshTokenRepository);
++    }
++
++    @Test
++    @DisplayName("自分自身の停止はUSER-005例外が発生し、何も更新しない")
++    void change_status_fail_when_self() {
++        // when & then
++        assertErrorCode(() -> changeUserStatusService.execute(adminId, adminId, UserStatus.SUSPENDED),
++                UserErrorCode.CANNOT_CHANGE_SELF);
++        verifyNoInteractions(userRepository, refreshTokenRepository);
++    }
++
++    @Test
++    @DisplayName("存在しない・論理削除済みユーザーの停止はUSER-003例外が発生し、トークンは失効させない")
++    void change_status_fail_when_not_found() {
++        // given
++        when(userRepository.updateStatus(anyLong(), any(), any())).thenReturn(false);
++
++        // when & then
++        assertErrorCode(() -> changeUserStatusService.execute(adminId, userId, UserStatus.SUSPENDED),
++                UserErrorCode.NO_SUCH_USER);
++        verifyNoInteractions(refreshTokenRepository);
++    }
++
++    // -------------------------------------------------------------------- role
++
++    @Test
++    @DisplayName("権限変更は対象ユーザーの権限列だけを更新する")
++    void change_role_success() {
++        // given
++        when(userRepository.updateRole(eq(userId), eq(Role.ROLE_HOSPITAL_ADMIN), any())).thenReturn(true);
++
++        // when
++        changeUserRoleService.execute(adminId, userId, Role.ROLE_HOSPITAL_ADMIN);
++
++        // then
++        verify(userRepository).updateRole(eq(userId), eq(Role.ROLE_HOSPITAL_ADMIN), any(LocalDateTime.class));
++    }
++
++    @Test
++    @DisplayName("自分自身の権限変更はUSER-005例外、存在しないユーザーはUSER-003例外が発生する")
++    void change_role_fail_when_self_or_not_found() {
++        // given
++        when(userRepository.updateRole(anyLong(), any(), any())).thenReturn(false);
++
++        // when & then
++        assertErrorCode(() -> changeUserRoleService.execute(adminId, adminId, Role.ROLE_USER), UserErrorCode.CANNOT_CHANGE_SELF);
++        assertErrorCode(() -> changeUserRoleService.execute(adminId, userId, Role.ROLE_USER), UserErrorCode.NO_SUCH_USER);
++        verify(userRepository, never()).updateRole(eq(adminId), any(), any());
++    }
++}
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapterTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapterTest.java
+index 6041f3d..7060a41 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapterTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/persistence/user/UserPersistenceAdapterTest.java
+@@ -1,6 +1,7 @@
+ package koh.portfolio.springapi.infrastructure.persistence.user;
+ 
+ import koh.portfolio.springapi.domain.user.model.Role;
++import koh.portfolio.springapi.domain.user.model.User;
+ import koh.portfolio.springapi.domain.user.model.UserStatus;
+ import koh.portfolio.springapi.domain.user.port.UserRepository;
+ import org.junit.jupiter.api.DisplayName;
+@@ -12,6 +13,7 @@ import org.springframework.test.context.ActiveProfiles;
+ 
+ import java.time.LocalDateTime;
+ 
++import static org.assertj.core.api.Assertions.assertThat;
+ import static org.assertj.core.api.Assertions.assertThatCode;
+ 
+ @DataJpaTest
+@@ -47,4 +49,72 @@ class UserPersistenceAdapterTest {
+         assertThatCode(() -> userRepository.lockForSessionUpdate(saved.getId())).doesNotThrowAnyException();
+         assertThatCode(() -> userRepository.lockForSessionUpdate(999_999L)).doesNotThrowAnyException();
+     }
++
++    private UserEntity persist(String email, String nickname, Role role, UserStatus status, LocalDateTime deletedAt) {
++        LocalDateTime now = LocalDateTime.of(2026, 10, 1, 12, 0);
++        return userJpaRepository.save(UserEntity.builder()
++                .email(email)
++                .password("$2a$encoded-password")
++                .nickname(nickname)
++                .role(role)
++                .status(status)
++                .createdAt(now)
++                .updatedAt(now)
++                .deletedAt(deletedAt)
++                .build());
++    }
++
++    @Test
++    @DisplayName("管理者向け検索: メール・ニックネームの部分一致（大文字小文字無視）、権限・状態の絞り込み、論理削除の除外、ページング")
++    void search_filters_and_pages() {
++        // given
++        UserEntity tanaka = persist("tanaka@example.com", "Tanaka", Role.ROLE_USER, UserStatus.ACTIVE, null);
++        UserEntity hospital = persist("admin@happy-vet.jp", "HappyVet", Role.ROLE_HOSPITAL_ADMIN, UserStatus.ACTIVE, null);
++        UserEntity suspended = persist("sato@example.com", "Sato", Role.ROLE_USER, UserStatus.SUSPENDED, null);
++        persist("gone@example.com", "Gone", Role.ROLE_USER, UserStatus.ACTIVE, LocalDateTime.of(2026, 10, 2, 0, 0));
++
++        // when & then: 条件なしは論理削除済み以外をID昇順
++        assertThat(userRepository.search(null, null, null, 0, 10)).extracting(User::getId)
++                .containsExactly(tanaka.getId(), hospital.getId(), suspended.getId());
++        assertThat(userRepository.count(null, null, null)).isEqualTo(3);
++
++        // キーワードはメール・ニックネームのどちらにも、大文字小文字を区別せず一致する
++        assertThat(userRepository.search("EXAMPLE", null, null, 0, 10)).extracting(User::getId)
++                .containsExactly(tanaka.getId(), suspended.getId());
++        assertThat(userRepository.search("happyvet", null, null, 0, 10)).extracting(User::getId)
++                .containsExactly(hospital.getId());
++
++        // 権限・状態の絞り込み
++        assertThat(userRepository.search(null, Role.ROLE_HOSPITAL_ADMIN, null, 0, 10)).extracting(User::getId)
++                .containsExactly(hospital.getId());
++        assertThat(userRepository.search(null, null, UserStatus.SUSPENDED, 0, 10)).extracting(User::getId)
++                .containsExactly(suspended.getId());
++        assertThat(userRepository.count("example", Role.ROLE_USER, UserStatus.ACTIVE)).isEqualTo(1);
++
++        // ページング（page は0始まり）
++        assertThat(userRepository.search(null, null, null, 1, 2)).extracting(User::getId)
++                .containsExactly(suspended.getId());
++    }
++
++    @Test
++    @DisplayName("状態・権限の更新は対象の列だけを書き、論理削除済み・存在しないユーザーは0件（false）")
++    void update_status_and_role_only_for_active_rows() {
++        // given
++        UserEntity user = persist("u@example.com", "U", Role.ROLE_USER, UserStatus.ACTIVE, null);
++        UserEntity deleted = persist("d@example.com", "D", Role.ROLE_USER, UserStatus.ACTIVE, LocalDateTime.of(2026, 10, 2, 0, 0));
++        LocalDateTime changedAt = LocalDateTime.of(2026, 10, 21, 9, 0);
++
++        // when & then
++        assertThat(userRepository.updateStatus(user.getId(), UserStatus.SUSPENDED, changedAt)).isTrue();
++        assertThat(userRepository.updateRole(user.getId(), Role.ROLE_HOSPITAL_ADMIN, changedAt)).isTrue();
++        assertThat(userRepository.updateStatus(deleted.getId(), UserStatus.SUSPENDED, changedAt)).isFalse();
++        assertThat(userRepository.updateRole(deleted.getId(), Role.ROLE_SYSTEM_ADMIN, changedAt)).isFalse();
++        assertThat(userRepository.updateStatus(999_999L, UserStatus.SUSPENDED, changedAt)).isFalse();
++
++        UserEntity reloaded = userJpaRepository.findById(user.getId()).orElseThrow();
++        assertThat(reloaded.getStatus()).isEqualTo(UserStatus.SUSPENDED);
++        assertThat(reloaded.getRole()).isEqualTo(Role.ROLE_HOSPITAL_ADMIN);
++        assertThat(reloaded.getEmail()).isEqualTo("u@example.com");
++        assertThat(userJpaRepository.findById(deleted.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.ACTIVE);
++    }
+ }
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/security/JwtAuthenticationFilterTest.java b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/security/JwtAuthenticationFilterTest.java
+index baa80e1..466f739 100644
+--- a/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/security/JwtAuthenticationFilterTest.java
++++ b/spring-api/src/test/java/koh/portfolio/springapi/infrastructure/security/JwtAuthenticationFilterTest.java
+@@ -1,6 +1,9 @@
+ package koh.portfolio.springapi.infrastructure.security;
+ 
+ import koh.portfolio.springapi.domain.user.model.Role;
++import koh.portfolio.springapi.domain.user.model.User;
++import koh.portfolio.springapi.domain.user.model.UserStatus;
++import koh.portfolio.springapi.domain.user.port.UserRepository;
+ import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
+ import koh.portfolio.springapi.infrastructure.security.jwt.JwtProvider;
+ import org.junit.jupiter.api.AfterEach;
+@@ -12,8 +15,13 @@ import org.springframework.mock.web.MockHttpServletResponse;
+ import org.springframework.security.core.Authentication;
+ import org.springframework.security.core.context.SecurityContextHolder;
+ 
++import java.time.LocalDateTime;
++import java.util.Optional;
++
+ import static org.assertj.core.api.Assertions.assertThat;
+ import static org.assertj.core.api.Assertions.assertThatCode;
++import static org.mockito.Mockito.mock;
++import static org.mockito.Mockito.when;
+ 
+ class JwtAuthenticationFilterTest {
+ 
+@@ -23,7 +31,14 @@ class JwtAuthenticationFilterTest {
+             14
+     );
+ 
+-    private final JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtProvider);
++    private final UserRepository userRepository = mock(UserRepository.class);
++    private final JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtProvider, userRepository);
++
++    private void givenUser(Role role, UserStatus status, LocalDateTime deletedAt) {
++        LocalDateTime now = LocalDateTime.now();
++        when(userRepository.findById(1L)).thenReturn(Optional.of(
++                new User(1L, "test@example.com", "pw", "tester", role, status, now, now, deletedAt)));
++    }
+ 
+     @AfterEach
+     void clearContext() {
+@@ -40,6 +55,7 @@ class JwtAuthenticationFilterTest {
+     @DisplayName("Access Tokenの場合、userIdとroleで認証情報を設定する")
+     void authenticates_with_access_token() throws Exception {
+         // given
++        givenUser(Role.ROLE_USER, UserStatus.ACTIVE, null);
+         String accessToken = jwtProvider.createAccessToken(1L, "test@example.com", Role.ROLE_USER);
+ 
+         // when
+@@ -78,4 +94,38 @@ class JwtAuthenticationFilterTest {
+ 
+         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+     }
++
++    @Test
++    @DisplayName("停止中・論理削除済み・存在しないユーザーは、有効なAccess Tokenでも認証しない（08_State_Design §3-4）")
++    void does_not_authenticate_suspended_deleted_or_missing_user() throws Exception {
++        String accessToken = jwtProvider.createAccessToken(1L, "test@example.com", Role.ROLE_USER);
++
++        givenUser(Role.ROLE_USER, UserStatus.SUSPENDED, null);
++        jwtAuthenticationFilter.doFilter(requestWithBearer(accessToken), new MockHttpServletResponse(), new MockFilterChain());
++        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
++
++        givenUser(Role.ROLE_USER, UserStatus.ACTIVE, LocalDateTime.now());
++        jwtAuthenticationFilter.doFilter(requestWithBearer(accessToken), new MockHttpServletResponse(), new MockFilterChain());
++        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
++
++        when(userRepository.findById(1L)).thenReturn(Optional.empty());
++        jwtAuthenticationFilter.doFilter(requestWithBearer(accessToken), new MockHttpServletResponse(), new MockFilterChain());
++        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
++    }
++
++    @Test
++    @DisplayName("権限はトークン内の値ではなく現在の値で設定する（権限変更が次のリクエストから反映される）")
++    void uses_current_role_instead_of_token_claim() throws Exception {
++        // given: トークン発行時はSYSTEM_ADMINだったが、現在はUSERに変更済み
++        givenUser(Role.ROLE_USER, UserStatus.ACTIVE, null);
++        String accessToken = jwtProvider.createAccessToken(1L, "test@example.com", Role.ROLE_SYSTEM_ADMIN);
++
++        // when
++        jwtAuthenticationFilter.doFilter(requestWithBearer(accessToken), new MockHttpServletResponse(), new MockFilterChain());
++
++        // then
++        assertThat(SecurityContextHolder.getContext().getAuthentication().getAuthorities())
++                .extracting(Object::toString)
++                .containsExactly("ROLE_USER");
++    }
+ }
+diff --git a/spring-api/src/test/java/koh/portfolio/springapi/presentation/user/AdminUserControllerTest.java b/spring-api/src/test/java/koh/portfolio/springapi/presentation/user/AdminUserControllerTest.java
+new file mode 100644
+index 0000000..a3fc7f9
+--- /dev/null
++++ b/spring-api/src/test/java/koh/portfolio/springapi/presentation/user/AdminUserControllerTest.java
+@@ -0,0 +1,155 @@
++package koh.portfolio.springapi.presentation.user;
++
++import koh.portfolio.springapi.application.user.dto.AdminUserDto.AdminUserResponse;
++import koh.portfolio.springapi.application.user.usecase.ChangeUserRoleUseCase;
++import koh.portfolio.springapi.application.user.usecase.ChangeUserStatusUseCase;
++import koh.portfolio.springapi.application.user.usecase.SearchUsersUseCase;
++import koh.portfolio.springapi.common.exception.GlobalExceptionHandler;
++import koh.portfolio.springapi.common.response.PageResponse;
++import koh.portfolio.springapi.domain.user.exception.UserErrorCode;
++import koh.portfolio.springapi.domain.user.model.Role;
++import koh.portfolio.springapi.domain.user.model.UserStatus;
++import koh.portfolio.springapi.infrastructure.security.jwt.JwtAuthenticationFilter;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
++import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
++import org.springframework.boot.test.mock.mockito.MockBean;
++import org.springframework.context.annotation.ComponentScan;
++import org.springframework.context.annotation.FilterType;
++import org.springframework.context.annotation.Import;
++import org.springframework.http.MediaType;
++import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
++import org.springframework.security.core.authority.SimpleGrantedAuthority;
++import org.springframework.test.web.servlet.MockMvc;
++
++import java.time.LocalDateTime;
++import java.util.List;
++
++import static org.mockito.Mockito.doThrow;
++import static org.mockito.Mockito.verify;
++import static org.mockito.Mockito.verifyNoInteractions;
++import static org.mockito.Mockito.when;
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
++
++@WebMvcTest(
++        controllers = AdminUserController.class,
++        excludeFilters = @ComponentScan.Filter(
++                type = FilterType.ASSIGNABLE_TYPE,
++                classes = JwtAuthenticationFilter.class
++        )
++)
++@AutoConfigureMockMvc(addFilters = false)
++@Import(GlobalExceptionHandler.class)
++class AdminUserControllerTest {
++
++    @Autowired
++    private MockMvc mockMvc;
++
++    @MockBean
++    private SearchUsersUseCase searchUsersUseCase;
++
++    @MockBean
++    private ChangeUserStatusUseCase changeUserStatusUseCase;
++
++    @MockBean
++    private ChangeUserRoleUseCase changeUserRoleUseCase;
++
++    private UsernamePasswordAuthenticationToken admin() {
++        return new UsernamePasswordAuthenticationToken(1L, null, List.of(new SimpleGrantedAuthority("ROLE_SYSTEM_ADMIN")));
++    }
++
++    @Test
++    @DisplayName("GET /api/v1/admin/users - 検索条件とページを渡し、ページ形式で返す")
++    void search_users_success() throws Exception {
++        // given
++        when(searchUsersUseCase.execute("tanaka", Role.ROLE_USER, UserStatus.ACTIVE, 1, 10)).thenReturn(PageResponse.of(
++                List.of(new AdminUserResponse(10L, "tanaka@example.com", "Tanaka", Role.ROLE_USER, UserStatus.ACTIVE,
++                        LocalDateTime.of(2026, 10, 1, 12, 0))),
++                11, 1, 10));
++
++        // when & then
++        mockMvc.perform(get("/api/v1/admin/users")
++                        .param("keyword", "tanaka").param("role", "ROLE_USER").param("status", "ACTIVE")
++                        .param("page", "1").param("size", "10")
++                        .principal(admin()))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.data.content[0].userId").value(10))
++                .andExpect(jsonPath("$.data.content[0].email").value("tanaka@example.com"))
++                .andExpect(jsonPath("$.data.content[0].password").doesNotExist())
++                .andExpect(jsonPath("$.data.content[0].createdAt").value("2026-10-01T12:00:00+09:00"))
++                .andExpect(jsonPath("$.data.totalElements").value(11))
++                .andExpect(jsonPath("$.data.totalPages").value(2))
++                .andExpect(jsonPath("$.data.number").value(1));
++    }
++
++    @Test
++    @DisplayName("GET /api/v1/admin/users - 存在しない権限名は500ではなく400（VALIDATION-001）")
++    void search_users_rejects_unknown_role() throws Exception {
++        // when & then
++        mockMvc.perform(get("/api/v1/admin/users").param("role", "ROLE_ROOT").principal(admin()))
++                .andExpect(status().isBadRequest())
++                .andExpect(jsonPath("$.code").value("VALIDATION-001"));
++
++        verifyNoInteractions(searchUsersUseCase);
++    }
++
++    @Test
++    @DisplayName("PATCH /api/v1/admin/users/{id}/suspend・activate - 操作者IDと対象IDを渡す")
++    void suspend_and_activate_user() throws Exception {
++        // when & then
++        mockMvc.perform(patch("/api/v1/admin/users/10/suspend").principal(admin()))
++                .andExpect(status().isOk());
++        mockMvc.perform(patch("/api/v1/admin/users/10/activate").principal(admin()))
++                .andExpect(status().isOk());
++
++        verify(changeUserStatusUseCase).execute(1L, 10L, UserStatus.SUSPENDED);
++        verify(changeUserStatusUseCase).execute(1L, 10L, UserStatus.ACTIVE);
++    }
++
++    @Test
++    @DisplayName("PATCH /api/v1/admin/users/{id}/suspend - 自分自身は400（USER-005）")
++    void suspend_self_returns_400() throws Exception {
++        // given
++        doThrow(UserErrorCode.CANNOT_CHANGE_SELF.defaultException())
++                .when(changeUserStatusUseCase).execute(1L, 1L, UserStatus.SUSPENDED);
++
++        // when & then
++        mockMvc.perform(patch("/api/v1/admin/users/1/suspend").principal(admin()))
++                .andExpect(status().isBadRequest())
++                .andExpect(jsonPath("$.code").value("USER-005"));
++    }
++
++    @Test
++    @DisplayName("PATCH /api/v1/admin/users/{id}/role - 権限変更成功")
++    void change_role_success() throws Exception {
++        // when & then
++        mockMvc.perform(patch("/api/v1/admin/users/10/role")
++                        .principal(admin())
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content("{\"role\":\"ROLE_HOSPITAL_ADMIN\"}"))
++                .andExpect(status().isOk());
++
++        verify(changeUserRoleUseCase).execute(1L, 10L, Role.ROLE_HOSPITAL_ADMIN);
++    }
++
++    @Test
++    @DisplayName("PATCH /api/v1/admin/users/{id}/role - 権限なし・存在しない権限名は400（VALIDATION-001）")
++    void change_role_validation_fail() throws Exception {
++        // when & then
++        for (String body : List.of("{}", "{\"role\":\"ROLE_ROOT\"}")) {
++            mockMvc.perform(patch("/api/v1/admin/users/10/role")
++                            .principal(admin())
++                            .contentType(MediaType.APPLICATION_JSON)
++                            .content(body))
++                    .andExpect(status().isBadRequest())
++                    .andExpect(jsonPath("$.code").value("VALIDATION-001"));
++        }
++
++        verifyNoInteractions(changeUserRoleUseCase);
++    }
++}

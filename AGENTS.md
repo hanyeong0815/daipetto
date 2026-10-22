@@ -12,7 +12,7 @@ This is the repository entry point for Codex and the canonical shared project po
 - Agent-facing files in `.codex/` and `.ai-collab/` use concise English. User-facing replies remain Korean; product design docs and code comments retain the language rules below.
 - Operational source of truth: `.ai-collab/PROTOCOL.md`. The original research corrections remain in `docs/codex-workflow/01_CORRECTIONS.md` for reference only.
 
-Last updated: 2026-10-21 (branch `feat/spring/pet-fields-datetime`, stacked on `feat/spring/vaccination`)
+Last updated: 2026-10-21 (branch `feat/spring/user-management`, stacked on `feat/spring/pet-fields-datetime`)
 
 ## 1. Areas
 
@@ -60,7 +60,7 @@ Rules:
 6. Role checks via `@PreAuthorize("hasAuthority('ROLE_...')")`; SecurityConfig only guarantees `authenticated()`.
 7. Owner checks with the `Preconditions.validate` pattern (see `UpdatePetService`).
 8. Domain state transitions are methods returning a new immutable instance (see `Hospital.suspend()`, `Reservation.approve()`); Lombok on Domain: `@Getter`/constructors only, never `@Setter`/`@Data`.
-9. Auth policy: access token 30 min / refresh token 14 days, refresh **rotation** (old token revoked on every use), max 1 active refresh token per user, stored in PostgreSQL (no Redis in MVP). Login, refresh and logout all take `SELECT ... FOR UPDATE` on the user row (`UserRepository.lockForSessionUpdate`) before touching tokens — without that per-user serialization the bulk revoke misses a successor token inserted by a concurrent refresh (docs/12 §3-11).
+9. Auth policy: access token 30 min / refresh token 14 days, refresh **rotation** (old token revoked on every use), max 1 active refresh token per user, stored in PostgreSQL (no Redis in MVP). Login, refresh and logout all take `SELECT ... FOR UPDATE` on the user row (`UserRepository.lockForSessionUpdate`) before touching tokens — without that per-user serialization the bulk revoke misses a successor token inserted by a concurrent refresh (docs/12 §3-11). `JwtAuthenticationFilter` loads the user on every authenticated request: suspended, deleted or missing users are not authenticated (401) and authorities come from the current DB role, so admin suspension and role changes apply on the next request (docs/09 §3-5). Admin suspension also takes the session lock and revokes all refresh tokens.
 
 ## 4. API common spec
 
@@ -82,6 +82,7 @@ Error messages in Japanese. New codes follow `{DOMAIN}-{seq}`; `{DOMAIN}-999` is
 | USER-002 | 入力バリデーション | 400 |
 | USER-003 | 存在しないユーザー | 404 |
 | USER-004 | 利用停止中ユーザー | 403 |
+| USER-005 | 自分自身の停止・停止解除・権限変更 | 400 |
 | PET-001 | 存在しないペット | 404 |
 | PET-002 | 飼い主不一致 | 401 |
 | HOSPITAL-001 | 存在しない病院 | 404 |
@@ -147,7 +148,7 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 - Principal is `Long`: use `new UsernamePasswordAuthenticationToken(1L, null, authorities)` — `.with(user(...))` fails.
 - Most unit tests mock repositories. H2 **is** available for `@DataJpaTest` (`application-test.yml`, `MODE=PostgreSQL`, `ddl-auto=create-drop`, Flyway disabled) — see `RefreshTokenPersistenceAdapterTest`; Testcontainers is not introduced.
 - Mocked repositories prove neither real SQL nor concurrency. Null-tolerant `@Query` bugs escape them (docs/12 §3-10) and so do races (docs/12 §3-11). No PostgreSQL concurrency test exists yet.
-- Verify: `./gradlew clean test` in `spring-api/` (261 green as of 2026-10-21).
+- Verify: `./gradlew clean test` in `spring-api/` (281 green as of 2026-10-22).
 
 ## 9. Environment
 
@@ -168,6 +169,7 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
 **Vaccination (2026-10-05, branch `feat/spring/vaccination`, stacked on `feat/react-api-integration`)**: register/list/complete/cancel/reschedule/delete APIs + daily 09:00 JST reminder Scheduler creating VACCINATION notifications (dedupe: `reminded_date` claimed by a conditional UPDATE per scheduled date, cleared on reschedule). Task record `.ai-collab/tasks/2026-10-05-vaccination/`; Codex REVIEW-001 found R-01..R-04 (stale pet rows, failed load shown as empty, rescheduled reminder lost to a timestamp race, copy); fixed in HANDOFF-002 and ACCEPTED in REVIEW-002 (2026-10-21). Frontend: SC-016 vaccination screen and the SC-006 upcoming-vaccination panel (2026-10-21).
 
 **Pet fields + datetime format (2026-10-21, branch `feat/spring/pet-fields-datetime`)**: merged the July pet-fields branch (breed/neutered/microchip, V13) and added those columns to the conditional `updateProfile`; pet update stays a full replacement (user decision, docs/07 §5-4); `pets.gender` made nullable (V14) and request validation added for name/breed/weight lengths; all response `LocalDateTime`s serialize as JST with offset (`LocalDateTimeJsonSerializer`, docs/07 §2-7, user decision). Frontend: pet edit screen (`/pets/:petId/edit`, reuses SC-005), breed on the pet list, 「不明」 gender. Task record `.ai-collab/tasks/2026-10-21-pet-fields-datetime/`; Codex REVIEW-001 ACCEPTED (2026-10-21, one P3 comment fix deferred).
+**User management (2026-10-21, branch `feat/spring/user-management`)**: SYSTEM_ADMIN APIs `GET /admin/users` (keyword/role/status, paged `PageResponse`), `PATCH /admin/users/{id}/suspend|activate|role` (self → USER-005; suspension locks the user row and revokes refresh tokens). The JWT filter now checks the current user status/role per request. `GlobalExceptionHandler` maps unreadable params/JSON (bad enum values) to 400 VALIDATION-001 instead of 500. Frontend: real SC-015 `AdminUserPage`, a role-dependent admin menu on the dashboard (admin screens had no entry point), `UserProfile.userId` fixed (the type said `id`). Task record `.ai-collab/tasks/2026-10-21-user-management/`; REVIEW-001 found R-01 (login overlapping suspension could issue a token), R-02 (admin list stranded on an empty page), R-03 (status lines); fixed in HANDOFF-002 and ACCEPTED in REVIEW-002 (2026-10-22).
 
 **Frontend review (2026-10-04)**: API wiring is implemented, but review is CHANGES_REQUESTED in `.ai-collab/tasks/2026-10-04-frontend-api-integration/REVIEW-001.md`: F-01 private pet cache survives account changes, F-02 stale hospital schedules can overwrite the current hospital, F-03 same-day past slots remain selectable. Codex verified the frontend build and reproduced F-01/F-02 with the actual stores. Browser/Capacitor evidence remains implementer-reported; native runtime verification is pending in TODO.md. Codex owns only this review and the user-requested TODO/status update; application fixes remain with Claude. Claude fixed F-01..F-03 on 2026-10-04 (session-scoped pet store reset/guard, hospital-keyed reservation data with latest-response-wins hospital store, JST start-time rule `isUpcoming`); response in `HANDOFF-002.md`, ACCEPTED in `REVIEW-002.md` (2026-10-04). Browser and APK evidence there is implementer-reported.
 
@@ -181,9 +183,9 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
 
 **Review round 2026-09-13** (Codex REVIEW-001 → fixes in `.ai-collab/tasks/2026-09-13-implementation-review/HANDOFF-002.md`): R-01〜R-08 addressed — refresh rotation now single-consumption (conditional revoke must affect exactly 1 row), refresh tokens carry `jti`, access/refresh separated by a `type` claim so a refresh token used as Bearer no longer throws inside the filter, reservations are protected by a DB-level partial unique index plus expected-status conditional updates, SUSPENDED hospitals reject new reservations (RESERVATION-009), deleted pets no longer break reservation history, and the frontend refresh queue settles every waiter on failure. **Still unverified**: real PostgreSQL concurrency runs for the race fixes.
 
-**Not started**: schedule auto-generation Scheduler (from `hospital_business_hours`) · django-api entirely · frontend admin reservation screen (needs an admin reservation list API that neither Spring nor docs/07 defines — user decision pending) and admin user screen (backend not built).
+**Not started**: schedule auto-generation Scheduler (from `hospital_business_hours`) · `hospital_admins` affiliation checks and the admin reservation list API + screen (in scope for the 2026-10-21 "finish Spring" request; next round) · django-api entirely.
 
-**Unmerged branches**: `feat/spring/pet-fields` was merged into `feat/spring/pet-fields-datetime` on 2026-10-21 (migration renumbered to V13). Feature branches are stacked and await user PRs: `feat/react-api-integration` → `feat/spring/vaccination` → `feat/spring/pet-fields-datetime`. Verify with `git branch --all` and `git log`.
+**Unmerged branches**: `feat/spring/pet-fields` was merged into `feat/spring/pet-fields-datetime` on 2026-10-21 (migration renumbered to V13). Feature branches are stacked and await user PRs: `feat/react-api-integration` → `feat/spring/vaccination` → `feat/spring/pet-fields-datetime` → `feat/spring/user-management`. Verify with `git branch --all` and `git log`.
 
 ## 11. Workflow rules
 

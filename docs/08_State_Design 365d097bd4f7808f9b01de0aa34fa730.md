@@ -75,8 +75,8 @@ stateDiagram-v2
 
 | **現在状態** | **次状態** | **実行者** | **条件** |
 | --- | --- | --- | --- |
-| ACTIVE | SUSPENDED | ROLE_SYSTEM_ADMIN | 管理者停止 |
-| SUSPENDED | ACTIVE | ROLE_SYSTEM_ADMIN | 復旧処理 |
+| ACTIVE | SUSPENDED | ROLE_SYSTEM_ADMIN | 管理者停止（`PATCH /admin/users/{id}/suspend`、`07_API_Design` §11-4）。自分自身は不可（USER-005） |
+| SUSPENDED | ACTIVE | ROLE_SYSTEM_ADMIN | 復旧処理（`PATCH /admin/users/{id}/activate`、§11-5） |
 
 ---
 
@@ -85,7 +85,7 @@ stateDiagram-v2
 | **条件** | **内容** |
 | --- | --- |
 | SUSPENDED | ログイン不可 |
-| SUSPENDED | API利用不可 |
+| SUSPENDED | API利用不可（停止時に全Refresh Tokenを失効させ、認証フィルターがリクエストごとに状態を確認するため発行済みのAccess Tokenも次のリクエストから401、`09_Security_Design` §3-5） |
 
 ---
 

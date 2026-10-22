@@ -4,11 +4,13 @@ import koh.portfolio.springapi.common.response.ApiResponse;
 import koh.portfolio.springapi.domain.auth.exception.AuthErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @Slf4j
 @RestControllerAdvice
@@ -44,6 +46,17 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .badRequest()
                 .body(ApiResponse.error("VALIDATION-001", message));
+    }
+
+    // 型変換できないクエリパラメータ（例: role=FOO）や読み取れないJSON（不正なenum値など）は
+    // 利用者の入力誤りのため、500ではなく400（VALIDATION-001）で返す
+    @ExceptionHandler({MethodArgumentTypeMismatchException.class, HttpMessageNotReadableException.class})
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableInput(Exception exception) {
+        log.warn("Unreadable request input. message={}", exception.getMessage());
+
+        return ResponseEntity
+                .badRequest()
+                .body(ApiResponse.error("VALIDATION-001", "入力内容を確認してください。"));
     }
 
     @ExceptionHandler(AccessDeniedException.class)

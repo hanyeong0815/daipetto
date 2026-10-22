@@ -78,6 +78,25 @@ export default function DashboardPage() {
         </p>
       </section>
 
+      {/* 管理メニュー（病院管理者・システム管理者のみ。管理画面への入口が他に無いため） */}
+      {(user?.role === 'ROLE_HOSPITAL_ADMIN' || user?.role === 'ROLE_SYSTEM_ADMIN') && (
+        <section className="bg-surface-container-lowest rounded-[16px] border border-neutral-gray-100 p-container-margin flex flex-col gap-sm shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
+          <h2 className="font-headline-md text-headline-md text-neutral-gray-900">管理メニュー</h2>
+          <div className="grid grid-cols-2 gap-sm">
+            {[
+              { to: '/admin/reservations', icon: 'event_note', label: '予約管理', show: true },
+              { to: '/admin/hospitals', icon: 'local_hospital', label: '病院情報管理', show: true },
+              { to: '/admin/users', icon: 'manage_accounts', label: 'ユーザー管理', show: user?.role === 'ROLE_SYSTEM_ADMIN' },
+            ].filter((m) => m.show).map((m) => (
+              <Link key={m.to} to={m.to} className="flex items-center gap-2 px-sm py-3 rounded-xl border border-neutral-gray-100 hover:bg-surface-container-low transition-colors">
+                <span className="material-symbols-outlined text-primary text-[20px]">{m.icon}</span>
+                <span className="font-label-md text-label-md text-neutral-gray-900">{m.label}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* 次の予約カード */}
       <section>
         <Link

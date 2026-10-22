@@ -97,6 +97,8 @@ class LoginServiceTest {
         when(jwtProvider.getRefreshTokenExpiresAt())
                 .thenReturn(refreshTokenExpiresAt);
 
+        when(userRepository.findStatusById(1L)).thenReturn(UserStatus.ACTIVE);
+
         when(refreshTokenRepository.save(any(RefreshToken.class)))
                 .thenReturn(savedRefreshToken);
 
@@ -116,6 +118,7 @@ class LoginServiceTest {
         // 一括revokeより先にユーザー行を排他取得していること（同時refreshとの直列化）
         InOrder inOrder = inOrder(userRepository, refreshTokenRepository);
         inOrder.verify(userRepository).lockForSessionUpdate(1L);
+        inOrder.verify(userRepository).findStatusById(1L);
         inOrder.verify(refreshTokenRepository).revokeAllByUserId(1L);
         inOrder.verify(refreshTokenRepository).save(any(RefreshToken.class));
     }
@@ -223,6 +226,30 @@ class LoginServiceTest {
 
         verify(userRepository).findByEmail("test@example.com");
         verify(passwordEncoder, never()).matches(anyString(), anyString());
+        verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
+    }
+
+    @Test
+    @DisplayName("最初の読み取り後に停止が確定した場合、排他取得後の再確認でAUTH-002となりトークンを発行しない（REVIEW-001 R-01）")
+    void login_fail_when_suspended_after_first_read() {
+        // given: 最初の読み取りでは ACTIVE、排他取得後の読み直しでは SUSPENDED
+        LoginRequest request = new LoginRequest("test@example.com", "password123");
+        User activeUser = new User(1L, "test@example.com", "$2a$encoded-password", "hanyeong", Role.ROLE_USER,
+                UserStatus.ACTIVE, LocalDateTime.now(), LocalDateTime.now(), null);
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(activeUser));
+        when(passwordEncoder.matches("password123", "$2a$encoded-password")).thenReturn(true);
+        when(userRepository.findStatusById(1L)).thenReturn(UserStatus.SUSPENDED);
+
+        // when & then
+        assertThatThrownBy(() -> loginService.execute(request))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode().code())
+                        .isEqualTo(AuthErrorCode.SUSPENDED_ACCOUNT.code()));
+
+        InOrder inOrder = inOrder(userRepository);
+        inOrder.verify(userRepository).lockForSessionUpdate(1L);
+        inOrder.verify(userRepository).findStatusById(1L);
+        verify(refreshTokenRepository, never()).revokeAllByUserId(anyLong());
         verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
     }
 }

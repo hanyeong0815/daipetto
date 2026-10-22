@@ -677,6 +677,26 @@ migrationを書いたら、`06_ERD`のNULL可否・型と1列ずつ突き合わ�
 
 ---
 
+# **3-16. 存在しないenum値の指定が500になる（2026-10-21 ユーザー管理API実装時に発見）**
+
+## **症状**
+
+`GET /api/v1/admin/users?role=ROLE_ROOT`のように存在しないenum値をクエリに指定したり、JSONの`"role":"ROLE_ROOT"`のように読み取れない値を送ったりすると、SERVER-001（500）が返る。
+
+---
+
+## **原因**
+
+型変換の失敗（`MethodArgumentTypeMismatchException`）とJSONの読み取り失敗（`HttpMessageNotReadableException`）は`@Valid`の検証より前に起きるため、`MethodArgumentNotValidException`のハンドラーを通らず、`GlobalExceptionHandler`の最後の`Exception`ハンドラーで500になっていた。予約・ワクチンなど既存のAPIも同じ。
+
+---
+
+## **対応方法**
+
+`GlobalExceptionHandler`で2つの例外を受け、400（VALIDATION-001「入力内容を確認してください。」）で返す。
+
+---
+
 # **4. Django関連**
 
 # **4-1. Python Version不一致**
