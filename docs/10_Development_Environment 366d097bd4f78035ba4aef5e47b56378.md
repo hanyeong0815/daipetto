@@ -240,10 +240,10 @@ spring-api/
 │   ├── domain/{X}/      # model / exception / port（JPA非依存）
 │   ├── application/{X}/ # dto / usecase (interface) / service (実装体)
 │   ├── infrastructure/  # mapper (MapStruct), persistence/{X} (Entity/JpaRepository/Adapter),
-│   │                    # security (jwt / handler / cors)
+│   │                    # security (jwt / handler / cors), scheduler, client/analysis（分析APIの呼び出し）
 │   └── presentation/{X}/ # Controller
 ├── src/main/resources/
-│   ├── db/migration/    # Flyway V1〜V7
+│   ├── db/migration/    # Flyway V1〜V15（§10-2）
 │   └── application*.yml # local / docker プロファイル
 └── build.gradle
 ```
@@ -285,7 +285,7 @@ flowchart TB
 | flyway-core / flyway-database-postgresql | Migration |
 | postgresql | PostgreSQL Driver |
 | jjwt (api / impl / jackson) 0.12.6 | JWT発行・検証 |
-| mapstruct 1.5.5.Final + lombok-mapstruct-binding | Domain ↔ Entity 変換 |
+| `mapstruct 1.5.5.Final` + `lombok-mapstruct-binding` | Domain ↔ Entity 変換 |
 | lombok | ボイラープレート削減 |
 | spring-boot-starter-test / spring-security-test | 単体テスト（JUnit 5・Mockito・MockMvc） |
 | h2（testRuntimeOnly） | Persistenceテスト用のDB（`@DataJpaTest`、PostgreSQLモード） |

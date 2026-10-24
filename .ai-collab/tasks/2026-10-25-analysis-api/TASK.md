@@ -63,7 +63,7 @@ Spec: docs/07 §7 (draft), docs/04 §5-2/§8/§12, docs/09 §4-6, docs/10 §6, d
 
 - Latest published handoff: HANDOFF-002.md (response to REVIEW-001)
 - Latest final review: REVIEW-002.md (ACCEPTED; R-01..R-03 resolved)
-- Next actor and action: Claude Code — Notion sync of the 13 docs; the user opens the PRs (`test/unit-test` first, then this branch)
+- Next actor and action: the user opens the PRs (`test/unit-test` first, then this branch)
 - Blocker: none
 - After acceptance: commit/push this branch; sync the 13 docs to Notion (docs are the base, user request)
 
@@ -74,3 +74,9 @@ Spec: docs/07 §7 (draft), docs/04 §5-2/§8/§12, docs/09 §4-6, docs/10 §6, d
 - Verification evidence: reviewer-executed pytest 38 and JUnit 382 (`--rerun-tasks`); implementer-reported container smoke and E2E 17/17
 - Remaining findings and disposition: none open. Accepted limitations: E2E/PostgreSQL implementer-reported, heuristic score, no connection pool
 - Integration state: committed and pushed; PR to `develop` by the user
+
+## Notion sync (2026-10-25, user request: docs are the base)
+
+- The 13 pages under "PetCare Platform" (IDs = the hashes in the docs file names; last edited 2026-08-01 before the sync) were overwritten with `replace_content` from the docs (Sonnet subagent; title line removed, no child pages or databases on any page, no warnings).
+- Follow-up fixes by the main session with targeted `update_content`: relative `*.md` cross-references on pages 10–13 replaced with native page mentions; broken bold spans (docs/02 BR-001..005 headings, docs/07 §2-7) and an auto-linked version string (docs/10 §5-8) fixed in Notion and in the docs; docs/10 §5-6 stale Flyway range (V1〜V7 → V1〜V15) and package tree fixed in both.
+- The doc-only follow-up commit is formatting/wording only; review: skipped (low risk, no behavior or API change).
