@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="koh.portfolio.springapi.infrastructure.persistence.user.UserMapperTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-10-22T20:18:04.563Z" hostname="HOME-PC" time="0.0">
-  <properties/>
-  <testcase name="domainを_entityに_変換()" classname="koh.portfolio.springapi.infrastructure.persistence.user.UserMapperTest" time="0.0"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>

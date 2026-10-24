@@ -1,2 +1,0 @@
-select id, email, nickname, role, status from users where email='screen-new-1792684449@daipetto.test';
-5|screen-new-1792684449@daipetto.test|山田|ROLE_USER|ACTIVE

@@ -188,7 +188,7 @@ cd spring-api && ./gradlew clean test       # JUnit（JaCoCo のレポートも�
 cd analysis-api && .venv/Scripts/python -m pytest
 ```
 
-全機能の単体テスト（テスト項目・実行結果・エビデンス、API単体テスト・画面単体テスト・カバレッジ）は [test/README.md](test/README.md) にまとめています。
+全機能の単体テスト（API単体テスト・画面単体テスト・カバレッジ。2026-10-23）の経過と最終判定は `.ai-collab/tasks/2026-10-23-unit-test/` にあります（仕様書・エビデンスはリポジトリに含めていません）。
 
 ---
 
@@ -221,7 +221,7 @@ APIのURLは実行環境（Web / Android / iOS）を Capacitor が判定して�
 - ユーザー管理（検索・停止・停止解除・権限変更）
 - 分析API（体重推移・健康スコア・次回接種推奨日）と Spring の中継
 - フロントエンド全画面の実API連動、ロール別の画面ガード
-- 全機能の単体テスト（`test/`）
+- 全機能の単体テスト（API・画面・カバレッジ。記録は `.ai-collab/tasks/2026-10-23-unit-test/`）
 
 **残り**
 - 症状統計API（練習用にあえて未実装）

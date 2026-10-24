@@ -289,7 +289,7 @@ flowchart TB
 | lombok | ボイラープレート削減 |
 | spring-boot-starter-test / spring-security-test | 単体テスト（JUnit 5・Mockito・MockMvc） |
 | h2（testRuntimeOnly） | Persistenceテスト用のDB（`@DataJpaTest`、PostgreSQLモード） |
-| jacoco 0.8.12（Gradleプラグイン） | カバレッジ（`./gradlew test` の後に `build/reports/jacoco/test/` へXML・HTMLを出力。単体テストのエビデンスは `test/evidence/coverage/`） |
+| jacoco 0.8.12（Gradleプラグイン） | カバレッジ（`./gradlew test` の後に `build/reports/jacoco/test/` へXML・HTMLを出力） |
 
 > **注記:** springdoc-openapi（Swagger UI）は未導入。導入時は Spring Boot 3.3.x 互換の `springdoc-openapi-starter-webmvc-ui 2.6.0` を利用する。
 
