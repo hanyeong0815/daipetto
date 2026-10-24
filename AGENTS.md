@@ -12,7 +12,7 @@ This is the repository entry point for Codex and the canonical shared project po
 - Agent-facing files in `.codex/` and `.ai-collab/` use concise English. User-facing replies remain Korean; product design docs and code comments retain the language rules below.
 - Operational source of truth: `.ai-collab/PROTOCOL.md`. The original research corrections remain in `docs/codex-workflow/01_CORRECTIONS.md` for reference only.
 
-Last updated: 2026-10-23 (branch `test/unit-test`, from `develop`)
+Last updated: 2026-10-25 (branch `feat/analysis/analysis-api`, from `test/unit-test`)
 
 ## 1. Areas
 
@@ -20,7 +20,7 @@ Last updated: 2026-10-23 (branch `test/unit-test`, from `develop`)
 |---|---|---|
 | `frontend/` | React 18 / TypeScript / Vite / Tailwind / Zustand / Axios / React Router 6 / Capacitor (Android·iOS) | VSCode |
 | `spring-api/` | Java 17 / Spring Boot 3.3.13 / Spring Security / JPA / Flyway / MapStruct | IntelliJ |
-| `django-api/` | Python 3.12.10 / DRF 3.15.2 — **not started** (only a Dockerfile exists) | VSCode |
+| `analysis-api/` | Python 3.12.10 / FastAPI 0.162.0 / uvicorn / psycopg 3 — internal analysis API behind Spring; weight / health-score / vaccination-next implemented, symptoms/summary left as a practice gap (2026-10-25) | VSCode |
 | `docs/` | 13 design docs, Japanese, change-managed (§11, §12) | — |
 
 ## 2. Language rules
@@ -111,12 +111,16 @@ Error messages in Japanese. New codes follow `{DOMAIN}-{seq}`; `{DOMAIN}-999` is
 | VACCINATION-001 | 存在しないワクチン接種予定 | 404 |
 | VACCINATION-002 | 存在しないペット / 他ユーザーのペット | 403 |
 | VACCINATION-003 | 不正な状態遷移（同時実行で負けた側を含む） | 409 |
-| AUTH/USER/PET/HOSPITAL/RESERVATION/HEALTH/NOTIFICATION/VACCINATION-999 | domain default | 500 |
+| AUTH/USER/PET/HOSPITAL/RESERVATION/HEALTH/NOTIFICATION/VACCINATION/ANALYSIS-999 | domain default | 500 |
 | VALIDATION-001 | `@Valid` failure, unreadable JSON, bad query/path value, missing required param (GlobalExceptionHandler) | 400 |
 | COMMON-001 | 存在しないURL | 404 |
 | COMMON-002 | 許可されていないHTTPメソッド | 405 |
 | COMMON-003 | 対応していないContent-Type | 415 |
 | SERVER-001 | unhandled exception fallback | 500 |
+| ANALYSIS-001 | 存在しない・削除済み・他ユーザーのペットの分析 | 403 |
+| ANALYSIS-002 | 分析期間の前後不正（from > to） | 400 |
+| ANALYSIS-003 | 分析API（FastAPI）に接続できない・エラー応答・読めない応答 | 503 |
+| INTERNAL-001 | analysis-api only: missing/wrong `X-Internal-Api-Key` (all requests denied when the key is unset) | 401 |
 
 ## 6. Enums / state transitions
 
@@ -157,7 +161,7 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 - Principal is `Long`: use `new UsernamePasswordAuthenticationToken(1L, null, authorities)` — `.with(user(...))` fails.
 - Most unit tests mock repositories. H2 **is** available for `@DataJpaTest` (`application-test.yml`, `MODE=PostgreSQL`, `ddl-auto=create-drop`, Flyway disabled) — see `RefreshTokenPersistenceAdapterTest`; Testcontainers is not introduced.
 - Mocked repositories prove neither real SQL nor concurrency. Null-tolerant `@Query` bugs escape them (docs/12 §3-10) and so do races (docs/12 §3-11). `./gradlew test` has no PostgreSQL concurrency test (H2/mocks only). Manual PostgreSQL race checks exist as task scripts run against a scratch DB: refresh/login vs suspension (`.ai-collab/tasks/2026-10-21-user-management/scripts/`) and concurrent/racing hospital-admin links (`.ai-collab/tasks/2026-10-22-hospital-admins/scripts/` HA-12/HA-13). Their results are implementer-reported unless a reviewer reruns them.
-- Verify: `./gradlew clean test` in `spring-api/` (342 green as of 2026-10-23). `test` is finalized by JaCoCo (`build/reports/jacoco/test/`, XML + HTML).
+- Verify: `./gradlew clean test` in `spring-api/` (382 green as of 2026-10-25). Analysis API: `python -m pytest` in `analysis-api/` (38 green; services are pure functions, the DB is a fake connection; SQL is checked on a scratch PostgreSQL by the task E2E script). `test` is finalized by JaCoCo (`build/reports/jacoco/test/`, XML + HTML).
 - Full unit-test package (単体テスト): `test/` at the repository root — `test/README.md` (plan, environment, how to rerun), `test/spec/UT-01..UT-14` (items, expected results, results, evidence links), `test/evidence/` (JUnit XML, JaCoCo, per-item API JSON from a scratch PostgreSQL run, screen captures), `test/DEFECTS.md`. Regenerate specs with `node test/scripts/build-spec.mjs`; API items live in `test/scripts/api-cases.mjs` (expected results from docs/07).
 
 ## 9. Environment
@@ -166,10 +170,10 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 |---|---|
 | Spring | Java 17 / Boot 3.3.13 / Gradle 8.14.4 / Flyway 10.20.x / MapStruct 1.5.5.Final / jjwt 0.12.6 |
 | Frontend | React 18.3.1 / TS 5.7.x / Vite 6.4.x / Node 24.17.0 / Tailwind 3.4.x / Zustand 5 / Axios 1.18 / Router 6.30 / Capacitor 8.4 |
-| Django | Python 3.12.10 / DRF 3.15.2 (not started) |
+| Analysis API | Python 3.12.10 / FastAPI 0.162.0 / uvicorn 0.54.0 / psycopg 3.3.6; tests pytest 9.1.1 + httpx2 |
 | DB | PostgreSQL 16.9 (db/user: daipetto) |
-| Ports | frontend 5173 / spring 8080 / django 8000 / postgres 5432 |
-| Timezone | JST `Asia/Tokyo` everywhere (Japan-facing service). Spring sets the JVM default in `main` from `ServerTime.ZONE_ID`; postgres container `TZ=Asia/Tokyo`; frontend computes "today" with `todayInJapan()` (`src/utils/date.ts`), never `toISOString()`; Django `TIME_ZONE` must match when built. |
+| Ports | frontend 5173 / spring 8080 / analysis-api 8000 / postgres 5432 |
+| Timezone | JST `Asia/Tokyo` everywhere (Japan-facing service). Spring sets the JVM default in `main` from `ServerTime.ZONE_ID`; postgres container `TZ=Asia/Tokyo`; frontend computes "today" with `todayInJapan()` (`src/utils/date.ts`), never `toISOString()`; analysis-api must compute "today" in `Asia/Tokyo` (zoneinfo), not the container default. |
 
 Start: `docker compose up -d` (postgres) → `./gradlew bootRun` / `npm run dev`.
 API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (`VITE_API_BASE_URL_WEB` / `_ANDROID` / `_IOS`).
@@ -197,9 +201,9 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
 
 **Review round 2026-09-13** (Codex REVIEW-001 → fixes in `.ai-collab/tasks/2026-09-13-implementation-review/HANDOFF-002.md`): R-01〜R-08 addressed — refresh rotation now single-consumption (conditional revoke must affect exactly 1 row), refresh tokens carry `jti`, access/refresh separated by a `type` claim so a refresh token used as Bearer no longer throws inside the filter, reservations are protected by a DB-level partial unique index plus expected-status conditional updates, SUSPENDED hospitals reject new reservations (RESERVATION-009), deleted pets no longer break reservation history, and the frontend refresh queue settles every waiter on failure. **Still unverified**: real PostgreSQL concurrency runs for the race fixes.
 
-**Not started**: django-api entirely (out of scope of the 2026-10-21 "finish Spring" request).
+**Analysis API (2026-10-25, branch `feat/analysis/analysis-api`, accepted by Codex in REVIEW-002)**: user decisions: the frontend calls only Spring; Spring authenticates, checks pet ownership and relays to the analysis API's internal endpoints (`/internal/v1`, `X-Internal-Api-Key`, docs/04 §8, docs/09 §4-6); four analysis APIs (docs/07 §7; the health-score formula and the 1-year vaccination interval were confirmed by the user); practice gap = symptoms/summary (Python endpoint and the Spring relay). The framework was switched from Django REST Framework to FastAPI on user request (only read-only JSON internal endpoints; Django's admin/auth/sessions/migrations would all be disabled; docs/04 §5-2, docs/13 §3-4). Done: `analysis-api/` skeleton (`app/main.py` router, `config.py`, `db.py` per-request psycopg connection with `default_transaction_read_only=on`, `security.py` key check, `errors.py` common envelope incl. 422→400 VALIDATION-001), OpenAPI/docs routes disabled (export with `app.openapi()`), `GET /internal/v1/health`, `docker compose build analysis-api` and a scratch-DB smoke run (Flyway V15 columns present, writes rejected by PostgreSQL). Phase 2 (2026-10-25): weight / health-score / vaccination-next on both sides — analysis-api `routers.py`/`schemas.py`/`services.py` (pure functions)/`repository.py` (SQL); Spring `AnalysisController` → three UseCase services (owner check `AnalysisPetChecker`, ANALYSIS-001; period ANALYSIS-002) → port `AnalysisClient` → `AnalysisApiClient` (RestClient, 2 s/5 s timeouts, redirects not followed; non-2xx incl. 3xx, I/O, unreadable bodies and missing required fields — checked in the domain record constructors — all ANALYSIS-003). 38 pytest, 40 new JUnit (Codex REVIEW-001 R-01/R-02 fixes included), scratch-DB E2E script in the task folder. Not started: frontend charts. Task record `.ai-collab/tasks/2026-10-25-analysis-api/`.
 
-**Branches (2026-10-23)**: all feature branches up to `feat/spring/schedule-generation` were merged into `develop` (PR #20) and deleted locally and on origin; only `main` and `develop` remain, plus the working branch. `develop` is ahead of `main` (release PR pending, by the user). Verify with `git branch --all` and `git log`.
+**Branches (2026-10-25)**: all feature branches up to `feat/spring/schedule-generation` were merged into `develop` (PR #20) and deleted. `test/unit-test` is pushed (PR to `develop` pending, by the user); `feat/analysis/analysis-api` starts from it. `develop` is ahead of `main` (release PR pending, by the user). Verify with `git branch --all` and `git log`.
 
 ## 11. Workflow rules
 

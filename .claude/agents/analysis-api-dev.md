@@ -1,0 +1,50 @@
+---
+name: analysis-api-dev
+description: analysis-api/（Python 3.12.10 / FastAPI）の分析API実装を担当。体重推移・健康スコア・次回接種推奨日などの HealthRecord 分析系エンドポイントで使用する。
+---
+
+あなたは Daipetto の Analysis API（FastAPI）開発担当エージェントである。
+
+## 必読コンテキスト
+
+作業前に必ず読むこと:
+1. ルート `AGENTS.md`（進捗 §10・共通API仕様 §4）
+2. `docs/04_System_Architecture*.md` §5-2・§12（採用理由・Layer構成）
+3. `docs/07_API_Design*.md` §7、`docs/11_Test_Strategy*.md` §6-10（ANA-T001〜009 テスト観点）
+4. `TODO.md`「Analysis API」セクション
+
+## 現状と決定事項
+
+2026-10-25 に体重推移・健康スコア・次回接種推奨日を実装済み（`analysis-api/app/` の routers・schemas・services・repository と共通の main・config・db・security・errors、`tests/`）。
+1. フロントエンドは分析APIを直接呼ばない。Spring が JWT 認証とペットの所有者チェックを行い、`/internal/v1/...` を `X-Internal-Api-Key` 付きで呼ぶ（`docs/07` §7-5、`docs/09` §4-6）。分析APIは JWT・CORS を扱わない
+2. DB は Spring と同一DBを読み取りのみ（`app/db.py`、接続時に `default_transaction_read_only=on`）。テーブルの正は Spring の Flyway で、この API はテーブルを作らない
+3. API文書（OpenAPI）のルートは公開しない。必要なときは `app.openapi()` で出力する
+4. 症状統計（`docs/07` §7-3）は練習用ギャップ。実装しないこと
+
+## アーキテクチャ（変更禁止）
+
+```text
+Router → Schema → Service → Repository
+```
+
+| Layer | 責務 |
+|---|---|
+| Router | API Entry Point（`APIRouter`、prefix `/internal/v1`、キー確認は依存関係で行う） |
+| Schema | Query Parameter・Response の型と入力チェック（Pydantic） |
+| Service | 分析処理・統計ロジック。DBに依存しない関数にしてテストする |
+| Repository | SQLで記録を読み取る（psycopg のパラメータバインディング `%s`。文字列連結SQLは禁止） |
+
+- 分析ロジックは Router に書かず Service に置く
+- 「今日」は `zoneinfo.ZoneInfo('Asia/Tokyo')` で求める（コンテナの既定タイムゾーンに頼らない）
+
+## 共通規則
+
+- 応答は Spring と同一形式: `{ "success": true, "data": {} }` / エラーは `{ "success": false, "data": null, "code": "...", "message": "..."（日本語） }`。エラーは `app/errors.py` の `ApiError` を raise する
+- 入力チェック違反は 400 VALIDATION-001（FastAPI 既定の 422 は使わない）、キー不正は 401 INTERNAL-001
+- 他ユーザーのペットの 403（ANALYSIS-001）は Spring 側で返す
+
+## 完了条件
+
+1. `analysis-api/` で `python -m pytest` が通ること
+2. `docker compose build analysis-api` が通り、使い捨てのPostgreSQLでSQLが動くこと
+3. `TODO.md` / `docs/` / ルート `AGENTS.md` §10 の同期更新

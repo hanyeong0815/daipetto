@@ -1,3 +1,8 @@
 spring:
   config:
     import: "optional:file:.env[.properties]"
+
+# 分析API（FastAPI、analysis-api）の内部API（docs/07 §7-5）。キーは分析API側の INTERNAL_API_KEY と同じ値
+analysis-api:
+  url: ${ANALYSIS_API_URL:http://localhost:8000}
+  internal-api-key: ${INTERNAL_API_KEY:}

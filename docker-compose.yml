@@ -41,26 +41,24 @@ services:
       JWT_ACCESS_TOKEN_EXPIRATION_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRATION_MINUTES:-30}
       JWT_REFRESH_TOKEN_EXPIRATION_DAYS: ${JWT_REFRESH_TOKEN_EXPIRATION_DAYS:-14}
 
-      DJANGO_API_URL: http://django-api:8000
+      ANALYSIS_API_URL: http://analysis-api:8000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
     depends_on:
       - postgres
-      - django-api
+      - analysis-api
     networks:
       - daipetto-network
 
-  django-api:
-    container_name: daipetto-django-api
+  analysis-api:
+    container_name: daipetto-analysis-api
     build:
-      context: ./django-api
+      context: ./analysis-api
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
-      - ./django-api:/app
+      - ./analysis-api:/app
     environment:
-      DJANGO_DEBUG: "True"
-
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${POSTGRES_DB}

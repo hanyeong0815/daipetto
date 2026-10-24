@@ -10,7 +10,7 @@
 | Document | System Architecture |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-10-22 |
+| Updated | 2026-10-25 |
 
 ---
 
@@ -18,7 +18,7 @@
 
 「大ペット」は、Frontend、Core API、Analysis API、Databaseを分離した構成を採用する。
 
-認証・予約・権限制御などのトランザクション整合性が重要な機能はSpring Bootで管理し、健康記録分析・統計・将来的なAI分析などのデータ処理系機能はDjango REST Frameworkで管理する。
+認証・予約・権限制御などのトランザクション整合性が重要な機能はSpring Bootで管理し、健康記録分析・統計・将来的なAI分析などのデータ処理系機能はPythonの分析API（FastAPI）で管理する。
 
 これにより、以下を実現する。
 
@@ -41,7 +41,7 @@ graph TB
 
 	SPRING["Spring Boot Core API<br>Java 17 / Spring Boot 3"]
 
-	DJANGO["Django Analysis API<br>Python / Django REST Framework"]
+	ANALYSIS["Analysis API<br>Python / FastAPI"]
 
 	DB["PostgreSQL"]
 
@@ -49,11 +49,11 @@ graph TB
 
 	FRONT --> SPRING
 
-	FRONT --> DJANGO
+	SPRING -->|内部API| ANALYSIS
 
 	SPRING --> DB
 
-	DJANGO --> DB
+	ANALYSIS --> DB
 ```
 
 ---
@@ -64,7 +64,7 @@ graph TB
 | --- | --- | --- |
 | Frontend | React / TypeScript / Vite / Tailwind CSS | UI表示、入力制御、API通信 |
 | Core API | Java 17 / Spring Boot 3 | 認証、予約、権限制御、業務ロジック |
-| Analysis API | Python / Django REST Framework | 健康分析、統計処理 |
+| Analysis API | Python / FastAPI | 健康分析、統計処理（Spring からのみ呼ばれる内部API） |
 | Database | PostgreSQL | データ永続化 |
 | Infrastructure | Docker Compose | ローカル環境構築 |
 | Migration | Flyway | DBバージョン管理 |
@@ -145,14 +145,14 @@ graph TB
 
 ---
 
-# **5-2. Django Analysis API**
+# **5-2. Analysis API（FastAPI）**
 
 ## **使用技術**
 
 | **項目** | **技術** |
 | --- | --- |
 | Language | Python |
-| Framework | Django REST Framework |
+| Framework | FastAPI |
 
 ---
 
@@ -173,6 +173,8 @@ graph TB
 | 分析処理 | Pythonとの親和性 |
 | 拡張性 | AI機能追加容易 |
 | API分離 | Core API負荷分散 |
+
+FastAPI を選んだ理由（2026-10-25、Django REST Framework から変更）: 分析APIは Spring の裏で動く読み取り専用・JSONのみの内部APIで、Django の管理画面・認証・セッション・マイグレーションを使わない。FastAPI は型ヒント（Pydantic）で入力チェックと応答の型を定義でき、API文書（OpenAPI）を自動生成できるため、Spring との連携仕様を明確にしやすい。Python のため、将来の AI 分析ライブラリもそのまま使える。
 
 ---
 
@@ -215,7 +217,7 @@ graph TB
 | --- | --- |
 | frontend | 5173 |
 | spring-api | 8080 |
-| django-api | 8000 |
+| analysis-api | 8000 |
 | postgres | 5432 |
 
 ---
@@ -229,7 +231,7 @@ graph TB
 
 	S["spring-api"]
 
-	D["django-api"]
+	D["analysis-api"]
 
 	P["postgres"]
 
@@ -260,9 +262,11 @@ graph TB
 | **通信元** | **通信先** | **方式** |
 | --- | --- | --- |
 | Frontend | Spring API | REST API / JSON |
-| Frontend | Django API | REST API / JSON |
+| Spring API | Analysis API | 内部REST API / JSON（`X-Internal-Api-Key`、07 §7-5） |
 | Spring API | PostgreSQL | JDBC |
-| Django API | PostgreSQL | ORM |
+| Analysis API | PostgreSQL | SQL（psycopg、読み取りのみ） |
+
+フロントエンドは Spring API だけを呼ぶ。分析APIも Spring が認証・所有者チェックを行ってから分析API（FastAPI）の内部API（`/internal/v1`）へ中継する（2026-10-25 決定。認証・権限制御を Spring に一本化し、モバイルアプリの接続先も1つに保つため）。
 
 ---
 
@@ -283,7 +287,7 @@ graph TB
 /api/v1/pets
 /api/v1/reservations
 /api/v1/health-records
-/api/v1/analysis/summary
+/api/v1/analysis/pets/{petId}/weight
 ```
 
 ---
@@ -414,22 +418,22 @@ flowchart TB
 
 ---
 
-# **12. Django Layer構成**
+# **12. Analysis API Layer構成**
 
 ## **Layer構成**
 
 ```mermaid
 flowchart TB
 
-	V["View"]
+	R["Router"]
 
-	S["Serializer"]
+	S["Schema"]
 
 	B["Service"]
 
-	M["Model"]
+	P["Repository"]
 
-	V --> S --> B --> M
+	R --> S --> B --> P
 ```
 
 ---
@@ -438,10 +442,10 @@ flowchart TB
 
 | **Layer** | **責務** |
 | --- | --- |
-| View | API Entry Point |
-| Serializer | Validation / Data変換 |
-| Service | 分析処理・統計ロジック |
-| Model | DBテーブルマッピング（Django ORM） |
+| Router | API Entry Point（FastAPI の APIRouter） |
+| Schema | Query Parameter・Response の型と入力チェック（Pydantic） |
+| Service | 分析処理・統計ロジック（DBに依存しない関数にしてテストする） |
+| Repository | SQLで記録を読み取る（psycopg、読み取りのみ。テーブルの正は Spring の Flyway） |
 
 ---
 
@@ -609,7 +613,7 @@ graph TB
 
 	SPRING["Spring API"]
 
-	DJANGO["Django Analysis API"]
+	ANALYSIS["Analysis API"]
 
 	REDIS["Redis"]
 
@@ -623,15 +627,15 @@ graph TB
 
 	GATEWAY --> SPRING
 
-	GATEWAY --> DJANGO
+	GATEWAY --> ANALYSIS
 
 	SPRING --> DB
 
-	DJANGO --> DB
+	ANALYSIS --> DB
 
 	SPRING --> REDIS
 
-	DJANGO --> ES
+	ANALYSIS --> ES
 ```
 
 ---

@@ -10,7 +10,7 @@
 | Document | Test Strategy |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-10-23 |
+| Updated | 2026-10-25 |
 
 ---
 
@@ -38,7 +38,7 @@
 | --- | --- |
 | Frontend | 画面表示、入力Validation、API通信 |
 | Spring Boot API | 認証、予約、ペット、通知、権限制御 |
-| Django Analysis API | 健康記録分析、統計API |
+| Analysis API（FastAPI） | 健康記録分析、統計API |
 | PostgreSQL | テーブル制約、Migration、Index |
 | Docker Compose | Container間通信、環境起動 |
 | Scheduler | ワクチン通知処理 |
@@ -71,7 +71,7 @@
 | Spring Boot | 3.3.13 |
 | Java | 17 |
 | Python | 3.12.10 |
-| Django REST Framework | 3.15.2 |
+| FastAPI | 0.162.0 |
 | PostgreSQL | 16.9 |
 | Container | Docker Compose v2 |
 
@@ -313,14 +313,23 @@ flowchart TB
 
 ---
 
-# **6-10. Django Analysis APIテスト**
+# **6-10. Analysis API（FastAPI）テスト**
 
 | **Test ID** | **観点** | **期待結果** |
 | --- | --- | --- |
-| ANA-T001 | 健康分析取得 | weightTrend返却 |
-| ANA-T002 | 症状統計取得 | symptomStatistics返却 |
-| ANA-T003 | データなし | 空配列返却 |
-| ANA-T004 | 他ユーザーのペット分析 | 403 |
+| ANA-T001 | 体重推移取得（07 §7-1） | 日別・昇順の points と summary を返却 |
+| ANA-T002 | 症状統計取得（07 §7-3、練習用） | 区切り文字で分割した症状別の件数・月別件数を返却 |
+| ANA-T003 | データなし | points・items は空配列、summary は null、健康スコアは NO_DATA |
+| ANA-T004 | 他ユーザーのペット分析 | 403（ANALYSIS-001） |
+| ANA-T005 | 健康スコア取得（07 §7-2） | 減点規則どおりの score・grade・factors |
+| ANA-T006 | 次回接種推奨日取得（07 §7-4） | SCHEDULED を優先、COMPLETED のみなら1年後、CANCELLED のみは返さない |
+| ANA-T007 | 期間の前後不正 | 400（ANALYSIS-002） |
+| ANA-T008 | 分析サービス停止・エラー | 503（ANALYSIS-003） |
+| ANA-T009 | 内部APIキー不正（分析API） | 401（INTERNAL-001）。キー未設定なら全て拒否 |
+
+実装したテスト（2026-10-25）: 分析API（pytest）は Service の計算規則（日別値・四捨五入・減点の境界・評価期間・2/29・並び順）と Router（camelCase の応答・期間と日付の検証・キー確認・練習用の未実装URL）、Spring（JUnit）は `AnalysisServiceTest`（所有者・期間）・`AnalysisControllerTest`・`AnalysisApiClientTest`（MockRestServiceServer。キーと期間の送信、401/500・接続失敗・読めない応答を ANALYSIS-003）。Spring と分析APIと使い捨てPostgreSQLを通した確認は `.ai-collab/tasks/2026-10-25-analysis-api/scripts/analysis-e2e.mjs`（ANA-T001〜T008 相当）。
+
+分析APIのテストは `analysis-api/` で `python -m pytest`。分析ロジック（Service）はDBに依存しない関数としてテストし、DBは偽の接続に差し替える。SQL と実際のテーブル（Spring の Flyway）の対応は、使い捨てのPostgreSQLで確認する。
 
 ---
 

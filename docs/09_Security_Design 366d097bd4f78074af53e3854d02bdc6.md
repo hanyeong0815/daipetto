@@ -10,7 +10,7 @@
 | Document | Security Design |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-10-22 |
+| Updated | 2026-10-25 |
 
 ---
 
@@ -44,7 +44,7 @@ flowchart TB
 
 	B["Spring Boot API"]
 
-	C["Django Analysis API"]
+	C["Analysis API（FastAPI）"]
 
 	D["PostgreSQL"]
 
@@ -226,6 +226,20 @@ Roleの確認（`@PreAuthorize`）に加え、病院を操作するApplication S
 
 ---
 
+# **4-6. 分析API（FastAPI）の認証**
+
+| **項目** | **内容** |
+| --- | --- |
+| 経路 | フロントエンド → Spring（JWT認証・ペットの所有者チェック）→ 分析APIの内部API（07 §7-5） |
+| 分析APIの認証 | `X-Internal-Api-Key` ヘッダーを環境変数 `INTERNAL_API_KEY` と定数時間比較（`hmac.compare_digest`）。不一致・未送信は 401（INTERNAL-001）。キーが未設定なら全て拒否する |
+| ユーザー認証 | 分析APIは JWT を扱わない。利用者の認証・認可は Spring だけが行う |
+| DB | Spring と同じDBを読み取りのみで参照する（接続時に `default_transaction_read_only=on` を指定し、DB側でも書き込みを禁止。テーブルは作らない） |
+| CORS | 分析APIはブラウザから呼ばれないため CORS を設定しない |
+| エラー応答 | 存在しないURL・想定外の例外も共通エラー形式で返し、トレースバックはサーバー（uvicorn）のログにだけ出す。API文書（`/docs`・`/openapi.json`）は公開しない |
+| 公開範囲 | 本番では分析APIのポートを外部に公開しない（ローカルの Docker Compose は開発用に 8000 を公開） |
+
+---
+
 # **4-4. Spring Security設定方針**
 
 ```mermaid
@@ -365,9 +379,9 @@ JPA Parameter Bindingを利用する。
 
 ---
 
-# **10-2. Django**
+# **10-2. Analysis API（FastAPI）**
 
-Django ORMを利用する。
+psycopg のパラメータバインディング（`%s`）を利用する。
 
 ---
 
@@ -526,7 +540,7 @@ flowchart TB
 
 | **項目** | **内容** |
 | --- | --- |
-| ORM | JPA / Django ORM |
+| ORM | JPA / psycopg（パラメータバインディング） |
 | DB User権限 | 最小権限 |
 | Root接続 | 禁止 |
 
@@ -546,7 +560,7 @@ flowchart TB
 | --- | --- |
 | frontend | React |
 | spring-api | Spring Boot |
-| django-api | Django |
+| analysis-api | FastAPI |
 | postgres | PostgreSQL |
 
 ---
@@ -609,7 +623,7 @@ Access Tokenは短期有効期限とし、漏洩リスクを低減する。
 
 ## **API責務分離**
 
-認証・予約などの業務APIはSpring Boot、分析系APIはDjango REST Frameworkで管理する。
+認証・予約などの業務APIはSpring Boot、分析系APIはFastAPIで管理する。
 
 ---
 

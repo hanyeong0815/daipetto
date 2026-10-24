@@ -1,6 +1,6 @@
 # Daipetto — 作業TODOリスト
 
-最終更新: 2026-10-23
+最終更新: 2026-10-25
 
 ---
 
@@ -226,22 +226,33 @@
 - [x] Codex（gpt-6.1-sol）によるテスト設計レビュー（G-01〜G-11 を項目に追加）
 - [x] Codex による結果の最終検証（REVIEW-003 ACCEPTED、2026-10-23）
 
-## 🚧 未実装 — Django Analysis API
+## 🚧 Analysis API（FastAPI、ブランチ `feat/analysis/analysis-api`）
 
-### 環境構築
-- [ ] Django プロジェクト初期構築 (`django-api/`)
-- [ ] `requirements.txt` 整備（Django REST Framework / psycopg2 / pandas / scipy）
-- [ ] Docker Compose への Django サービス追加
-- [ ] PostgreSQL 接続設定（Spring と同一 DB or 分離 DB の選択）
-- [ ] CORS 設定（Frontend からのアクセス許可）
+### 決定事項（2026-10-25、ユーザー確認済み）
+- 呼び出し経路: フロントエンド → Spring（JWT認証・所有者チェック）→ 分析APIの内部API（`X-Internal-Api-Key`）。`docs/04` §8・`docs/07` §7・`docs/09` §4-6
+- 分析APIは4本（体重推移・健康スコア・症状統計・次回接種推奨日）。健康スコアの計算式と接種間隔（年1回）は `docs/07` §7 の案でユーザー確認済み
+- 練習用ギャップ: 症状統計（下記）
+- フレームワーク: Django REST Framework から FastAPI に変更（読み取り専用・JSONのみの内部APIで、Django の機能の大半を使わないため。`docs/04` §5-2）
 
-### HealthRecord 分析 API
-- [ ] `GET /api/v1/analysis/pets/{petId}/weight` — 体重推移データ（期間指定対応）
-- [ ] `GET /api/v1/analysis/pets/{petId}/health-score` — 健康スコア算出（体重変化・症状頻度ベース）
-- [ ] `GET /api/v1/analysis/pets/{petId}/symptoms/summary` — 症状統計（頻度・傾向）
+### 環境構築（2026-10-25、Claude Code）
+- [x] プロジェクト初期構築 (`analysis-api/`) — `app/`（main・config・db・security・errors）、`tests/`
+- [x] `requirements.txt`（FastAPI 0.162.0 / uvicorn 0.54.0 / psycopg 3.3.6）・`requirements-dev.txt`（pytest 9.1.1 / httpx2 2.16.0）。pandas・scipy は必要になった時点で追加（現在の集計は SQL と標準ライブラリで足りる）
+- [x] Docker Compose のサービスを `analysis-api` に変更（Spring の `ANALYSIS_API_URL`）。`.dockerignore` で `.venv`・`.env`・テストをイメージから除外。ビルド・起動を確認
+- [x] PostgreSQL 接続設定 — Spring と同一DBを読み取りのみ（接続時に `default_transaction_read_only=on`。書き込みがDBに拒否されることを確認）。使い捨てDB（Flyway V15）で使う列の存在を確認
+- [x] ~~CORS 設定~~ → 不要（分析APIはブラウザから呼ばれない。`docs/09` §4-6）
+- [x] 内部APIの認証（`X-Internal-Api-Key`、未設定なら全拒否、INTERNAL-001）・共通エラー形式・稼働確認 `GET /internal/v1/health`。API文書（OpenAPI）は非公開。テスト9件（`python -m pytest`）
 
-### 予防接種リマインダー分析
-- [ ] `GET /api/v1/analysis/pets/{petId}/vaccination/next` — 次回接種推奨日の算出
+### 分析API（2026-10-25、Claude Code。`docs/07` §7、Spring 中継 + 分析APIの内部API）
+- [x] `GET /api/v1/analysis/pets/{petId}/weight` — 体重推移（期間指定、日別値、summary）
+- [x] `GET /api/v1/analysis/pets/{petId}/health-score` — 健康スコア（直近30日、体重変化・症状日数の減点）
+- [x] `GET /api/v1/analysis/pets/{petId}/vaccination/next` — 次回接種推奨日（予定を優先、完了のみは1年後）
+- [x] 分析API側: `app/routers.py`・`schemas.py`（Pydantic、camelCase）・`services.py`（DBに依存しない計算）・`repository.py`（SQL、読み取りのみ）。「今日」は JST（`tzdata` を追加）
+- [x] Spring 側: `AnalysisController` → `GetWeightAnalysisService`・`GetHealthScoreService`・`GetVaccinationForecastService`（所有者は `AnalysisPetChecker`、ANALYSIS-001）→ `AnalysisClient`（`AnalysisApiClient`、RestClient、タイムアウト2秒/5秒、リダイレクトは追わない。2xx以外・接続失敗・読めない応答・必須項目の欠けた応答は ANALYSIS-003）。期間の前後不正は ANALYSIS-002
+- [x] テスト: pytest 38件、JUnit 40件（Service・Controller・Client・実HTTPでの設定確認）
+- [x] Codex（gpt-6.1-sol）レビュー: REVIEW-001 で R-01（3xx を成功扱い）・R-02（必須項目の欠けた応答を通す）・R-03（古い記述）→ 修正 → REVIEW-002 **ACCEPTED**、Spring＋分析API＋使い捨てPostgreSQLの E2E（`.ai-collab/tasks/2026-10-25-analysis-api/scripts/analysis-e2e.mjs`）
+
+**あえて未実装のまま残した項目（練習用、ユーザーが実装）:**
+- [ ] `GET /api/v1/analysis/pets/{petId}/symptoms/summary` — 症状統計（`docs/07` §7-3）。分析API（FastAPI）の Router・Schema・Service・Repository と Spring の中継ルートの両方を実装する。参考: 7-1 体重推移（同じ `health_records`・期間指定・Router → Schema → Service → Repository、Spring の中継）
 
 ---
 
@@ -323,7 +334,7 @@
 ## 🔮 将来拡張候補
 
 - [ ] CI/CD（GitHub Actions — build / test / deploy）
-- [ ] Django Analysis API との Frontend 連動（グラフ表示）
+- [ ] 分析API（FastAPI）の Frontend 連動（グラフ表示）
 - [ ] プッシュ通知（FCM）
 - [ ] 多言語対応（i18n — 日本語 / 韓国語）
 - [ ] ダークモード切替 UI

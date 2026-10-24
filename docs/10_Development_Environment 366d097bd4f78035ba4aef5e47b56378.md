@@ -10,7 +10,7 @@
 | Document | Development Environment |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-10-23 |
+| Updated | 2026-10-25 |
 
 ---
 
@@ -21,7 +21,7 @@
 本システムでは以下構成を採用する。
 
 - Frontend: React + Vite
-- Backend: Spring Boot / Django REST Framework
+- Backend: Spring Boot / FastAPI（分析API）
 - Database: PostgreSQL
 - Infrastructure: Docker Compose
 
@@ -38,7 +38,7 @@ flowchart TB
 
 	B["Spring Boot API"]
 
-	C["Django Analysis API"]
+	C["Analysis API（FastAPI）"]
 
 	D["PostgreSQL"]
 
@@ -83,7 +83,9 @@ flowchart TB
 | ORM | Spring Data JPA | Included |
 | Migration | Flyway | 10.20.x |
 | Backend Language | Python | 3.12.10 |
-| Python Framework | Django REST Framework | 3.15.2 |
+| Python Framework | FastAPI | 0.162.0 |
+| ASGI Server | uvicorn | 0.54.0 |
+| DB Driver（Python） | psycopg | 3.3.6 |
 | Database | PostgreSQL | 16.9 |
 | Timezone | JST（Asia/Tokyo） | Spring: `SpringApiApplication.main`でJVM既定を設定 / DB: compose `TZ` |
 | Infrastructure | Docker Compose | v2 |
@@ -293,69 +295,72 @@ flowchart TB
 
 ---
 
-# **6. Django環境**
+# **6. Analysis API（FastAPI）環境**
 
 # **6-1. 技術構成**
 
 | **項目** | **内容** |
 | --- | --- |
-| Language | Python |
-| Framework | Django REST Framework |
-| Analysis | Health Statistics |
-| API | REST API |
+| Language | Python 3.12.10 |
+| Framework | FastAPI 0.162.0（Pydantic 2.14 / Starlette 1.10）、ASGIサーバー uvicorn 0.54.0 |
+| DB Driver | psycopg 3.3.6（`psycopg[binary]`）。SQLで読み取りのみ |
+| 役割 | 分析・統計の内部API（Spring からのみ呼ばれる。07 §7-5） |
+| Test | pytest 9.1.1 + FastAPI の TestClient（httpx2 2.16.0）。DBはテスト用の偽の接続に差し替える |
+
+依存は `analysis-api/requirements.txt`（実行用）と `requirements-dev.txt`（テスト用）で固定する。pandas・scipy は、分析処理で必要になった時点で追加する（現在の集計は SQL と Python 標準ライブラリで足りる）。
+
+2026-10-25 に Django REST Framework から FastAPI に変更した（理由は 04 §5-2）。
 
 ---
 
-# **6-2. Python Version**
-
-```
-Python 3.12.10
-```
-
----
-
-# **6-3. Django REST Framework Version**
-
-```
-Django REST Framework 3.15.2
-```
-
-> **注記:** django-api/ は未着手（Dockerfileのみ存在）。本節は着手時の予定構成。
-
----
-
-# **6-4. Django Port**
+# **6-2. Analysis API Port**
 
 | **用途** | **Port** |
 | --- | --- |
-| Django API | 8000 |
+| Analysis API | 8000 |
 
 ---
 
-# **6-5. Django Directory構成（予定）**
+# **6-3. Analysis API Directory構成**
 
 ```
-django-api/
+analysis-api/
 ├── app/
-├── analysis/
-├── api/
-├── serializers/
-├── services/
-├── models/
-├── urls/
-├── settings/
-└── manage.py
+│   ├── main.py        # FastAPI アプリ（API文書は非公開）、エラーハンドラーとルーターの登録
+│   ├── routers.py     # Router: 内部API（/internal/v1、キー確認は依存関係）
+│   ├── schemas.py     # Schema: Pydantic の応答型（camelCase）
+│   ├── services.py    # Service: 分析ロジック（DBに依存しない関数）
+│   ├── repository.py  # Repository: SQL（パラメータバインディング、読み取りのみ）
+│   ├── config.py      # 環境変数・.env の読み込み
+│   ├── db.py          # DB接続（リクエストごと、読み取り専用）
+│   ├── security.py    # 内部APIキーの確認
+│   └── errors.py      # 共通エラー形式
+├── tests/           # test_common・test_services・test_analysis_routes
+├── requirements.txt
+├── requirements-dev.txt
+├── .env.example
+├── .dockerignore
+└── Dockerfile
 ```
+
+分析APIは Router → Schema → Service → Repository の構成（04 §12）。テーブルは Spring の Flyway が作成し、この API はテーブルを作らない。
 
 ---
 
-# **6-6. Django役割**
+# **6-4. ローカル環境の準備**
 
-| **機能** | **内容** |
-| --- | --- |
-| 健康分析 | 体重推移分析 |
-| 症状統計 | 症状頻度分析 |
-| 集計 | 健康データ集計 |
+```
+cd analysis-api
+uv venv --python 3.12.10 .venv
+uv pip install --python .venv -r requirements-dev.txt
+cp .env.example .env    # DB接続情報と INTERNAL_API_KEY を設定する
+```
+
+API文書（OpenAPI）は公開していない。Spring との連携仕様を確認するときは次で出力する。
+
+```
+.venv/Scripts/python -c "import json; from app.main import app; print(json.dumps(app.openapi(), ensure_ascii=False, indent=2))"
+```
 
 ---
 
@@ -401,7 +406,7 @@ PostgreSQL 16.9
 | --- | --- |
 | frontend | React |
 | spring-api | Spring Boot |
-| django-api | Django |
+| analysis-api | FastAPI（分析API） |
 | postgres | PostgreSQL |
 
 ---
@@ -415,7 +420,7 @@ flowchart LR
 
 	B["spring-api"]
 
-	C["django-api"]
+	C["analysis-api"]
 
 	D["postgres"]
 
@@ -470,11 +475,14 @@ DB_USERNAME=daipetto
 DB_PASSWORD=local-dev-only
 
 JWT_SECRET=change-this-secret
+
+ANALYSIS_API_URL=http://analysis-api:8000
+INTERNAL_API_KEY=change-this-internal-key
 ```
 
 ---
 
-# **9-3. Django**
+# **9-3. Analysis API**
 
 ```
 DB_HOST=postgres
@@ -482,7 +490,10 @@ DB_PORT=5432
 DB_NAME=daipetto
 DB_USERNAME=daipetto
 DB_PASSWORD=local-dev-only
+INTERNAL_API_KEY=change-this-internal-key
 ```
+
+`INTERNAL_API_KEY` は Spring と同じ値にする（Docker Compose ではルートの `.env` から両方に渡す）。
 
 ---
 
@@ -575,7 +586,7 @@ chore: fix services port
 | **Tool** | **用途** |
 | --- | --- |
 | IntelliJ IDEA | Spring Boot開発 |
-| VSCode | Django開発 |
+| VSCode | Analysis API（FastAPI）開発 |
 
 ---
 
@@ -608,7 +619,7 @@ sequenceDiagram
 
 	participant SpringBoot
 
-	participant Django
+	participant AnalysisAPI
 
 	participant PostgreSQL
 
@@ -616,13 +627,13 @@ sequenceDiagram
 
 	SpringBoot->>PostgreSQL: DB Access
 
-	SpringBoot->>Django: Analysis Request
+	SpringBoot->>AnalysisAPI: Analysis Request
 
-	Django->>PostgreSQL: Analysis Query
+	AnalysisAPI->>PostgreSQL: Analysis Query
 
-	PostgreSQL-->>Django: Data
+	PostgreSQL-->>AnalysisAPI: Data
 
-	Django-->>SpringBoot: Analysis Response
+	AnalysisAPI-->>SpringBoot: Analysis Response
 
 	SpringBoot-->>Frontend: API Response
 ```
@@ -729,10 +740,12 @@ npm run dev
 
 ---
 
-# **17-3. Django**
+# **17-3. Analysis API（FastAPI）**
 
 ```
-python manage.py runserver 0.0.0.0:8000
+cd analysis-api
+.venv/Scripts/python -m uvicorn app.main:app --port 8000   # Windows（macOS/Linux は .venv/bin/python）
+.venv/Scripts/python -m pytest
 ```
 
 ---
@@ -766,7 +779,7 @@ python manage.py runserver 0.0.0.0:8000
 
 ## **Backend責務分離**
 
-業務APIはSpring Boot、分析APIはDjango REST Frameworkで分離する。
+業務APIはSpring Boot、分析APIはFastAPIで分離する。
 
 ---
 

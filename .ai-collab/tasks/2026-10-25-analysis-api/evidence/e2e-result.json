@@ -1,0 +1,345 @@
+{
+  "executedAt": "2026-10-24T18:37:41.144Z",
+  "today": "2026-10-25",
+  "ok": 17,
+  "total": 17,
+  "results": [
+    {
+      "id": "E2E-01",
+      "title": "体重推移（期間なし）: 日別・昇順、同日は後の記録、summary",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "points": [
+            {
+              "date": "2026-09-15",
+              "weight": 4
+            },
+            {
+              "date": "2026-10-05",
+              "weight": 4
+            },
+            {
+              "date": "2026-10-15",
+              "weight": 4.2
+            },
+            {
+              "date": "2026-10-25",
+              "weight": 4.3
+            }
+          ],
+          "summary": {
+            "count": 4,
+            "first": 4,
+            "latest": 4.3,
+            "min": 4,
+            "max": 4.3,
+            "change": 0.3,
+            "changeRate": 7.5
+          }
+        },
+        "code": null,
+        "message": null
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-02",
+      "title": "体重推移（期間あり、両端を含む）",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "points": [
+            {
+              "date": "2026-10-05",
+              "weight": 4
+            },
+            {
+              "date": "2026-10-15",
+              "weight": 4.2
+            }
+          ],
+          "summary": {
+            "count": 2,
+            "first": 4,
+            "latest": 4.2,
+            "min": 4,
+            "max": 4.2,
+            "change": 0.2,
+            "changeRate": 5
+          }
+        },
+        "code": null,
+        "message": null
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-03",
+      "title": "体重推移（記録なし）: points 空・summary null",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "points": [],
+          "summary": null
+        },
+        "code": null,
+        "message": null
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-04",
+      "title": "期間の前後不正 → 400 ANALYSIS-002",
+      "status": 400,
+      "body": {
+        "success": false,
+        "data": null,
+        "code": "ANALYSIS-002",
+        "message": "期間の指定が不正です。"
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-05",
+      "title": "日付の形式不正 → 400 VALIDATION-001",
+      "status": 400,
+      "body": {
+        "success": false,
+        "data": null,
+        "code": "VALIDATION-001",
+        "message": "入力内容を確認してください。"
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-06",
+      "title": "健康スコア: 体重 7.5% → -15、症状3日 → -30、55 CAUTION",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "score": 55,
+          "grade": "CAUTION",
+          "period": {
+            "from": "2026-09-26",
+            "to": "2026-10-25"
+          },
+          "factors": [
+            {
+              "type": "WEIGHT_CHANGE",
+              "evaluated": true,
+              "penalty": 15,
+              "value": 7.5
+            },
+            {
+              "type": "SYMPTOM_FREQUENCY",
+              "evaluated": true,
+              "penalty": 30,
+              "value": 3
+            }
+          ]
+        },
+        "code": null,
+        "message": null
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-07",
+      "title": "健康スコア（記録なし）: NO_DATA",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "score": null,
+          "grade": "NO_DATA",
+          "period": {
+            "from": "2026-09-26",
+            "to": "2026-10-25"
+          },
+          "factors": [
+            {
+              "type": "WEIGHT_CHANGE",
+              "evaluated": false,
+              "penalty": 0,
+              "value": null
+            },
+            {
+              "type": "SYMPTOM_FREQUENCY",
+              "evaluated": false,
+              "penalty": 0,
+              "value": null
+            }
+          ]
+        },
+        "code": null,
+        "message": null
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-08",
+      "title": "次回接種: 予定を優先（最も早い予定）、完了のみは1年後、中止のみは除外、日付順",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "items": [
+            {
+              "vaccineName": "狂犬病",
+              "lastCompletedDate": "2025-10-10",
+              "nextDate": "2026-10-10",
+              "source": "RECOMMENDED",
+              "vaccinationId": null,
+              "overdue": true,
+              "daysUntil": -15
+            },
+            {
+              "vaccineName": "混合ワクチン",
+              "lastCompletedDate": "2026-07-17",
+              "nextDate": "2026-11-04",
+              "source": "SCHEDULED",
+              "vaccinationId": 4,
+              "overdue": false,
+              "daysUntil": 10
+            }
+          ]
+        },
+        "code": null,
+        "message": null
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-09",
+      "title": "次回接種（記録なし）: items 空",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "items": []
+        },
+        "code": null,
+        "message": null
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-10 weight",
+      "title": "他ユーザーのペット → 403 ANALYSIS-001",
+      "status": 403,
+      "body": {
+        "success": false,
+        "data": null,
+        "code": "ANALYSIS-001",
+        "message": "存在しないペット、または他のユーザーのペットです。"
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-10 health-score",
+      "title": "他ユーザーのペット → 403 ANALYSIS-001",
+      "status": 403,
+      "body": {
+        "success": false,
+        "data": null,
+        "code": "ANALYSIS-001",
+        "message": "存在しないペット、または他のユーザーのペットです。"
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-10 vaccination/next",
+      "title": "他ユーザーのペット → 403 ANALYSIS-001",
+      "status": 403,
+      "body": {
+        "success": false,
+        "data": null,
+        "code": "ANALYSIS-001",
+        "message": "存在しないペット、または他のユーザーのペットです。"
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-11",
+      "title": "削除済みのペット → 403 ANALYSIS-001",
+      "status": 403,
+      "body": {
+        "success": false,
+        "data": null,
+        "code": "ANALYSIS-001",
+        "message": "存在しないペット、または他のユーザーのペットです。"
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-12",
+      "title": "存在しないペット → 403 ANALYSIS-001",
+      "status": 403,
+      "body": {
+        "success": false,
+        "data": null,
+        "code": "ANALYSIS-001",
+        "message": "存在しないペット、または他のユーザーのペットです。"
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-13",
+      "title": "Tokenなし → 401 AUTH-001",
+      "status": 401,
+      "body": {
+        "success": false,
+        "data": null,
+        "code": "AUTH-001",
+        "message": "認証に失敗しました。"
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-14",
+      "title": "症状統計（練習用・未実装）→ 404 COMMON-001",
+      "status": 404,
+      "body": {
+        "success": false,
+        "data": null,
+        "code": "COMMON-001",
+        "message": "存在しないURLです。"
+      },
+      "verdict": "OK",
+      "problems": []
+    },
+    {
+      "id": "E2E-15",
+      "title": "分析APIの停止中 → 503 ANALYSIS-003",
+      "status": 503,
+      "body": {
+        "success": false,
+        "data": null,
+        "code": "ANALYSIS-003",
+        "message": "分析サービスを利用できません。時間をおいて再度お試しください。"
+      },
+      "verdict": "OK",
+      "problems": []
+    }
+  ]
+}

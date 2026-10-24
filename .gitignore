@@ -28,7 +28,7 @@ frontend/ios/.build/
 frontend/android/app/src/main/assets/public/
 frontend/ios/App/App/public/
 
-# ===== Django / Python =====
+# ===== Python (analysis-api) =====
 __pycache__/
 *.py[cod]
 *.pyo

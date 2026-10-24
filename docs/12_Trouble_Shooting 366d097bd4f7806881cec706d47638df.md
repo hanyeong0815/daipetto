@@ -10,7 +10,7 @@
 | Document | Trouble Shooting |
 | Author | Koh Hanyeong |
 | Status | Draft |
-| Updated | 2026-10-22 |
+| Updated | 2026-10-25 |
 
 ---
 
@@ -22,7 +22,7 @@
 
 - Frontend
 - Spring Boot
-- Django REST Framework
+- Analysis API（FastAPI）
 - PostgreSQL
 - Docker Compose
 - JWT認証
@@ -741,7 +741,7 @@ migrationを書いたら、`06_ERD`のNULL可否・型と1列ずつ突き合わ�
 
 ---
 
-# **4. Django関連**
+# **4. Analysis API（FastAPI）関連**
 
 # **4-1. Python Version不一致**
 
@@ -792,12 +792,12 @@ source ~/.zshrc
 
 ---
 
-# **4-3. Django Server起動失敗**
+# **4-3. Analysis API 起動失敗**
 
 ## **症状**
 
 ```bash
-python manage.py runserver
+python -m uvicorn app.main:app --port 8000
 ```
 
 失敗。
@@ -823,12 +823,12 @@ pip install -r requirements.txt
 
 ---
 
-# **4-4. DRF Import Error**
+# **4-4. FastAPI Import Error**
 
 ## **症状**
 
 ```
-No module named rest_framework
+No module named fastapi
 ```
 
 ---
@@ -836,7 +836,7 @@ No module named rest_framework
 ## **対応方法**
 
 ```bash
-pip install djangorestframework
+pip install -r requirements-dev.txt
 ```
 
 ---
@@ -1248,10 +1248,10 @@ npm run build
 
 ---
 
-# **13-3. Django**
+# **13-3. Analysis API（FastAPI）**
 
 ```bash
-python manage.py check
+python -m pytest
 ```
 
 ---

@@ -37,7 +37,7 @@
 | --- | --- |
 | Frontend | React / TypeScript / Vite / Tailwind CSS |
 | Backend | Java 17 / Spring Boot 3 |
-| Analysis | Python / Django REST Framework |
+| Analysis | Python / FastAPI |
 | Database | PostgreSQL |
 | Infrastructure | Docker Compose |
 | Authentication | Spring Security / JWT |
@@ -52,8 +52,7 @@ flowchart TB
   FE["フロントエンド（React）"] --> BE["Spring Boot API"]
   BE --> DB["PostgreSQL"]
 
-  FE -. "分析リクエスト／結果取得" .-> DA["分析API（Django）"]
-  BE -. "分析処理の連携（オプション）" .-> DA
+  BE -. "分析の依頼（内部API）" .-> DA["分析API（FastAPI）"]
   DA --> DB
 ```
 
