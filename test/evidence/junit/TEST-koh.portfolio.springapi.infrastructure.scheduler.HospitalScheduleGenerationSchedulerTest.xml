@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="koh.portfolio.springapi.infrastructure.scheduler.HospitalScheduleGenerationSchedulerTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-10-22T20:18:05.823Z" hostname="HOME-PC" time="0.044">
-  <properties/>
-  <testcase name="generateNextMonthは毎月1日0時（JST）にスケジュールされる" classname="koh.portfolio.springapi.infrastructure.scheduler.HospitalScheduleGenerationSchedulerTest" time="0.043"/>
-  <testcase name="generateNextMonth実行時、JSTの翌月を指定してユースケースを1回だけ呼び出す" classname="koh.portfolio.springapi.infrastructure.scheduler.HospitalScheduleGenerationSchedulerTest" time="0.001"/>
-  <system-out><![CDATA[2026-10-23T05:18:05.866+09:00  INFO 28624 --- [    Test worker] .i.s.HospitalScheduleGenerationScheduler : 2026-11の予約?を0件自動生成しました
-]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>

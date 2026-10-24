@@ -44,6 +44,9 @@ db.sqlite3
 .mypy_cache/
 .ruff_cache/
 
+# ===== Unit test package (local only, not committed; AGENTS.md §8) =====
+/test/
+
 # ===== Logs =====
 *.log
 logs/
