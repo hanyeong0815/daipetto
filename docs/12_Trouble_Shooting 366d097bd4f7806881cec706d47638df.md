@@ -79,8 +79,8 @@ npm -v
 
 | **項目** | **Version** |
 | --- | --- |
-| Node.js | 24.17.0 |
-| npm | 11.13.0 |
+| Node.js | 24.22.1 |
+| npm | 11.19.1 |
 
 ---
 
@@ -209,7 +209,7 @@ java -version
 | **項目** | **Version** |
 | --- | --- |
 | Java | 17 |
-| Spring Boot | 3.3.13 |
+| Spring Boot | 3.5.16 |
 | Gradle | 8.14.4 |
 
 ---
@@ -770,7 +770,7 @@ python --version
 ## **推奨Version**
 
 ```
-Python 3.12.10
+Python 3.12（Docker は 3.12.15）
 ```
 
 ---

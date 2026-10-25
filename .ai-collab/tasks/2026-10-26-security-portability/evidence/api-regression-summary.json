@@ -1,0 +1,1043 @@
+{
+  "executedAt": "2026-10-26T00:30:53+09:00",
+  "environment": {
+    "base": "http://localhost:18081",
+    "database": "daipetto_reg_api"
+  },
+  "total": 134,
+  "ok": 134,
+  "ng": 0,
+  "byFeature": [
+    {
+      "code": "UT-01",
+      "name": "会員・認証",
+      "doc": "docs/07 §3・§4",
+      "total": 16,
+      "ok": 16
+    },
+    {
+      "code": "UT-02",
+      "name": "ペット",
+      "doc": "docs/07 §5",
+      "total": 13,
+      "ok": 13
+    },
+    {
+      "code": "UT-03",
+      "name": "健康記録",
+      "doc": "docs/07 §6-1〜6-4",
+      "total": 12,
+      "ok": 12
+    },
+    {
+      "code": "UT-04",
+      "name": "ワクチン接種予定",
+      "doc": "docs/07 §6-5〜6-11",
+      "total": 14,
+      "ok": 14
+    },
+    {
+      "code": "UT-05",
+      "name": "病院",
+      "doc": "docs/07 §8-1・8-2・11-1〜11-3・11-8",
+      "total": 11,
+      "ok": 11
+    },
+    {
+      "code": "UT-06",
+      "name": "病院管理者の紐付け",
+      "doc": "docs/07 §2-8・11-9〜11-11",
+      "total": 8,
+      "ok": 8
+    },
+    {
+      "code": "UT-07",
+      "name": "診療時間（曜日別）",
+      "doc": "docs/07 §8-7〜8-10",
+      "total": 10,
+      "ok": 10
+    },
+    {
+      "code": "UT-08",
+      "name": "予約枠",
+      "doc": "docs/07 §8-3〜8-6・8-11",
+      "total": 10,
+      "ok": 10
+    },
+    {
+      "code": "UT-09",
+      "name": "予約（利用者）",
+      "doc": "docs/07 §9-1〜9-4",
+      "total": 13,
+      "ok": 13
+    },
+    {
+      "code": "UT-10",
+      "name": "予約管理（病院管理者）",
+      "doc": "docs/07 §9-5〜9-8",
+      "total": 9,
+      "ok": 9
+    },
+    {
+      "code": "UT-11",
+      "name": "通知",
+      "doc": "docs/07 §10",
+      "total": 3,
+      "ok": 3
+    },
+    {
+      "code": "UT-12",
+      "name": "ユーザー管理（システム管理者）",
+      "doc": "docs/07 §11-4〜11-7",
+      "total": 7,
+      "ok": 7
+    },
+    {
+      "code": "UT-13",
+      "name": "共通（認証・入力・応答形式）",
+      "doc": "docs/07 §2・docs/09",
+      "total": 8,
+      "ok": 8
+    }
+  ],
+  "results": [
+    {
+      "id": "UT-01-001",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-002",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-003",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-004",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-005",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-006",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-007",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-008",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-009",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-010",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-011",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-012",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-013",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-016",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-014",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-01-015",
+      "feature": "UT-01",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-02-001",
+      "feature": "UT-02",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-02-002",
+      "feature": "UT-02",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-02-003",
+      "feature": "UT-02",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-02-004",
+      "feature": "UT-02",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-02-005",
+      "feature": "UT-02",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-02-006",
+      "feature": "UT-02",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-02-007",
+      "feature": "UT-02",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-02-008",
+      "feature": "UT-02",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-02-009",
+      "feature": "UT-02",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-02-010",
+      "feature": "UT-02",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-02-011",
+      "feature": "UT-02",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-02-012",
+      "feature": "UT-02",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-02-013",
+      "feature": "UT-02",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-03-001",
+      "feature": "UT-03",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-03-002",
+      "feature": "UT-03",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-03-003",
+      "feature": "UT-03",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-03-004",
+      "feature": "UT-03",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-03-005",
+      "feature": "UT-03",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-03-006",
+      "feature": "UT-03",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-03-007",
+      "feature": "UT-03",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-03-008",
+      "feature": "UT-03",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-03-009",
+      "feature": "UT-03",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-03-010",
+      "feature": "UT-03",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-03-011",
+      "feature": "UT-03",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-03-012",
+      "feature": "UT-03",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-014",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-001",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-002",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-003",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-004",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-005",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-006",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-007",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-008",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-009",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-010",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-011",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-012",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-04-013",
+      "feature": "UT-04",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-05-001",
+      "feature": "UT-05",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-05-002",
+      "feature": "UT-05",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-05-003",
+      "feature": "UT-05",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-05-004",
+      "feature": "UT-05",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-05-005",
+      "feature": "UT-05",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-05-006",
+      "feature": "UT-05",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-05-007",
+      "feature": "UT-05",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-05-008",
+      "feature": "UT-05",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-05-009",
+      "feature": "UT-05",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-05-010",
+      "feature": "UT-05",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-05-011",
+      "feature": "UT-05",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-06-001",
+      "feature": "UT-06",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-06-002",
+      "feature": "UT-06",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-06-003",
+      "feature": "UT-06",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-06-004",
+      "feature": "UT-06",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-06-005",
+      "feature": "UT-06",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-06-006",
+      "feature": "UT-06",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-06-007",
+      "feature": "UT-06",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-06-008",
+      "feature": "UT-06",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-07-001",
+      "feature": "UT-07",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-07-002",
+      "feature": "UT-07",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-07-003",
+      "feature": "UT-07",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-07-004",
+      "feature": "UT-07",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-07-005",
+      "feature": "UT-07",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-07-006",
+      "feature": "UT-07",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-07-007",
+      "feature": "UT-07",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-07-008",
+      "feature": "UT-07",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-07-009",
+      "feature": "UT-07",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-07-010",
+      "feature": "UT-07",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-08-010",
+      "feature": "UT-08",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-08-001",
+      "feature": "UT-08",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-08-002",
+      "feature": "UT-08",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-08-003",
+      "feature": "UT-08",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-08-004",
+      "feature": "UT-08",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-08-005",
+      "feature": "UT-08",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-08-006",
+      "feature": "UT-08",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-08-007",
+      "feature": "UT-08",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-08-008",
+      "feature": "UT-08",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-08-009",
+      "feature": "UT-08",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-09-001",
+      "feature": "UT-09",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-09-002",
+      "feature": "UT-09",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-09-003",
+      "feature": "UT-09",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-09-004",
+      "feature": "UT-09",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-09-005",
+      "feature": "UT-09",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-09-006",
+      "feature": "UT-09",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-09-007",
+      "feature": "UT-09",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-09-008",
+      "feature": "UT-09",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-09-009",
+      "feature": "UT-09",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-09-010",
+      "feature": "UT-09",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-09-011",
+      "feature": "UT-09",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-09-012",
+      "feature": "UT-09",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-09-013",
+      "feature": "UT-09",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-10-009",
+      "feature": "UT-10",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-10-001",
+      "feature": "UT-10",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-10-002",
+      "feature": "UT-10",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-10-003",
+      "feature": "UT-10",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-10-004",
+      "feature": "UT-10",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-10-005",
+      "feature": "UT-10",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-10-006",
+      "feature": "UT-10",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-10-007",
+      "feature": "UT-10",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-10-008",
+      "feature": "UT-10",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-11-001",
+      "feature": "UT-11",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-11-002",
+      "feature": "UT-11",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-11-003",
+      "feature": "UT-11",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-12-001",
+      "feature": "UT-12",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-12-002",
+      "feature": "UT-12",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-12-003",
+      "feature": "UT-12",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-12-004",
+      "feature": "UT-12",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-12-005",
+      "feature": "UT-12",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-12-006",
+      "feature": "UT-12",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-12-007",
+      "feature": "UT-12",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-13-001",
+      "feature": "UT-13",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-13-002",
+      "feature": "UT-13",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-13-003",
+      "feature": "UT-13",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-13-004",
+      "feature": "UT-13",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-13-005",
+      "feature": "UT-13",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-13-007",
+      "feature": "UT-13",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-13-008",
+      "feature": "UT-13",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    },
+    {
+      "id": "UT-13-006",
+      "feature": "UT-13",
+      "verdict": "OK",
+      "failed": [],
+      "error": null
+    }
+  ]
+}

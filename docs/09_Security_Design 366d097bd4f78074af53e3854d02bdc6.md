@@ -638,3 +638,39 @@ Access Tokenは短期有効期限とし、漏洩リスクを低減する。
 | Security Header | CSP / HSTS |
 
 ---
+
+# **22. 依存ライブラリの脆弱性管理**
+
+| **項目** | **内容** |
+| --- | --- |
+| 確認方法 | リポジトリ直下で `node scripts/osv-scan.mjs`。Spring の runtimeClasspath、frontend の `package-lock.json`（推移的依存を含む）、分析APIの Python 環境を OSV（osv.dev）で照合する。送るのは公開パッケージの名前とバージョンだけ |
+| 実施時期 | 依存の追加・更新時、月1回、大きな脆弱性が報道されたとき |
+| 更新方針 | 修正版のある最小のパッチ・マイナーへ上げる。公開から3日未満のバージョンは避ける（npm の公開アカウント乗っ取り事例があるため。`npm audit fix --before=<日付>`） |
+| Spring Boot | 3.5.16 は 3.x 最後の OSS 版（3.x の OSS サポートは 2026-06-30 で終了）。OSS で修正が続く部品（Tomcat・Jackson・PostgreSQL JDBC・Log4j API）は `build.gradle` の `ext[...]` で修正版へ上げる。Spring 本体の今後の修正には 4.x への移行が必要（TODO.md） |
+
+## **22-1. 2026-10-25 の対応**
+
+| **対象** | **対応前** | **対応後** | **主な脆弱性** |
+| --- | --- | --- | --- |
+| Spring Boot（Framework / Security / Data Commons） | 3.3.13（6.1.21 / 6.3.10 / 3.3.13） | 3.5.16（6.2.19 / 6.5.11 / 3.5.13） | HTTPレスポンスヘッダーが出力されない場合がある（CVE-2026-22732、CRITICAL）、Spring MVC のパストラバーサル・DoS |
+| Tomcat | 10.1.42 | 10.1.61 | 認証・認可の迂回（CVE-2026-43515・CVE-2026-65182・CVE-2026-68525 など、CRITICAL）、HTTPリクエストスマグリング |
+| Jackson | 2.17.3 | 2.21.8 | PolymorphicTypeValidator の迂回、DoS |
+| PostgreSQL JDBC | 42.7.7 | 42.7.14 | SCRAM 認証の DoS、チャネルバインディングのダウングレード |
+| Logback / Log4j API | 1.5.18 / 2.23.1 | 1.5.34 / 2.25.5 | 逆シリアライズ、JSON 出力のエンコード |
+| Capacitor（Android / iOS） | 8.4.1 | 8.4.3 | 外部コンテンツをアプリのオリジンで読み込める（CVE-2026-103922、CRITICAL） |
+| Axios | 1.18.1 | 1.20.0 | プロトタイプ汚染、ReDoS、リダイレクト経由の SSRF |
+| React Router DOM | 6.30.4 | 6.30.6 | オープンリダイレクト経由の XSS（CVE-2026-53668） |
+| Vite（開発用） | 6.4.3 | 6.4.4 | 開発サーバーの配信制限の迂回 |
+| npm の推移的依存 | tar・brace-expansion・follow-redirects・@xmldom/xmldom・postcss ほか | 修正版 | `npm audit fix --before=2026-10-20` |
+| Docker イメージ | `node:20.20.2-alpine`（Node 20 はサポート終了）・`python:3.12.10-slim`・`postgres:16.9` | `node:24.22.1-alpine`・`python:3.12.15-slim`・`postgres:16.15` | Node.js の 2026-10-20 セキュリティリリース（Node 20 には修正なし） |
+
+テストでは `@MockBean`（Boot 3.4 で非推奨・Boot 4 で削除）を `@MockitoBean` に置き換えた。結果: OSV で脆弱性のあるパッケージは 31 → 3（下表）。
+
+## **22-2. 影響なしと判断して残したもの（2026-10-25）**
+
+| **対象** | **脆弱性** | **影響なしの理由** | **解消の予定** |
+| --- | --- | --- | --- |
+| spring-webmvc 6.2.19 | CVE-2026-47884（XsltView）、CVE-2026-47890（SSE の fragment 描画） | XSLT ビューも SSE も使っていない（REST + JSON のみ） | Spring Boot 4.x への移行 |
+| react-router 6.30.6 | CVE-2026-53666（SSR の hydration）、CVE-2026-53669（`<Link>`・`useNavigate` の `\` によるオープンリダイレクト） | SSR を使わない SPA。遷移先はコード内の固定パスか、`/pets/{id}` のように先頭を固定したパスだけで、外部入力の URL へは遷移しない | React Router 7 への移行 |
+| postcss-selector-parser 6.1.5（開発用） | CVE-2026-104844（CPU 消費） | ビルド時だけ動き、対象は自前の CSS | Tailwind CSS 4 への移行 |
+

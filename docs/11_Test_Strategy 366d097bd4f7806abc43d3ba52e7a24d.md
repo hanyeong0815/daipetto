@@ -67,12 +67,12 @@
 | **項目** | **内容** |
 | --- | --- |
 | Frontend | React 18.3.1 |
-| Node.js | 24.17.0 |
-| Spring Boot | 3.3.13 |
+| Node.js | 24.22.1 |
+| Spring Boot | 3.5.16 |
 | Java | 17 |
-| Python | 3.12.10 |
+| Python | 3.12 |
 | FastAPI | 0.162.0 |
-| PostgreSQL | 16.9 |
+| PostgreSQL | 16.15 |
 | Container | Docker Compose v2 |
 
 ---

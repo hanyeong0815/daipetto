@@ -1,6 +1,6 @@
 # Daipetto — 作業TODOリスト
 
-最終更新: 2026-10-25
+最終更新: 2026-10-26
 
 ---
 
@@ -254,6 +254,22 @@
 
 **あえて未実装のまま残した項目（練習用、ユーザーが実装）:**
 - [ ] `GET /api/v1/analysis/pets/{petId}/symptoms/summary` — 症状統計（`docs/07` §7-3）。分析API（FastAPI）の Router・Schema・Service・Repository と Spring の中継ルートの両方を実装する。参考: 7-1 体重推移（同じ `health_records`・期間指定・Router → Schema → Service → Repository、Spring の中継）
+
+---
+
+## 🔒 セキュリティ（2026-10-25、ブランチ `chore/security-and-portability`）
+
+依存ライブラリの既知の脆弱性を OSV で確認し、修正版へ更新した。詳細と判断の根拠は `docs/09` §22。
+
+- [x] 確認ツール `node scripts/osv-scan.mjs`（Spring・npm・Python の依存をまとめて照合）。脆弱性のあるパッケージ 31 → 3
+- [x] Spring Boot 3.3.13 → 3.5.16（Framework 6.2.19 / Security 6.5.11）。`build.gradle` で Tomcat 10.1.61・Jackson 2.21.8・PostgreSQL JDBC 42.7.14・Log4j API 2.25.5 を指定
+- [x] テストの `@MockBean` を `@MockitoBean` に置き換え（Boot 3.4 で非推奨・Boot 4 で削除）
+- [x] Frontend: Capacitor 8.4.3・axios 1.20.0・react-router-dom 6.30.6・vite 6.4.4、推移的依存は `npm audit fix --before=2026-10-20`（公開3日未満の版を避ける）
+- [x] Docker: `node:24.22.1-alpine`（Node 20 はサポート終了）・`python:3.12.15-slim`・`postgres:16.15`
+- [ ] Spring Boot 4.x への移行（3.x は 2026-06-30 で OSS サポート終了。残り: spring-webmvc の XsltView・SSE の脆弱性、影響なし）
+- [ ] React Router 7 への移行（SSR・`<Link>` の脆弱性、影響なし）／Tailwind CSS 4 への移行（開発用の postcss-selector-parser）
+- [ ] ローカル環境（ユーザー）: Node 24.22.1 へ更新、PostgreSQL コンテナを 16.15 で作り直す（`docker compose pull postgres` → `docker compose up -d postgres`）
+- [ ] （任意）GitHub の Dependabot alerts を有効にする
 
 ---
 

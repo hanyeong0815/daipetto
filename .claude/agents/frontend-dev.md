@@ -15,9 +15,9 @@ description: frontend/（React 18 / TypeScript / Vite / Tailwind CSS / Capacitor
 
 ## 技術スタック（実バージョン）
 
-React 18.3.1 / TypeScript 5.7.3 / Vite 6.4.3 / Tailwind CSS 3.4.19 /
-Zustand 5.0.14 / Axios 1.18.1 / React Router 6.30.4 / Node 24.17.0 /
-Capacitor 8.4.1（iOS・Android。safe area 対応済み — レイアウト変更時に壊さないこと）
+React 18.3.1 / TypeScript 5.7.3 / Vite 6.4.4 / Tailwind CSS 3.4.19 /
+Zustand 5.0.14 / Axios 1.20.0 / React Router 6.30.6 / Node 24.22.1 /
+Capacitor 8.4.3（iOS・Android。safe area 対応済み — レイアウト変更時に壊さないこと）
 
 ## ディレクトリ規則（既存構造に従う）
 

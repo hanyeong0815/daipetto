@@ -47,6 +47,31 @@ db.sqlite3
 # ===== Unit test package (local only, not committed; AGENTS.md §8) =====
 /test/
 
+# ===== Review-only interpreter for Codex (.ai-collab/SETUP.md §4) =====
+analysis-api/.review-python/
+analysis-api/.review-venv/
+
+# ===== Installer-managed agent tools (restore with .ai-collab/SETUP.md §2) =====
+.claude/gsd-*
+.claude/settings.local.json
+.claude/.gsd-profile
+.claude/commands/
+.claude/hooks/
+.claude/scripts/
+.claude/agents/gsd-*
+.claude/skills/agent-browser/
+.claude/skills/design-taste-frontend/
+.claude/skills/find-skills/
+.claude/skills/mcp-builder/
+.agents/skills/agent-browser/
+.agents/skills/design-taste-frontend/
+.agents/skills/find-skills/
+.agents/skills/mcp-builder/
+.agents/skills/source-command-gsd-*/
+.codex/agents/gsd-*
+.codex/hooks/
+.codex/hooks.json
+
 # ===== Logs =====
 *.log
 logs/

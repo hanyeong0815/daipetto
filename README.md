@@ -10,12 +10,12 @@ Spring Boot（業務API）+ FastAPI（分析API）+ React（Web / Capacitor で�
 
 | 領域 | 技術 |
 |---|---|
-| Frontend | React 18 / TypeScript 5.7 / Vite 6.4 / Tailwind CSS 3.4 / Zustand 5 / Axios 1.18 / React Router 6.30 |
+| Frontend | React 18 / TypeScript 5.7 / Vite 6.4 / Tailwind CSS 3.4 / Zustand 5 / Axios 1.20 / React Router 6.30 |
 | モバイル | Capacitor 8.4（Android / iOS） |
-| 業務API | Java 17 / Spring Boot 3.3.13 / Spring Security / Spring Data JPA / Flyway / MapStruct |
-| 分析API | Python 3.12.10 / FastAPI 0.162 / uvicorn / psycopg 3（Spring からのみ呼ばれる内部API） |
+| 業務API | Java 17 / Spring Boot 3.5.16 / Spring Security / Spring Data JPA / Flyway / MapStruct |
+| 分析API | Python 3.12 / FastAPI 0.162 / uvicorn / psycopg 3（Spring からのみ呼ばれる内部API） |
 | 認証 | JWT（Access Token 30分 + Refresh Token 14日、使うたびに再発行） |
-| DB | PostgreSQL 16.9 |
+| DB | PostgreSQL 16.15 |
 | インフラ | Docker Compose |
 | テスト | JUnit 5 / Mockito / JaCoCo、pytest |
 
@@ -81,6 +81,8 @@ Controller
 
 ## ローカル起動
 
+AI エージェント（Claude Code・Codex）の環境（プラグイン・スキル・レビュー用の準備・検証のルール）は [.ai-collab/SETUP.md](.ai-collab/SETUP.md) にまとめています。
+
 ### Docker Compose
 
 ```bash
@@ -111,7 +113,7 @@ cp .env.example .env    # DB・JWT・ANALYSIS_API_URL・INTERNAL_API_KEY
 
 ```bash
 cd analysis-api
-uv venv --python 3.12.10 .venv
+uv venv --python 3.12 .venv
 uv pip install --python .venv -r requirements-dev.txt
 cp .env.example .env    # DB と INTERNAL_API_KEY（Spring と同じ値）
 .venv/Scripts/python -m uvicorn app.main:app --port 8000   # macOS/Linux は .venv/bin/python
@@ -184,8 +186,10 @@ GET    /api/v1/analysis/pets/{petId}/vaccination/next  次回接種推奨日
 ## テスト
 
 ```bash
-cd spring-api && ./gradlew clean test       # JUnit（JaCoCo のレポートも生成）
-cd analysis-api && .venv/Scripts/python -m pytest
+# リポジトリ直下で実行する（各行は括弧内で移動するので、続けて実行できる）
+(cd spring-api && ./gradlew clean test)                  # JUnit（JaCoCo のレポートも生成）
+(cd analysis-api && .venv/Scripts/python -m pytest)      # macOS/Linux は .venv/bin/python
+node scripts/osv-scan.mjs                                # 依存ライブラリの既知の脆弱性（docs/09 §22）
 ```
 
 全機能の単体テスト（API単体テスト・画面単体テスト・カバレッジ。2026-10-23）の経過と最終判定は `.ai-collab/tasks/2026-10-23-unit-test/` にあります（仕様書・エビデンスはリポジトリに含めていません）。

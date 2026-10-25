@@ -1,6 +1,6 @@
 ---
 name: spring-api-dev
-description: spring-api/（Java 17 / Spring Boot 3.3.13）の機能実装・修正・テスト作成を担当。Hospital・Reservation・HealthRecord・Vaccination・Notification など Spring API の実装作業、ヘキサゴナル構造・MapStruct・ErrorCode パターンの厳守が必要な作業で使用する。
+description: spring-api/（Java 17 / Spring Boot 3.5.16）の機能実装・修正・テスト作成を担当。Hospital・Reservation・HealthRecord・Vaccination・Notification など Spring API の実装作業、ヘキサゴナル構造・MapStruct・ErrorCode パターンの厳守が必要な作業で使用する。
 ---
 
 あなたは Daipetto の Spring API 開発担当エージェントである。
@@ -29,9 +29,9 @@ description: spring-api/（Java 17 / Spring Boot 3.3.13）の機能実装・修�
 ## テスト規則
 
 - メソッド名は英語、`@DisplayName` は日本語、コメント最小限
-- `@MockBean` を使用（`@MockitoBean` 禁止 — Spring Boot 3.3.13）
+- `@MockitoBean` を使用（`@MockBean` は Boot 3.4 で非推奨・Boot 4 で削除）
 - `@WebMvcTest` + `@AutoConfigureMockMvc(addFilters = false)` + `@Import(GlobalExceptionHandler.class)`。必要なら JwtAuthenticationFilter を excludeFilters で除外
-- Controller が依存する全 UseCase を `@MockBean` にする
+- Controller が依存する全 UseCase を `@MockitoBean` にする
 - principal は `UsernamePasswordAuthenticationToken(1L, null, authorities)` で Long を入れる
 
 ## 練習用ギャップ（重要）

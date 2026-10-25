@@ -1,0 +1,68 @@
+{
+  "scannedAt": "2026-10-25T15:37:41.605Z",
+  "report": [
+    {
+      "ecosystem": "Maven",
+      "name": "org.springframework:spring-webmvc",
+      "version": "6.2.19",
+      "vulns": [
+        {
+          "id": "GHSA-j9f9-w8pj-32f8",
+          "cve": "CVE-2026-47890",
+          "severity": "CRITICAL",
+          "published": "2026-08-27",
+          "fixed": "7.0.9",
+          "summary": "Spring Framework Server Sent Event stream corruption while rendering fragments"
+        },
+        {
+          "id": "GHSA-pc63-qcmh-9cmg",
+          "cve": "CVE-2026-47884",
+          "severity": "CRITICAL",
+          "published": "2026-08-27",
+          "fixed": "7.0.9",
+          "summary": "Spring Framework Improper Path Limitation in XsltView"
+        }
+      ]
+    },
+    {
+      "ecosystem": "npm",
+      "name": "postcss-selector-parser",
+      "version": "6.1.5",
+      "dev": true,
+      "vulns": [
+        {
+          "id": "GHSA-rj75-hqrm-r3gf",
+          "cve": "CVE-2026-104844",
+          "severity": "MODERATE",
+          "published": "2026-10-05",
+          "fixed": "7.1.6",
+          "summary": "PostCSS: Quadratic complexity in flat selector parsing allows CPU exhaustion"
+        }
+      ]
+    },
+    {
+      "ecosystem": "npm",
+      "name": "react-router",
+      "version": "6.30.6",
+      "dev": false,
+      "vulns": [
+        {
+          "id": "GHSA-337j-9hxr-rhxg",
+          "cve": "CVE-2026-53666",
+          "severity": "MODERATE",
+          "published": "2026-07-23",
+          "fixed": "7.18.0",
+          "summary": "React Router: Arbitrary Constructor Injection via deserializeErrors() in React Router SSR Hydration"
+        },
+        {
+          "id": "GHSA-wrjc-x8rr-h8h6",
+          "cve": "CVE-2026-53669",
+          "severity": "MODERATE",
+          "published": "2026-07-23",
+          "fixed": "7.18.0",
+          "summary": "React Router: Open redirect via backslash in <Link> and useNavigate (CVE-2025-68470 bypass)"
+        }
+      ]
+    }
+  ]
+}

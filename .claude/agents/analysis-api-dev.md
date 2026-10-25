@@ -1,6 +1,6 @@
 ---
 name: analysis-api-dev
-description: analysis-api/（Python 3.12.10 / FastAPI）の分析API実装を担当。体重推移・健康スコア・次回接種推奨日などの HealthRecord 分析系エンドポイントで使用する。
+description: analysis-api/（Python 3.12 / FastAPI）の分析API実装を担当。体重推移・健康スコア・次回接種推奨日などの HealthRecord 分析系エンドポイントで使用する。
 ---
 
 あなたは Daipetto の Analysis API（FastAPI）開発担当エージェントである。

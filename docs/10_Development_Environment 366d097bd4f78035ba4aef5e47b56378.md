@@ -69,24 +69,24 @@ flowchart TB
 | --- | --- | --- |
 | Frontend Framework | React | 18.3.1 |
 | Frontend Language | TypeScript | 5.7.3 |
-| Frontend Build Tool | Vite | 6.4.3 |
-| Frontend Runtime | Node.js | 24.17.0 |
-| Package Manager | npm | 11.13.0 |
+| Frontend Build Tool | Vite | 6.4.4 |
+| Frontend Runtime | Node.js | 24.22.1 |
+| Package Manager | npm | 11.19.1 |
 | CSS Framework | Tailwind CSS | 3.4.19 |
 | State Management | Zustand | 5.0.14 |
-| HTTP Client | Axios | 1.18.1 |
-| Routing | React Router DOM | 6.30.4 |
-| Mobile | Capacitor（Android / iOS） | 8.4.1 |
+| HTTP Client | Axios | 1.20.0 |
+| Routing | React Router DOM | 6.30.6 |
+| Mobile | Capacitor（Android / iOS） | 8.4.3 |
 | Backend Language | Java | 17 |
-| Backend Framework | Spring Boot | 3.3.13 |
-| Security | Spring Security | 6.3.x |
+| Backend Framework | Spring Boot | 3.5.16 |
+| Security | Spring Security | 6.5.11 |
 | ORM | Spring Data JPA | Included |
-| Migration | Flyway | 10.20.x |
-| Backend Language | Python | 3.12.10 |
+| Migration | Flyway | 11.7.x |
+| Backend Language | Python | 3.12.15（Docker）／ローカルは uv の 3.12.x |
 | Python Framework | FastAPI | 0.162.0 |
 | ASGI Server | uvicorn | 0.54.0 |
 | DB Driver（Python） | psycopg | 3.3.6 |
-| Database | PostgreSQL | 16.9 |
+| Database | PostgreSQL | 16.15 |
 | Timezone | JST（Asia/Tokyo） | Spring: `SpringApiApplication.main`でJVM既定を設定 / DB: compose `TZ` |
 | Infrastructure | Docker Compose | v2 |
 | API | REST API | JSON |
@@ -103,19 +103,19 @@ flowchart TB
 | --- | --- | --- |
 | React | 18.3.1 | UIフレームワーク |
 | TypeScript | 5.7.3 | 型安全性 |
-| Vite | 6.4.3 | ビルドツール |
+| Vite | 6.4.4 | ビルドツール |
 | Tailwind CSS | 3.4.19 | スタイリング |
-| React Router DOM | 6.30.4 | ルーティング |
-| Axios | 1.18.1 | HTTP通信（JWT自動付与・リフレッシュ対応） |
+| React Router DOM | 6.30.6 | ルーティング |
+| Axios | 1.20.0 | HTTP通信（JWT自動付与・リフレッシュ対応） |
 | Zustand | 5.0.14 | 状態管理（Auth・Pet・Hospital） |
-| Capacitor | 8.4.1 | Android / iOS ネイティブラッパー |
+| Capacitor | 8.4.3 | Android / iOS ネイティブラッパー |
 
 ---
 
 # **4-2. Node Version**
 
 ```
-Node.js 24.17.0
+Node.js 24.22.1
 ```
 
 ---
@@ -123,7 +123,7 @@ Node.js 24.17.0
 # **4-3. npm Version**
 
 ```
-npm 11.13.0
+npm 11.19.1
 ```
 
 ---
@@ -188,7 +188,7 @@ nvm alias default 24
 | **項目** | **内容** |
 | --- | --- |
 | Language | Java 17 |
-| Framework | Spring Boot 3.3.13 |
+| Framework | Spring Boot 3.5.16 |
 | Security | Spring Security |
 | ORM | Spring Data JPA |
 | Build Tool | Gradle |
@@ -207,7 +207,7 @@ Java 17
 # **5-3. Spring Boot Version**
 
 ```
-Spring Boot 3.3.13
+Spring Boot 3.5.16
 ```
 
 ---
@@ -291,7 +291,7 @@ flowchart TB
 | h2（testRuntimeOnly） | Persistenceテスト用のDB（`@DataJpaTest`、PostgreSQLモード） |
 | jacoco 0.8.12（Gradleプラグイン） | カバレッジ（`./gradlew test` の後に `build/reports/jacoco/test/` へXML・HTMLを出力） |
 
-> **注記:** springdoc-openapi（Swagger UI）は未導入。導入時は Spring Boot 3.3.x 互換の `springdoc-openapi-starter-webmvc-ui 2.6.0` を利用する。
+> **注記:** springdoc-openapi（Swagger UI）は未導入。導入時は Spring Boot 3.5.x 互換の `springdoc-openapi-starter-webmvc-ui 2.8.x`（2026-10 時点 2.8.17）を利用する。
 
 ---
 
@@ -301,7 +301,7 @@ flowchart TB
 
 | **項目** | **内容** |
 | --- | --- |
-| Language | Python 3.12.10 |
+| Language | Python 3.12（Docker イメージ `python:3.12.15-slim`、ローカルは uv で入れた 3.12.x） |
 | Framework | FastAPI 0.162.0（Pydantic 2.14 / Starlette 1.10）、ASGIサーバー uvicorn 0.54.0 |
 | DB Driver | psycopg 3.3.6（`psycopg[binary]`）。SQLで読み取りのみ |
 | 役割 | 分析・統計の内部API（Spring からのみ呼ばれる。07 §7-5） |
@@ -351,7 +351,7 @@ analysis-api/
 
 ```
 cd analysis-api
-uv venv --python 3.12.10 .venv
+uv venv --python 3.12 .venv
 uv pip install --python .venv -r requirements-dev.txt
 cp .env.example .env    # DB接続情報と INTERNAL_API_KEY を設定する
 ```
@@ -369,7 +369,7 @@ API文書（OpenAPI）は公開していない。Spring との連携仕様を確
 # **7-1. DB Version**
 
 ```
-PostgreSQL 16.9
+PostgreSQL 16.15
 ```
 
 ---

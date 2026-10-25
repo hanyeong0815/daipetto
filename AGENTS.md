@@ -6,21 +6,21 @@ This is the repository entry point for Codex and the canonical shared project po
 
 ## Agent startup and collaboration
 
-- Both agents: read [.ai-collab/PROTOCOL.md](.ai-collab/PROTOCOL.md), then only the task directory selected by the user. Treat dated status below as a snapshot; verify the actual branch, HEAD, files, and tests.
+- Both agents: read [.ai-collab/PROTOCOL.md](.ai-collab/PROTOCOL.md), then only the task directory selected by the user. On a new machine or with missing tools, follow [.ai-collab/SETUP.md](.ai-collab/SETUP.md) (plugins, skills, review interpreter and Gradle cache, verification rules, Notion sync). Treat dated status below as a snapshot; verify the actual branch, HEAD, files, and tests.
 - Codex only: read [.codex/ROLE.md](.codex/ROLE.md). For reviews also read [.codex/REVIEW.md](.codex/REVIEW.md).
 - Claude Code: follow the role instructions in [CLAUDE.md](CLAUDE.md); do not inherit Codex's reviewer role just because this shared file is being read.
 - Agent-facing files in `.codex/` and `.ai-collab/` use concise English. User-facing replies remain Korean; product design docs and code comments retain the language rules below.
 - Operational source of truth: `.ai-collab/PROTOCOL.md`. The original research corrections remain in `docs/codex-workflow/01_CORRECTIONS.md` for reference only.
 
-Last updated: 2026-10-25 (branch `feat/analysis/analysis-api`, from `test/unit-test`)
+Last updated: 2026-10-26 (branch `chore/security-and-portability`, from `feat/analysis/analysis-api`)
 
 ## 1. Areas
 
 | Dir | Stack | IDE |
 |---|---|---|
 | `frontend/` | React 18 / TypeScript / Vite / Tailwind / Zustand / Axios / React Router 6 / Capacitor (Android·iOS) | VSCode |
-| `spring-api/` | Java 17 / Spring Boot 3.3.13 / Spring Security / JPA / Flyway / MapStruct | IntelliJ |
-| `analysis-api/` | Python 3.12.10 / FastAPI 0.162.0 / uvicorn / psycopg 3 — internal analysis API behind Spring; weight / health-score / vaccination-next implemented, symptoms/summary left as a practice gap (2026-10-25) | VSCode |
+| `spring-api/` | Java 17 / Spring Boot 3.5.16 / Spring Security / JPA / Flyway / MapStruct | IntelliJ |
+| `analysis-api/` | Python 3.12 / FastAPI 0.162.0 / uvicorn / psycopg 3 — internal analysis API behind Spring; weight / health-score / vaccination-next implemented, symptoms/summary left as a practice gap (2026-10-25) | VSCode |
 | `docs/` | 13 design docs, Japanese, change-managed (§11, §12) | — |
 
 ## 2. Language rules
@@ -156,7 +156,7 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 ## 8. Test rules
 
 - Method names English, `@DisplayName` Japanese, comments minimal.
-- Spring Boot 3.3.13 → use `@MockBean` (never `@MockitoBean`).
+- Spring Boot 3.5.16 → use `@MockitoBean` (`org.springframework.test.context.bean.override.mockito`). `@MockBean` is deprecated for removal (all tests were converted on 2026-10-25).
 - Controller tests: `@WebMvcTest` + `@AutoConfigureMockMvc(addFilters = false)` + `@Import(GlobalExceptionHandler.class)`. If `JwtAuthenticationFilter` breaks context creation, exclude it via `excludeFilters`. Mock **every** UseCase the controller depends on.
 - Principal is `Long`: use `new UsernamePasswordAuthenticationToken(1L, null, authorities)` — `.with(user(...))` fails.
 - Most unit tests mock repositories. H2 **is** available for `@DataJpaTest` (`application-test.yml`, `MODE=PostgreSQL`, `ddl-auto=create-drop`, Flyway disabled) — see `RefreshTokenPersistenceAdapterTest`; Testcontainers is not introduced.
@@ -168,10 +168,10 @@ Forbidden: COMPLETED→REQUESTED, CANCELLED→APPROVED, REJECTED→APPROVED, COM
 
 | Item | Value |
 |---|---|
-| Spring | Java 17 / Boot 3.3.13 / Gradle 8.14.4 / Flyway 10.20.x / MapStruct 1.5.5.Final / jjwt 0.12.6 |
-| Frontend | React 18.3.1 / TS 5.7.x / Vite 6.4.x / Node 24.17.0 / Tailwind 3.4.x / Zustand 5 / Axios 1.18 / Router 6.30 / Capacitor 8.4 |
-| Analysis API | Python 3.12.10 / FastAPI 0.162.0 / uvicorn 0.54.0 / psycopg 3.3.6; tests pytest 9.1.1 + httpx2 |
-| DB | PostgreSQL 16.9 (db/user: daipetto) |
+| Spring | Java 17 / Boot 3.5.16 (Spring Framework 6.2.19, Security 6.5.11) / Gradle 8.14.4 / Flyway 11.7.x / MapStruct 1.5.5.Final / jjwt 0.12.6. Security overrides in build.gradle: Tomcat 10.1.61, Jackson 2.21.8, PostgreSQL JDBC 42.7.14, Log4j API 2.25.5 |
+| Frontend | React 18.3.1 / TS 5.7.x / Vite 6.4.x / Node 24.22.1 / Tailwind 3.4.x / Zustand 5 / Axios 1.20 / Router 6.30.6 / Capacitor 8.4.3 |
+| Analysis API | Python 3.12 (Docker 3.12.15; local uv-managed 3.12.x) / FastAPI 0.162.0 / uvicorn 0.54.0 / psycopg 3.3.6; tests pytest 9.1.1 + httpx2 |
+| DB | PostgreSQL 16.15 (db/user: daipetto) |
 | Ports | frontend 5173 / spring 8080 / analysis-api 8000 / postgres 5432 |
 | Timezone | JST `Asia/Tokyo` everywhere (Japan-facing service). Spring sets the JVM default in `main` from `ServerTime.ZONE_ID`; postgres container `TZ=Asia/Tokyo`; frontend computes "today" with `todayInJapan()` (`src/utils/date.ts`), never `toISOString()`; analysis-api must compute "today" in `Asia/Tokyo` (zoneinfo), not the container default. |
 
@@ -193,7 +193,7 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
 
 **Done**: Auth (register / login / JWT / refresh rotation / logout / `GET /users/me`) · Pet CRUD · Hospital (create/update/suspend/list/detail) · HospitalSchedule (create/list/block/unblock) · HospitalBusinessHours CRUD · Reservation (create/list/detail/cancel/approve/complete/reject) · HealthRecord CRUD · Notification (list/read + generation on reservation approve/reject/complete, 2026-10-03) · Vaccination (register/list/complete/reschedule + reminder Scheduler, 2026-10-05) · Frontend all screens SC-001〜015 (auth·pet·hospital·reservation·health record·notification·dashboard·logout wired to real API, 2026-10-04) · ProtectedRoute + role guards · token restore on reload.
 
-**Practice gaps**: none open. The user asked on 2026-10-21 to finish all Spring work, so the Vaccination cancel/delete gaps (2026-10-05) were implemented by Claude Code. The same request covers the rest of this round (admin features, pet fields, schedule generation): no new gaps. Later new domains follow §11-1 again unless the user waives it.
+**Practice gaps**: one open — analysis `symptoms/summary` (Python endpoint and Spring relay, docs/07 §7-3, TODO.md), left for the user on 2026-10-25. Earlier: The user asked on 2026-10-21 to finish all Spring work, so the Vaccination cancel/delete gaps (2026-10-05) were implemented by Claude Code. The same request covers the rest of this round (admin features, pet fields, schedule generation): no new gaps. Later new domains follow §11-1 again unless the user waives it.
 
 **HealthRecord/Notification review (Codex REVIEW-001, 2026-10-03)** in `.ai-collab/tasks/2026-10-03-health-notification/`: partial PATCH erased omitted fields (R-01), and stale full-entity saves could resurrect deleted health records (R-02) or undo a hospital suspension (R-03, pre-existing). Fixed with column-specific conditional updates (§3 rule 5), applied also to the same pattern in Pet and HospitalBusinessHours updates. Response in `HANDOFF-002.md`. Re-review REVIEW-002 (2026-10-04) accepted those and found R-04: a concurrent partial PATCH still wrote back stale values of unsent fields; fixed by reading the health record with a row lock (§3 rule 5). Response in `HANDOFF-003.md`.
 
@@ -203,11 +203,13 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
 
 **Analysis API (2026-10-25, branch `feat/analysis/analysis-api`, accepted by Codex in REVIEW-002)**: user decisions: the frontend calls only Spring; Spring authenticates, checks pet ownership and relays to the analysis API's internal endpoints (`/internal/v1`, `X-Internal-Api-Key`, docs/04 §8, docs/09 §4-6); four analysis APIs (docs/07 §7; the health-score formula and the 1-year vaccination interval were confirmed by the user); practice gap = symptoms/summary (Python endpoint and the Spring relay). The framework was switched from Django REST Framework to FastAPI on user request (only read-only JSON internal endpoints; Django's admin/auth/sessions/migrations would all be disabled; docs/04 §5-2, docs/13 §3-4). Done: `analysis-api/` skeleton (`app/main.py` router, `config.py`, `db.py` per-request psycopg connection with `default_transaction_read_only=on`, `security.py` key check, `errors.py` common envelope incl. 422→400 VALIDATION-001), OpenAPI/docs routes disabled (export with `app.openapi()`), `GET /internal/v1/health`, `docker compose build analysis-api` and a scratch-DB smoke run (Flyway V15 columns present, writes rejected by PostgreSQL). Phase 2 (2026-10-25): weight / health-score / vaccination-next on both sides — analysis-api `routers.py`/`schemas.py`/`services.py` (pure functions)/`repository.py` (SQL); Spring `AnalysisController` → three UseCase services (owner check `AnalysisPetChecker`, ANALYSIS-001; period ANALYSIS-002) → port `AnalysisClient` → `AnalysisApiClient` (RestClient, 2 s/5 s timeouts, redirects not followed; non-2xx incl. 3xx, I/O, unreadable bodies and missing required fields — checked in the domain record constructors — all ANALYSIS-003). 38 pytest, 40 new JUnit (Codex REVIEW-001 R-01/R-02 fixes included), scratch-DB E2E script in the task folder. Not started: frontend charts. Task record `.ai-collab/tasks/2026-10-25-analysis-api/`.
 
+**Security update (2026-10-25, branch `chore/security-and-portability`)**: OSV scan of all dependencies (`node scripts/osv-scan.mjs`, docs/09 §22) found 31 vulnerable packages; after the update 3 remain, all judged not reachable (XsltView/SSE in spring-webmvc, SSR and untrusted-URL navigation in react-router 6, build-time postcss-selector-parser). Spring Boot 3.3.13 → 3.5.16 (the last OSS 3.x; 3.x OSS support ended 2026-06-30, so a 4.x migration is the follow-up) with build.gradle overrides for Tomcat/Jackson/PostgreSQL JDBC/Log4j API; `@MockBean` → `@MockitoBean`; frontend patch upgrades (Capacitor 8.4.3, axios 1.20.0, react-router-dom 6.30.6, vite 6.4.4, transitive fixes resolved with `--before` to skip versions published < 3 days ago); Docker images node 24.22.1 / python 3.12.15 / postgres 16.15. 382 JUnit and 38 pytest green, frontend build OK.
+
 **Branches (2026-10-25)**: all feature branches up to `feat/spring/schedule-generation` were merged into `develop` (PR #20) and deleted. `test/unit-test` is pushed (PR to `develop` pending, by the user); `feat/analysis/analysis-api` starts from it. `develop` is ahead of `main` (release PR pending, by the user). Verify with `git branch --all` and `git log`.
 
 ## 11. Workflow rules
 
-1. **Practice gaps**: when adding a new domain, intentionally leave 1–2 features unimplemented; record them in TODO.md under 「あえて未実装のまま残した項目（練習用）」 and mark the docs heading with 「（未実装）」.
+1. **Practice gaps**: when adding a new domain, intentionally leave 1–2 features unimplemented; record them in TODO.md under 「あえて未実装のまま残した項目（練習用）」 and mark the docs heading with 「（未実装）」. Prefer leaving write/change features that have a similar implemented pattern to copy; implement the read paths other features depend on. Leave a gap feature out entirely (no route, use case or service stub), name the reference implementation in TODO.md/docs, and say "intentionally unimplemented" in the commit so it is not mistaken for a bug. Ask the user which ones when the choice is not obvious.
 2. **Doc sync after implementation changes** (use `/docs-sync`): update TODO.md → affected `docs/` → §10 of this file. Change-managed items: architecture, ERD/tables/columns, API endpoints/request/response, ErrorCodes, Role/Status values, state transitions, JWT/refresh behavior, Docker config, versions.
 3. Skills: `/spring-new-domain` (new domain), `/spring-test` (tests), `/docs-sync` (doc sync). Shared skill bodies live in `.agents/skills/`; Claude entry points reference them from `.claude/skills/`. Tool-specific specialist definitions live in `.codex/agents/` and `.claude/agents/`; use them only when delegation is authorized.
 4. `docs/` filenames carry Notion export hashes — always locate them by prefix Glob (e.g. `docs/07_API_Design*.md`).
@@ -229,5 +231,7 @@ API base URL is resolved at runtime per platform via `Capacitor.getPlatform()` (
 | 11 Test_Strategy | test scenarios |
 | 12 Trouble_Shooting | newly solved issues |
 | 13 Retrospective | as needed |
+
+Notion mirror: each `docs/` file maps to the page with the same hash ID under "PetCare Platform"; `docs/` is the source of truth. Sync changed pages only (`scripts/notion_prep.py`, SETUP §6).
 
 Known remaining gaps: docs keep Status "Draft" by design; `pets.image_url` is designed but not implemented (image upload policy undecided, docs/06 §8 note).

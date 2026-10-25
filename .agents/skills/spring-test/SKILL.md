@@ -14,13 +14,13 @@ description: Daipetto の Spring API テスト作成規則。Service / Controlle
 void login_success() { }
 ```
 
-## 環境の落とし穴（Spring Boot 3.3.13）
+## 環境の落とし穴（Spring Boot 3.5.16）
 
 | やること | やらないこと | 理由 |
 |---|---|---|
-| `@MockBean` | `@MockitoBean` | Boot 3.3.13 には存在しない |
+| `@MockitoBean`（`org.springframework.test.context.bean.override.mockito`） | `@MockBean` | `@MockBean` は Boot 3.4 で非推奨・Boot 4 で削除（2026-10-25 に全テストを置換済み） |
 | `UsernamePasswordAuthenticationToken(1L, null, authorities)` | `.with(user("..."))` | principal は Long。String だと Controller の cast が失敗 |
-| Controller の全 UseCase を `@MockBean` | 一部だけ Mock | 漏れると Context 生成失敗 |
+| Controller の全 UseCase を `@MockitoBean` | 一部だけ Mock | 漏れると Context 生成失敗 |
 
 ## テスト種別ごとの雛形
 

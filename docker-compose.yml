@@ -73,7 +73,7 @@ services:
 
   postgres:
     container_name: daipetto-postgres
-    image: postgres:16.9
+    image: postgres:16.15
     restart: always
     ports:
       - "5432:5432"

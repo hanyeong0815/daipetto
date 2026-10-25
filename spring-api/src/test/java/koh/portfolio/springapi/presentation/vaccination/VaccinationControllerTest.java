@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
@@ -58,22 +58,22 @@ class VaccinationControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean
+    @MockitoBean
     private CreateVaccinationUseCase createVaccinationUseCase;
 
-    @MockBean
+    @MockitoBean
     private GetVaccinationListUseCase getVaccinationListUseCase;
 
-    @MockBean
+    @MockitoBean
     private CompleteVaccinationUseCase completeVaccinationUseCase;
 
-    @MockBean
+    @MockitoBean
     private RescheduleVaccinationUseCase rescheduleVaccinationUseCase;
 
-    @MockBean
+    @MockitoBean
     private CancelVaccinationUseCase cancelVaccinationUseCase;
 
-    @MockBean
+    @MockitoBean
     private DeleteVaccinationUseCase deleteVaccinationUseCase;
 
     private UsernamePasswordAuthenticationToken auth(Long userId) {

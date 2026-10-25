@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
@@ -59,19 +59,19 @@ class PetControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean
+    @MockitoBean
     private CreatePetUseCase createPetUseCase;
 
-    @MockBean
+    @MockitoBean
     private GetPetListUseCase getPetListUseCase;
 
-    @MockBean
+    @MockitoBean
     private GetPetDetailUseCase getPetDetailUseCase;
 
-    @MockBean
+    @MockitoBean
     private UpdatePetUseCase updatePetUseCase;
 
-    @MockBean
+    @MockitoBean
     private DeletePetUseCase deletePetUseCase;
 
     private UsernamePasswordAuthenticationToken auth(Long userId) {
