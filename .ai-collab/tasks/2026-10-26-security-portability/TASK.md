@@ -37,7 +37,7 @@
 ## Progress references
 
 - Latest published handoff: HANDOFF-002.md (response to REVIEW-001: R-01..R-06)
-- Next actor and action: Claude Code — Notion partial sync (docs 07/09/10/11/12); the user opens the PRs in order: test/unit-test, feat/analysis/analysis-api, chore/security-and-portability
+- Next actor and action: the user opens the PRs in order: test/unit-test, feat/analysis/analysis-api, chore/security-and-portability
 - Latest final review: REVIEW-002.md (ACCEPTED; REVIEW-001 R-01..R-06 resolved)
 
 ## Closure
@@ -47,3 +47,4 @@
 - Verification evidence: reviewer-executed JUnit 382 (`--rerun-tasks`), pytest 38, frontend build, `test-run-codex.sh`, OSV fail-fast; implementer-reported API regression 134/134, E2E 17/17, browser S-01..S-16, image builds, OSV 31 → 3
 - Remaining: Spring Boot 4.x, React Router 7, Tailwind 4 migrations; user's local Node and PostgreSQL container updates (TODO.md)
 - Integration state: committed and pushed; PR by the user
+- Notion (2026-10-26): pages 07, 09, 10, 11, 12 updated with targeted `update_content`/`insert_content` (versions, docs/09 §22, docs/11 unit-test record, docs/07 notes); no warnings. `.gitattributes` (`*.sh text eol=lf`) was added after REVIEW-002 so the shell scripts survive `core.autocrlf=true` checkouts.
